@@ -12,10 +12,6 @@
  * Deploy: siehe README.md in diesem Ordner.
  */
 
-// Optionaler Zugriffsschutz: langen Zufallswert eintragen und im Tool (SHEET_TOKEN)
-// denselben setzen. Leer = aus (dann zählt nur die Bereitstellungs-Zugriffsstufe).
-const TOKEN = '';
-
 const CONFIG = {
   SHEET_ID: '14WcYfxy5oFoArQh3dWz2zNeP5lFLMlkyMxunm3b-SHI',   // Project Management NEW
   TZ: 'Europe/Berlin',
@@ -36,7 +32,6 @@ const CONFIG = {
 function doGet(e){
   const p = (e && e.parameter) || {};
   const action = p.action || 'ping';
-  if(TOKEN && p.token !== TOKEN) return reply({ ok:false, action:action, error:'nicht autorisiert' }, p.callback);
   let out;
   try{
     let data;

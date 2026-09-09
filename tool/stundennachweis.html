@@ -182,10 +182,13 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <h2>Aus Time Tracking laden</h2>
   <div class="fg">
     <div class="fld wide">
-      <label>Apps-Script Web-App-URL <span style="color:#c8c5bf">(einmal einfügen)</span></label>
-      <div style="display:flex;gap:8px">
-        <input type="text" id="f-appsurl" placeholder="https://script.google.com/macros/s/…/exec">
-        <button class="ghost" id="btn-connect" style="white-space:nowrap">Verbinden</button>
+      <label>Google-Sheet-Verbindung · Apps-Script Web-App-URL</label>
+      <textarea id="f-appsurl" rows="2" spellcheck="false"
+        style="resize:vertical;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.4"
+        placeholder="https://script.google.com/macros/s/…/exec"></textarea>
+      <div class="btnbar" style="margin-top:8px">
+        <button class="ghost" id="btn-connect">Verbinden</button>
+        <button class="ghost" id="btn-url-reset" title="Auf die im Tool hinterlegte Standard-URL zurücksetzen">↺ Standard-URL</button>
       </div>
     </div>
     <div class="fld"><label>Projekt</label><select id="f-sel-proj" disabled></select></div>
@@ -679,7 +682,6 @@ $('#btn-demo').onclick = ()=>{
   // Fest hinterlegte Web-App-URL -> in jedem Browser sofort verbunden, ohne erneutes Einfügen.
   // (Deploy „Zugriff: Nur ich" -> nur Anns angemeldetes Google-Konto kann sie aufrufen.)
   const SHEET_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbxhcvt6VGXVAcNy-2c7FcNqsCOgIZWSCk8BOx8LXKBusCXLZQNqJulTr5Ocg-DPTmOsZQ/exec';
-  const SHEET_TOKEN = '';   // optionaler Schutz: gleichen Wert in Code.gs (TOKEN) setzen; leer = aus
 
   const say = (msg, cls) => { statusEl.textContent = msg || ''; statusEl.className = 'sub ' + (cls||''); };
   try{ urlEl.value = localStorage.getItem('sn.appsUrl') || SHEET_URL_DEFAULT; }catch(_){ urlEl.value = SHEET_URL_DEFAULT; }
@@ -689,7 +691,7 @@ $('#btn-demo').onclick = ()=>{
   function jsonp(base, action, params){
     return new Promise((resolve, reject)=>{
       const cb = 'sn_cb_' + Date.now() + '_' + Math.floor(Math.random()*1e6);
-      const q = new URLSearchParams({ action, callback:cb, ...(SHEET_TOKEN ? {token:SHEET_TOKEN} : {}), ...(params||{}) });
+      const q = new URLSearchParams({ action, callback:cb, ...(params||{}) });
       const s = document.createElement('script');
       const t = setTimeout(()=>{ done(); reject(new Error('Zeitüberschreitung – Bereitstellung / Zugriff „Jeder" prüfen.')); }, 20000);
       function done(){ clearTimeout(t); try{ delete window[cb]; }catch(_){ window[cb] = undefined; } s.remove(); }
@@ -758,6 +760,12 @@ $('#btn-demo').onclick = ()=>{
   selPh.onchange = () => {
     const ph = curPhase();
     fillSelect(selS, ph ? ph.services : [], '— alle Leistungen —');
+  };
+
+  $('#btn-url-reset').onclick = () => {
+    urlEl.value = SHEET_URL_DEFAULT;
+    try{ localStorage.removeItem('sn.appsUrl'); localStorage.removeItem('sn.tree'); }catch(_){}
+    say('URL zurückgesetzt.'); connBtn.click();
   };
 
   loadBtn.onclick = async () => {
