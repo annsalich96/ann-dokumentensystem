@@ -28,7 +28,8 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
-body{font-family:var(--ui);color:var(--ink);background:#e9e9e6;display:flex;overflow:hidden;font-size:15px}
+body{font-family:var(--ui);color:var(--ink);background:#e9e9e6;display:flex;overflow:hidden;font-size:15px;
+  padding-right:56px}   /* Luft zwischen Editor und Bildschirmrand */
 
 /* ---- Vorschau (LINKS) ---- */
 #preview{flex:1;height:100%;overflow:auto;background:#e9e9e6;padding:30px;display:flex;flex-direction:column;align-items:center;gap:24px}
@@ -38,7 +39,8 @@ body{font-family:var(--ui);color:var(--ink);background:#e9e9e6;display:flex;over
 /* ---- Editor (RECHTS) ---- */
 #editor{
   width:clamp(520px, 50vw, 1040px);min-width:440px;height:100%;overflow:auto;
-  background:var(--paper);border-left:1px solid var(--ui-border);padding:30px 36px 90px;order:2;resize:horizontal
+  background:var(--paper);border-left:1px solid var(--ui-border);border-right:1px solid var(--ui-border);
+  padding:30px 44px 90px 36px;order:2;resize:horizontal
 }
 #editor h1{font-size:21px;font-weight:650;margin:0 0 3px;letter-spacing:-.01em}
 #editor .sub{font-size:13px;color:var(--ui-muted);margin:0 0 26px}
@@ -102,7 +104,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .s-footer   {font-weight:300;font-size:8pt}
 
 @media print{
-  body{display:block;overflow:visible;background:#fff}
+  body{display:block;overflow:visible;background:#fff;padding:0}
   #editor,#toolbar{display:none!important}
   #preview{padding:0;background:#fff;display:block;overflow:visible}
   .stage{zoom:1!important;transform:none!important;gap:0}
