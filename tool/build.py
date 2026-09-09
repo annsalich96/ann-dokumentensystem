@@ -30,6 +30,13 @@ def main() -> int:
     for fname in FONTS:
         uri = data_uri(HERE / "fonts" / fname)
         html = html.replace(f'url("fonts/{fname}")', f'url({uri})')
+    # pdf-fonts.js (Rota-TTF Base64 für jsPDF) einbetten
+    pf = HERE / "pdf-fonts.js"
+    if pf.exists():
+        html = html.replace(
+            '<script src="pdf-fonts.js"></script>',
+            "<script>\n" + pf.read_text(encoding="utf-8") + "\n</script>",
+        )
     # Hinweis in den Titelkommentar
     html = html.replace(
         "Stundennachweis-Ersteller / Viewer",
