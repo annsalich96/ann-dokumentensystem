@@ -30,27 +30,34 @@ const CONFIG = {
 
 /* ------------------------------------------------------------------ */
 function doGet(e){
-  const action = (e && e.parameter && e.parameter.action) || 'ping';
+  const p = (e && e.parameter) || {};
+  const action = p.action || 'ping';
+  let out;
   try{
     let data;
     switch(action){
-      case 'ping':          data = { ok:true, ts:new Date().toISOString() }; break;
+      case 'ping':          data = { ts:new Date().toISOString() }; break;
       case 'getFilterTree': data = getFilterTree(); break;
       case 'getCompanyInfo':data = getCompanyInfo(); break;
       case 'getTimeRecords':data = getTimeRecords({
-                              project:e.parameter.project || '',
-                              phase:  e.parameter.phase   || '',
-                              service:e.parameter.service || '',
-                              from:   e.parameter.from    || '',
-                              to:     e.parameter.to      || '',
-                              user:   e.parameter.user    || ''
+                              project:p.project || '', phase:p.phase || '', service:p.service || '',
+                              from:p.from || '', to:p.to || '', user:p.user || ''
                             }); break;
-      default: return json({ ok:false, error:'unknown action: '+action });
+      default: out = { ok:false, action:action, error:'unknown action: '+action };
     }
-    return json({ ok:true, action:action, data:data });
+    if(!out) out = { ok:true, action:action, data:data };
   }catch(err){
-    return json({ ok:false, action:action, error:String(err && err.message || err) });
+    out = { ok:false, action:action, error:String(err && err.message || err) };
   }
+  return reply(out, p.callback);   // JSONP wenn ?callback= gesetzt (umgeht CORS im Browser)
+}
+function reply(obj, callback){
+  const body = JSON.stringify(obj);
+  if(callback && /^[\w.$]+$/.test(callback)){
+    return ContentService.createTextOutput(callback + '(' + body + ');')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(body).setMimeType(ContentService.MimeType.JSON);
 }
 
 /* ------------------------------------------------------------------ */
