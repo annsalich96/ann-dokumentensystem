@@ -30,11 +30,14 @@ Google-Tabelle **„Project Management NEW"** (die Mappe hinter deiner AppSheet-
    - *Zugriff:* **Nur ich** (oder „Jeder mit Link", wenn das Tool ohne Google-Login laufen soll)
    - **Bereitstellen** → Google fragt einmal nach Berechtigung → zulassen.
 5. Die angezeigte **Web-App-URL** kopieren (endet auf `/exec`).
-6. Im Stundennachweis-Tool oben im Abschnitt **„Aus Time Tracking laden"** die URL
-   einfügen und **Verbinden**. Die URL wird lokal im Browser gemerkt.
+6. Diese URL ist im Tool fest hinterlegt (`SHEET_URL` in `tool/stundennachweis.html`,
+   Abschnitt „5b) TIME TRACKING"). Sie ist **nicht** im Editor sichtbar oder editierbar —
+   das Tool verbindet sich beim Laden automatisch. Wenn sich die URL ändert (siehe unten),
+   dort den Wert austauschen, `python3 build.py` ausführen und pushen.
 
 > Nach jedem Code-Update im Skript: **Bereitstellen → Bereitstellung verwalten → Bearbeiten
-> → Version „Neu" → Bereitstellen** (die URL bleibt gleich).
+> → Version „Neu" → Bereitstellen** — die URL **bleibt gleich**. Nur eine komplett neue
+> Bereitstellung (**Bereitstellen → Neue Bereitstellung**) erzeugt eine **neue** URL.
 
 ## Endpunkte
 

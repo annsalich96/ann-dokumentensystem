@@ -188,16 +188,6 @@ button:disabled{opacity:.4;cursor:not-allowed}
 
   <h2>Aus Time Tracking laden</h2>
   <div class="fg">
-    <div class="fld wide">
-      <label>Google-Sheet-Verbindung · Apps-Script Web-App-URL</label>
-      <textarea id="f-appsurl" rows="2" spellcheck="false"
-        style="resize:vertical;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.4"
-        placeholder="https://script.google.com/macros/s/…/exec"></textarea>
-      <div class="btnbar" style="margin-top:8px">
-        <button class="ghost" id="btn-connect">Verbinden</button>
-        <button class="ghost" id="btn-url-reset" title="Auf die im Tool hinterlegte Standard-URL zurücksetzen">↺ Standard-URL</button>
-      </div>
-    </div>
     <div class="fld"><label>Projekt</label><select id="f-sel-proj" disabled></select></div>
     <div class="fld"><label>Phase</label><select id="f-sel-phase" disabled></select></div>
     <div class="fld"><label>Leistung</label><select id="f-sel-svc" disabled></select></div>
@@ -681,20 +671,21 @@ $('#btn-demo').onclick = ()=>{
    5b) TIME TRACKING — Verbindung zum Google-Sheet (Apps Script, nur lesen)
    ============================================================ */
 (function(){
-  const urlEl   = $('#f-appsurl'), connBtn = $('#btn-connect'), loadBtn = $('#btn-load');
+  const loadBtn = $('#btn-load');
   const selP = $('#f-sel-proj'), selPh = $('#f-sel-phase'), selS = $('#f-sel-svc');
   const statusEl = $('#sheet-status');
   let tree = null;   // { projects:[{id,name,phases:[{id,name,services:[{id,name}]}]}] }
 
-  // Fest hinterlegte Web-App-URL -> in jedem Browser sofort verbunden, ohne erneutes Einfügen.
-  // (Deploy „Zugriff: Nur ich" -> nur Anns angemeldetes Google-Konto kann sie aufrufen.)
-  const SHEET_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbxhcvt6VGXVAcNy-2c7FcNqsCOgIZWSCk8BOx8LXKBusCXLZQNqJulTr5Ocg-DPTmOsZQ/exec';
+  // Web-App-URL ist fest im Tool hinterlegt (kein Editor-Feld). Zugriff ist über die
+  // Bereitstellung „Jeder in der Organisation" auf angemeldete @annarchitecture-studio.com-
+  // Konten beschränkt. Bleibt bei „Bereitstellung verwalten → Bearbeiten → Version Neu"
+  // gleich; nur eine komplett neue Bereitstellung erzeugt eine neue URL.
+  const SHEET_URL = 'https://script.google.com/macros/s/AKfycbxhcvt6VGXVAcNy-2c7FcNqsCOgIZWSCk8BOx8LXKBusCXLZQNqJulTr5Ocg-DPTmOsZQ/exec';
 
   const say = (msg, cls) => { statusEl.textContent = msg || ''; statusEl.className = 'sub ' + (cls||''); };
-  try{ urlEl.value = localStorage.getItem('sn.appsUrl') || SHEET_URL_DEFAULT; }catch(_){ urlEl.value = SHEET_URL_DEFAULT; }
 
   // JSONP statt fetch: umgeht CORS komplett. Setzt voraus, dass die Web-App als
-  // „Zugriff: Jeder" bereitgestellt ist (sonst Google-Login-Seite -> Fehler).
+  // „Zugriff: Jeder (in der Organisation)" bereitgestellt ist.
   function jsonp(base, action, params){
     return new Promise((resolve, reject)=>{
       const cb = 'sn_cb_' + Date.now() + '_' + Math.floor(Math.random()*1e6);
@@ -709,8 +700,7 @@ $('#btn-demo').onclick = ()=>{
     });
   }
   async function api(action, params){
-    const base = (urlEl.value || '').trim();
-    if(!/^https:\/\/script\.google(usercontent)?\.com\/.+\/exec$/.test(base)) throw new Error('Bitte die Web-App-URL (endet auf /exec) einfügen.');
+    const base = SHEET_URL;
     for(let attempt=0; attempt<2; attempt++){                 // Cold-Start: 1x wiederholen
       try{ return await jsonp(base, action, params); }
       catch(e){ if(attempt === 0){ await new Promise(r=>setTimeout(r,1500)); continue; } throw e; }
@@ -733,27 +723,23 @@ $('#btn-demo').onclick = ()=>{
     loadBtn.disabled = true;
     say('Verbunden · ' + tree.projects.length + ' Projekte' + (note || ''), 'ok');
   }
-  connBtn.onclick = async () => {
-    connBtn.disabled = true;
+  async function connect(){
     // 1) sofort aus dem lokalen Cache anzeigen (falls vorhanden, < 6 h)
     let hadCache = false;
     try{
       const c = JSON.parse(localStorage.getItem('sn.tree') || 'null');
-      if(c && c.url === urlEl.value.trim() && (Date.now() - c.at) < 21600000){ applyTree(c.tree, ' (gecacht)'); hadCache = true; }
+      if(c && c.url === SHEET_URL && (Date.now() - c.at) < 21600000){ applyTree(c.tree, ' (gecacht)'); hadCache = true; }
     }catch(_){}
-    if(!hadCache) say('Verbinde …');
+    if(!hadCache) say('Verbinde mit Time Tracking …');
     // 2) frisch nachladen
     try{
       const t = await api('getFilterTree');
-      try{
-        localStorage.setItem('sn.appsUrl', urlEl.value.trim());
-        localStorage.setItem('sn.tree', JSON.stringify({ url:urlEl.value.trim(), at:Date.now(), tree:t }));
-      }catch(_){}
+      try{ localStorage.setItem('sn.tree', JSON.stringify({ url:SHEET_URL, at:Date.now(), tree:t })); }catch(_){}
       applyTree(t, ' mit Buchungen.');
     }catch(e){
       if(!hadCache){ tree = null; say('Verbindung fehlgeschlagen: ' + e.message, 'err'); }
-    }finally{ connBtn.disabled = false; }
-  };
+    }
+  }
 
   selP.onchange = () => {
     const p = curProject();
@@ -767,12 +753,6 @@ $('#btn-demo').onclick = ()=>{
   selPh.onchange = () => {
     const ph = curPhase();
     fillSelect(selS, ph ? ph.services : [], '— alle Leistungen —');
-  };
-
-  $('#btn-url-reset').onclick = () => {
-    urlEl.value = SHEET_URL_DEFAULT;
-    try{ localStorage.removeItem('sn.appsUrl'); localStorage.removeItem('sn.tree'); }catch(_){}
-    say('URL zurückgesetzt.'); connBtn.click();
   };
 
   loadBtn.onclick = async () => {
@@ -796,10 +776,7 @@ $('#btn-demo').onclick = ()=>{
   };
 
   // Beim Laden automatisch verbinden (URL ist fest hinterlegt) — leise scheitern lassen.
-  if(/\/exec$/.test((urlEl.value||'').trim())){
-    say('Verbinde mit Time Tracking …');
-    connBtn.click();
-  }
+  connect();
 })();
 
 $('#btn-save').onclick = ()=>{
