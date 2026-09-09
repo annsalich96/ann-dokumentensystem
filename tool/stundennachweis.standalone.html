@@ -76,20 +76,22 @@ button.ghost{background:#fff;color:var(--ink)}
 button:disabled{opacity:.4;cursor:not-allowed}
 .btnbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
 
-/* Zeiteinträge */
-#entries{margin-top:8px;border:1px solid var(--ui-border);border-radius:8px;overflow:hidden}
+/* Zeiteinträge — innerhalb der Box horizontal scrollbar */
+#entries{margin-top:8px;border:1px solid var(--ui-border);border-radius:8px;overflow-x:auto;overflow-y:visible}
 #entries .e-head,#entries .e-row{display:grid;
-  grid-template-columns:var(--c1,120px) var(--c2,1.6fr) minmax(88px,1fr) var(--c4,88px) 30px}
+  grid-template-columns:var(--c1,120px) var(--c2,240px) var(--c3,175px) 82px 34px;
+  width:max-content;min-width:100%}
 #entries .e-head{background:var(--ui-bg);font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ui-muted)}
 #entries .e-head>div{padding:9px 10px;position:relative}
 #entries .e-head .grip{position:absolute;top:0;bottom:0;right:-1px;width:10px;cursor:col-resize;z-index:2}
 #entries .e-head .grip:hover{background:var(--ink);opacity:.2}
-#entries .e-row>*{border-top:1px solid var(--ui-border)}
-#entries input{border:0;border-radius:0;font-size:13.5px;padding:9px 10px}
+#entries .e-row>*{border-top:1px solid var(--ui-border);min-width:0}
+#entries input{border:0;border-radius:0;font-size:13.5px;padding:9px 10px;width:100%}
 #entries input:focus{outline:2px solid var(--ink);outline-offset:-2px}
 #entries .del{border:0;background:#fff;color:#B0291E;font-size:17px;padding:0;cursor:pointer}
 #entries .num{text-align:right}
-.e-total{display:flex;justify-content:space-between;font-size:13.5px;font-weight:700;padding:11px 10px}
+.e-total{display:flex;justify-content:space-between;width:max-content;min-width:100%;
+  font-size:13.5px;font-weight:700;padding:11px 10px;box-sizing:border-box}
 
 /* ============================================================
    DOKUMENT: A4 nach Design-System
