@@ -70,7 +70,9 @@ button.ghost{background:#fff;color:var(--ink)}button:disabled{opacity:.4;cursor:
 .doc-page .b{position:absolute;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   display:flex;flex-direction:column;justify-content:center}   /* Text mittig in der Band-Höhe */
 .doc-page .b.r{align-items:flex-end;text-align:right}
-.doc-page .line{position:absolute;background:var(--line);height:.5pt}
+/* Dokumentlinie: einheitlich 0,5 pt #a7a9ac. border-top + zoom-Skalierung
+   rendert alle Linien gleich (kein Subpixel-Flimmern wie bei height+transform). */
+.doc-page .line{position:absolute;height:0;border-top:.5pt solid var(--line)}
 .doc-page .monogram{position:absolute}
 .doc-page .monogram svg{display:block;width:100%;height:100%;fill:var(--ink)}
 
@@ -95,7 +97,7 @@ button.ghost{background:#fff;color:var(--ink)}button:disabled{opacity:.4;cursor:
   body{display:block;overflow:visible;background:#fff}
   #editor,#toolbar{display:none!important}
   #preview{padding:0;background:#fff;display:block;overflow:visible}
-  .stage{transform:none!important;gap:0}
+  .stage{transform:none!important;zoom:1!important;gap:0}
   .doc-page{box-shadow:none;break-after:page}
   .doc-page:last-child{break-after:auto}
   .grid-ov{display:none!important}
@@ -449,7 +451,7 @@ function syncForm(){
 
 /* ---- Zoom ---- */
 let zoom = 1, userZoomed = false;
-const applyZoom = ()=> stage.style.transform = `scale(${zoom})`;
+const applyZoom = ()=>{ stage.style.zoom = zoom; stage.style.transform = 'none'; };
 function fitZoom(reset){
   const avail = document.getElementById('preview').clientWidth - 56;
   const target = Math.max(0.35, Math.min(1.9, avail / (210*3.7795)));   // A4 füllt die Spalte, bis 1,9x
