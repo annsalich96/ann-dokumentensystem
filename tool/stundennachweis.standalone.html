@@ -220,11 +220,11 @@ const DS = {
   table:{
     topRuleK_first:19, topRuleK_cont:12,
     rowSpan:2,
-    maxRowK:52,
+    minGapBeforeFooter:2,                     /* mind. 2 Rastereinheiten Abstand Inhaltsende -> Footer */
     cols:{ datum:1, taetigkeit:3, bearbeiter:8 }
   },
   total:{ span:2, labelCol:8 },
-  footer:{ k1:54, k2:55, blocks:[1,3,6,8] }   /* höher gerückt (Ann, mehrfach) */
+  footer:{ k1:54, k2:55, blocks:[1,3,6,8] }
 };
 
 /* Büroprofil — EIN Absender (ANN ARCHITECTURE). Später aus Google-Sheet »Company Info«. */
@@ -262,15 +262,37 @@ function totalHours(){ return model.items.reduce((s,r)=>s+(Number(r.stunden)||0)
    3) PAGINATION-ENGINE
    ============================================================ */
 function paginate(){
-  const first0 = DS.table.topRuleK_first + 1;
-  const cont0  = DS.table.topRuleK_cont  + 1;
-  const span = DS.table.rowSpan, maxK = DS.table.maxRowK;
-  const capFirst = Math.max(0, Math.floor((maxK - first0)/span) + 1);
-  const capCont  = Math.max(1, Math.floor((maxK - cont0 )/span) + 1);
-  const pages = []; let rest = model.items.slice();
+  const F = DS.footer.k1, GAP = DS.table.minGapBeforeFooter;
+  const span = DS.table.rowSpan, tot = DS.total.span;
+  // Wie viele Zeilen passen ab Tabellenkopf topK, mit min. GAP vor dem Footer
+  // (reserveTotal = Platz für die "Gesamt"-Zeile freihalten -> nur die letzte Seite).
+  const capFor = (topK, reserveTotal) => {
+    const budget = F - GAP - (reserveTotal ? tot : 0) - (topK + 1);
+    return Math.max(reserveTotal ? 0 : 1, Math.floor(budget / span));
+  };
+
+  let rest = model.items.slice();
   if(!rest.length) rest = [null];
-  let f = true;
-  while(rest.length){ const cap = f?capFirst:capCont; pages.push({first:f, rows:rest.slice(0,cap)}); rest = rest.slice(cap); f = false; }
+  const pages = [];
+  let first = true;
+  while(rest.length){
+    const topK = first ? DS.table.topRuleK_first : DS.table.topRuleK_cont;
+    const cap = capFor(topK, false);
+    pages.push({ first, rows: rest.slice(0, cap) });
+    rest = rest.slice(cap);
+    first = false;
+  }
+  // Letzte Seite: Platz für die Summenzeile sicherstellen
+  const last = pages[pages.length-1];
+  const lastTopK = last.first ? DS.table.topRuleK_first : DS.table.topRuleK_cont;
+  const capWithTotal = capFor(lastTopK, true);
+  const lastCount = last.rows.filter(Boolean).length;
+  if(lastCount > capWithTotal){
+    const overflow = last.rows.slice(capWithTotal);
+    last.rows = last.rows.slice(0, capWithTotal);
+    if(last.rows.length === 0) last.rows = [null];
+    pages.push({ first:false, rows: overflow });
+  }
   pages[pages.length-1].last = true;
   return pages;
 }
