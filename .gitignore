@@ -1,0 +1,11 @@
+# macOS / Editoren
+.DS_Store
+*.log
+
+# Große Design-Quellen (Source of Truth, bleiben nur im Drive)
+design-sources/
+data-exports/
+reference-output/
+
+# gebautes Standalone (aus tool/build.py neu erzeugbar)
+tool/stundennachweis.standalone.html

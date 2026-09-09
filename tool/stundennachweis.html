@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stundennachweis — ann architecture</title>
+<style>
+/* ============================================================
+   ann architecture — Dokumenten-System · Prototyp
+   Stundennachweis-Ersteller / Viewer
+   Regeln: docs/document-design-system/ (Stand 2026-09-09).
+   Vertikales Modell (Ann, 2026-09-09):
+     - Fließtext: jede Zeile MITTIG in einer 13-pt-Rasterzeile.
+     - Tabelle: Linien liegen auf der Rasterlinie, der Zeilentext
+       sitzt mittig zwischen den Linien -> mehr Luft zwischen den Zeilen
+       (Zeilenabstand = 2 Rastereinheiten = 26 pt).
+   ============================================================ */
+
+@font-face{font-family:"Rota";src:url("fonts/Rota-Light.otf") format("opentype");font-weight:300;font-style:normal;font-display:swap}
+@font-face{font-family:"Rota";src:url("fonts/Rota-Medium.otf") format("opentype");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:"Rota";src:url("fonts/Rota-Bold.otf") format("opentype");font-weight:700;font-style:normal;font-display:swap}
+
+:root{
+  --ink:#0A0A0A;
+  --line:#8C8C8C;
+  --paper:#ffffff;
+  --ui-bg:#f5f5f3; --ui-border:#E0DDD8;
+  --f:"Rota","Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--f);color:var(--ink);background:var(--ui-bg);display:flex;overflow:hidden}
+
+/* ---- Vorschau (LINKS) ---- */
+#preview{flex:1;height:100%;overflow:auto;background:#e9e9e6;padding:28px;display:flex;flex-direction:column;align-items:center;gap:22px}
+.stage{display:flex;flex-direction:column;align-items:center;gap:22px;transform-origin:top center}
+#toolbar{position:fixed;top:14px;left:22px;display:flex;gap:8px;z-index:20}
+
+/* ---- Editor (RECHTS) ---- */
+#editor{
+  width:380px;min-width:340px;max-width:42vw;height:100%;overflow-y:auto;
+  background:var(--paper);border-left:1px solid var(--ui-border);padding:20px 18px 60px;order:2
+}
+#editor h1{font-size:15px;font-weight:700;margin:0 0 2px}
+#editor .sub{font-size:11px;color:#8C8C8C;margin:0 0 18px}
+#editor h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8C8C8C;margin:22px 0 8px;border-top:1px solid var(--ui-border);padding-top:14px}
+#editor label{display:block;font-size:11px;color:#8C8C8C;margin:10px 0 3px}
+#editor input,#editor textarea{width:100%;font-family:var(--f);font-size:13px;padding:6px 8px;border:1px solid var(--ui-border);border-radius:4px;background:#fff;color:var(--ink)}
+#editor .row2{display:flex;gap:8px}#editor .row2>*{flex:1;min-width:0}
+button{font-family:var(--f);font-size:12px;padding:7px 12px;border:1px solid var(--ink);border-radius:4px;background:var(--ink);color:#fff;cursor:pointer}
+button.ghost{background:#fff;color:var(--ink)}button:disabled{opacity:.4;cursor:not-allowed}
+.btnbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+#entries{margin-top:6px;border:1px solid var(--ui-border);border-radius:4px;overflow:hidden}
+#entries .e-head,#entries .e-row{display:grid;grid-template-columns:80px 1fr 1fr 58px 22px}
+#entries .e-head{background:var(--ui-bg);font-size:9px;text-transform:uppercase;letter-spacing:.03em;color:#8C8C8C}
+#entries .e-head>div{padding:6px}
+#entries .e-row>*{border-top:1px solid var(--ui-border)}
+#entries input{border:0;border-radius:0;font-size:11px;padding:6px}
+#entries input:focus{outline:2px solid var(--ink);outline-offset:-2px}
+#entries .del{border:0;background:#fff;color:#B0291E;font-size:14px;padding:0}
+#entries .num{text-align:right}
+.e-total{display:flex;justify-content:space-between;font-size:12px;font-weight:700;padding:8px 6px}
+
+/* ============================================================
+   DOKUMENT: A4 nach Design-System
+   ============================================================ */
+.doc-page{position:relative;width:210mm;height:297mm;background:var(--paper);
+  box-shadow:0 2px 14px rgba(0,0,0,.16);overflow:hidden;color:var(--ink);font-family:var(--f)}
+.doc-page .b{position:absolute;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  display:flex;flex-direction:column;justify-content:center}   /* Text mittig in der Band-Höhe */
+.doc-page .b.r{align-items:flex-end;text-align:right}
+.doc-page .line{position:absolute;background:var(--line);height:.5pt}
+.doc-page .monogram{position:absolute}
+.doc-page .monogram svg{display:block;width:100%;height:100%;fill:var(--ink)}
+
+.s-wordmark {font-weight:300;font-size:8pt;letter-spacing:.02em;text-transform:uppercase}
+.s-title    {font-weight:500;font-size:10pt}
+.s-placedate{font-weight:500;font-size:10pt}
+.s-metalabel{font-weight:500;font-size:8pt;text-transform:uppercase;letter-spacing:.02em}
+.s-metaval  {font-weight:500;font-size:10pt}
+.s-thead    {font-weight:500;font-size:8pt;text-transform:uppercase;letter-spacing:.02em}
+.s-cell     {font-weight:500;font-size:8pt}
+.s-total    {font-weight:700;font-size:8pt}
+.s-footer   {font-weight:300;font-size:8pt}
+
+@media print{
+  body{display:block;overflow:visible;background:#fff}
+  #editor,#toolbar{display:none!important}
+  #preview{padding:0;background:#fff;display:block;overflow:visible}
+  .stage{transform:none!important;gap:0}
+  .doc-page{box-shadow:none;break-after:page}
+  .doc-page:last-child{break-after:auto}
+  @page{size:A4;margin:0}
+}
+</style>
+</head>
+<body>
+
+<div id="preview"><div class="stage" id="stage"></div></div>
+
+<div id="toolbar">
+  <button class="ghost" id="btn-zoom-out">–</button>
+  <button class="ghost" id="btn-zoom-in">+</button>
+  <button class="ghost" id="btn-zoom-fit">Fit</button>
+</div>
+
+<div id="editor">
+  <h1>Stundennachweis</h1>
+  <p class="sub">ann architecture · Dokumenten-System · Prototyp v0.2</p>
+
+  <h2>Kopf</h2>
+  <label>Anlage-Nr. <span style="color:#c8c5bf">(für Titel)</span></label>
+  <input type="text" id="f-anlage" value="01">
+  <label>Titel (frei editierbar)</label>
+  <input type="text" id="f-title" value="Anlage 01_Stundennachweis">
+  <div class="row2">
+    <div><label>Ort</label><input type="text" id="f-place" value="Berlin"></div>
+    <div><label>Datum</label><input type="date" id="f-date"></div>
+  </div>
+
+  <h2>Auftrag</h2>
+  <label>Auftrags-Nr.</label><input type="text" id="f-auftrag-nr" value="OFF_KHP_N_01_260301">
+  <label>Bezeichnung</label><input type="text" id="f-auftrag-bez" value="Nachtrag 01 – Bodenmarkierungsplanung">
+
+  <h2>Projekt</h2>
+  <label>Projektname</label><input type="text" id="f-proj-name" value="Kant Center – Parkhaus">
+  <label>Straße</label><input type="text" id="f-proj-str" value="Krumme Str. 48">
+  <label>PLZ / Ort</label><input type="text" id="f-proj-ort" value="10627 Berlin">
+
+  <h2>Zeitraum</h2>
+  <div class="row2">
+    <div><label>von</label><input type="date" id="f-von"></div>
+    <div><label>bis</label><input type="date" id="f-bis"></div>
+  </div>
+  <div class="btnbar">
+    <button class="ghost" id="btn-load" disabled title="Kommt in Schritt 4: Zeiteinträge aus Google Sheets / AppSheet">Aus Zeitraum laden</button>
+    <button class="ghost" id="btn-demo">Demodaten</button>
+  </div>
+
+  <h2>Zeiteinträge</h2>
+  <div id="entries"></div>
+  <div class="btnbar"><button class="ghost" id="btn-add">+ Zeile</button></div>
+
+  <h2>Dokument</h2>
+  <div class="btnbar">
+    <button id="btn-print">Als PDF exportieren</button>
+    <button class="ghost" id="btn-save">Speichern (.json)</button>
+    <button class="ghost" id="btn-open">Öffnen</button>
+    <input type="file" id="file-open" accept="application/json" hidden>
+  </div>
+  <p class="sub" style="margin-top:14px">Regeln &amp; Annahmen: <code>docs/</code>. Feedback → verfeinern.</p>
+</div>
+
+<div id="measure" style="position:fixed;visibility:hidden;left:-9999px"></div>
+
+<script>
+/* ============================================================
+   1) DESIGN-SYSTEM  (globale Regeln, mm / pt / Rasterzeilen)
+   ============================================================ */
+const PT = p => p*25.4/72;
+const BL = PT(13);                 // 1 Rastereinheit = 13 pt = 4.5861 mm
+const DS = {
+  page:{w:210,h:297}, margin:15, rightEdge:195,
+  colW:10.7957, gutter:BL,
+  colX(n){ return 15 + (n-1)*(this.colW+this.gutter); },   // n = 1..12
+  G(k){ return 15 + k*BL; },                               // Rasterlinie k ab Oberkante (mm)
+
+  header:{
+    wordmarkTop1:12.3, wordmarkTop2:16.9,                  // mittig ~14.6 / ~19.2 mm
+    monogram:{right:195, top:15.2, w:31.2, h:13.5},
+    titleK:5, placedateK:7,                                // Text mittig in Rasterzeile k
+    ruleK:[5,7,9], ruleX1:122.65, ruleX2:195
+  },
+  meta:{ labelK:12, valK:[13,14,15] },
+  table:{
+    topRuleK_first:19, topRuleK_cont:12,                   // obere Tabellenlinie
+    rowSpan:2,                                             // Zeilenabstand = 2 Rastereinheiten (26 pt)
+    maxRowK:49,                                            // letzte Zeile spätestens hier  (ANNAHME – justierbar)
+    cols:{ datum:1, taetigkeit:3, bearbeiter:8 }           // ZEITAUFWAND rechtsbündig an rightEdge
+  },
+  total:{ k:52, span:2, labelCol:8 },                      // nur letzte Seite  (ANNAHME – docs O-012)
+  footer:{ k1:57, k2:58, blocks:[1,3,6,8] }
+};
+
+/* Büroprofil — EIN Absender (ANN ARCHITECTURE). Später aus Google-Sheet »Company Info«. */
+const BUERO = { blocks:[
+  ["Wilmersdorfer Str. 108", "10627 Berlin"],
+  ["info@annarchitecture-studio.com", "annarchitecturesolution.com"],
+  ["Tel.: +49 1702828889", "USt-IdNr.: DE123456789"],      // TODO echte USt-IdNr
+  ["Ann-Kathrin Salich", "Freischaffende Architektin"]
+]};
+
+const MONOGRAM_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88.33 38.33"><path d="M 0 38.33 L 5.10 38.33 L 24.97 0 L 20.01 0 L 0 38.33 Z"/><path d="M 83.88 0 L 83.88 31.12 L 61.19 0.10 L 61.11 0 L 56.53 0 L 56.53 30.83 L 34.05 0.10 L 33.97 0 L 29.39 0 L 29.39 38.33 L 33.83 38.33 L 33.83 7.20 L 56.76 38.33 L 60.97 38.33 L 60.97 7.21 L 83.72 38.22 L 83.79 38.33 L 88.33 38.33 L 88.33 0 L 83.88 0 Z"/></svg>`;
+
+/* ============================================================
+   2) DOKUMENT-MODELL  (einzige Wahrheit)
+   ============================================================ */
+let model = {
+  type:"stundennachweis",
+  header:{ anlage:"01", title:"Anlage 01_Stundennachweis", place:"Berlin", date:isoToday() },
+  meta:{
+    auftrag:{ nr:"OFF_KHP_N_01_260301", bez:"Nachtrag 01 – Bodenmarkierungsplanung" },
+    projekt:{ name:"Kant Center – Parkhaus", strasse:"Krumme Str. 48", ort:"10627 Berlin" },
+    zeitraum:{ von:"", bis:"" }
+  },
+  items:[
+    { datum:"", taetigkeit:"Erstellung von Plänen", bearbeiter:"Ann-Kathrin Salich", stunden:0.5 },
+    { datum:"", taetigkeit:"Absprache mit APCOA",   bearbeiter:"Ann-Kathrin Salich", stunden:1.0 }
+  ]
+};
+function isoToday(){ return new Date().toISOString().slice(0,10); }
+function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
+function hours(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" Std."; }
+function totalHours(){ return model.items.reduce((s,r)=>s+(Number(r.stunden)||0),0); }
+
+/* ============================================================
+   3) PAGINATION-ENGINE  (v1: Tabellenzeilen fließen)
+   ============================================================ */
+function paginate(){
+  const first0 = DS.table.topRuleK_first + 1;   // erste Zeilen-Bandoberkante (nach Kopf-Linie)
+  const cont0  = DS.table.topRuleK_cont  + 1;
+  const span = DS.table.rowSpan, maxK = DS.table.maxRowK;
+  const capFirst = Math.max(0, Math.floor((maxK - first0)/span) + 1);
+  const capCont  = Math.max(1, Math.floor((maxK - cont0 )/span) + 1);
+  const pages = []; let rest = model.items.slice();
+  if(!rest.length) rest = [null];
+  let f = true;
+  while(rest.length){ const cap = f?capFirst:capCont; pages.push({first:f, rows:rest.slice(0,cap)}); rest = rest.slice(cap); f = false; }
+  pages[pages.length-1].last = true;
+  return pages;
+}
+
+/* ============================================================
+   4) RENDERER  (pages[] -> A4-HTML; gleich für Vorschau & PDF)
+   ============================================================ */
+const stage = document.getElementById('stage');
+
+/* Text-Band: Box mit fester Höhe (span Rastereinheiten), Text darin vertikal mittig. */
+function band(cls, o, text){
+  const d = document.createElement('div');
+  d.className = 'b ' + cls + (o.right ? ' r' : '');
+  const span = o.span || 1;
+  d.style.top = (o.topMM != null ? o.topMM : DS.G(o.k)) + 'mm';
+  d.style.height = (span*BL) + 'mm';
+  if(o.right){ d.style.right = (DS.page.w - DS.rightEdge) + 'mm'; d.style.left = DS.colX(1) + 'mm'; }
+  else       { d.style.left = o.leftMM + 'mm'; d.style.right = (DS.page.w - DS.rightEdge) + 'mm'; }
+  if(text != null) d.textContent = text;
+  return d;
+}
+function rule(page, k, x1, x2){
+  const d = document.createElement('div'); d.className = 'line';
+  d.style.top = DS.G(k) + 'mm'; d.style.left = x1 + 'mm'; d.style.width = (x2 - x1) + 'mm';
+  page.appendChild(d);
+}
+
+function renderHeader(page){
+  page.appendChild(band('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1}, 'AN(N) ARCHITECTURE'));
+  page.appendChild(band('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, 'SOLUTION'));
+  const m = document.createElement('div'); m.className = 'monogram';
+  m.style.left = (DS.header.monogram.right - DS.header.monogram.w) + 'mm';
+  m.style.top = DS.header.monogram.top + 'mm';
+  m.style.width = DS.header.monogram.w + 'mm'; m.style.height = DS.header.monogram.h + 'mm';
+  m.innerHTML = MONOGRAM_SVG; page.appendChild(m);
+
+  page.appendChild(band('s-title',     {right:true, k:DS.header.titleK},     model.header.title || ''));
+  page.appendChild(band('s-placedate', {right:true, k:DS.header.placedateK}, `${model.header.place}, ${deDate(model.header.date)}`));
+  DS.header.ruleK.forEach(k => rule(page, k, DS.header.ruleX1, DS.header.ruleX2));
+}
+
+function renderMeta(page){
+  const L = DS.colX(3), R = DS.colX(8);
+  page.appendChild(band('s-metalabel', {leftMM:L, k:DS.meta.labelK}, 'AUFTRAG:'));
+  page.appendChild(band('s-metaval',   {leftMM:L, k:DS.meta.valK[0]}, model.meta.auftrag.nr || ''));
+  page.appendChild(band('s-metaval',   {leftMM:L, k:DS.meta.valK[1]}, model.meta.auftrag.bez || ''));
+  page.appendChild(band('s-metalabel', {leftMM:R, k:DS.meta.labelK}, 'PROJEKT:'));
+  page.appendChild(band('s-metaval',   {leftMM:R, k:DS.meta.valK[0]}, model.meta.projekt.name || ''));
+  page.appendChild(band('s-metaval',   {leftMM:R, k:DS.meta.valK[1]}, model.meta.projekt.strasse || ''));
+  page.appendChild(band('s-metaval',   {leftMM:R, k:DS.meta.valK[2]}, model.meta.projekt.ort || ''));
+}
+
+function renderTable(page, p){
+  const topK = p.first ? DS.table.topRuleK_first : DS.table.topRuleK_cont;
+  const C = DS.table.cols, span = DS.table.rowSpan;
+  rule(page, topK, DS.colX(1), DS.rightEdge);                    // obere Tabellenlinie (auf Rasterlinie)
+  // Kopf: Text mittig in der Rasterzeile [topK .. topK+1]
+  page.appendChild(band('s-thead', {leftMM:DS.colX(C.datum),      k:topK}, 'DATUM'));
+  page.appendChild(band('s-thead', {leftMM:DS.colX(C.taetigkeit), k:topK}, 'TÄTIGKEIT'));
+  page.appendChild(band('s-thead', {leftMM:DS.colX(C.bearbeiter), k:topK}, 'BEARBEITER'));
+  page.appendChild(band('s-thead', {right:true,                   k:topK}, 'ZEITAUFWAND'));
+  rule(page, topK + 1, DS.colX(1), DS.rightEdge);               // Linie unter dem Kopf
+  // Zeilen: Band-Höhe 2 Einheiten, Text mittig zwischen den Linien
+  p.rows.forEach((row,i)=>{
+    if(!row) return;
+    const bandTopK = topK + 1 + i*span;
+    page.appendChild(band('s-cell', {leftMM:DS.colX(C.datum),      k:bandTopK, span}, deDate(row.datum) || '—'));
+    page.appendChild(band('s-cell', {leftMM:DS.colX(C.taetigkeit), k:bandTopK, span}, row.taetigkeit || ''));
+    page.appendChild(band('s-cell', {leftMM:DS.colX(C.bearbeiter), k:bandTopK, span}, row.bearbeiter || ''));
+    page.appendChild(band('s-cell', {right:true,                   k:bandTopK, span}, hours(row.stunden)));
+    rule(page, bandTopK + span, DS.colX(1), DS.rightEdge);      // Linie auf der Rasterlinie unter der Zeile
+  });
+}
+
+function renderTotal(page){
+  page.appendChild(band('s-total', {leftMM:DS.colX(DS.total.labelCol), k:DS.total.k, span:DS.total.span}, 'Gesamt'));
+  page.appendChild(band('s-total', {right:true,                        k:DS.total.k, span:DS.total.span}, hours(totalHours())));
+}
+
+function renderFooter(page, idx, count){
+  BUERO.blocks.forEach((b,i)=>{
+    page.appendChild(band('s-footer', {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k1}, b[0]));
+    page.appendChild(band('s-footer', {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k2}, b[1]));
+  });
+  page.appendChild(band('s-footer', {right:true, k:DS.footer.k1}, 'Page'));
+  page.appendChild(band('s-footer', {right:true, k:DS.footer.k2}, `${idx}/${count}`));
+}
+
+function render(){
+  stage.innerHTML = '';
+  const pages = paginate();
+  pages.forEach((p,i)=>{
+    const page = document.createElement('div'); page.className = 'doc-page';
+    renderHeader(page);
+    if(p.first) renderMeta(page);
+    renderTable(page, p);
+    if(p.last) renderTotal(page);
+    renderFooter(page, i+1, pages.length);
+    stage.appendChild(page);
+  });
+  fitZoom(false);
+}
+
+/* ============================================================
+   5) EDITOR
+   ============================================================ */
+const $ = s => document.querySelector(s);
+function setPath(path,v){ const s=path.split('.'); let o=model; for(let i=0;i<s.length-1;i++)o=o[s[i]]; o[s[s.length-1]]=v; }
+function bind(id,path){ const el=$(id); el.addEventListener('input',()=>{ setPath(path,el.value); maybeAutoTitle(); render(); }); }
+function maybeAutoTitle(){
+  if($('#f-title').dataset.touched) return;
+  const t = `Anlage ${model.header.anlage||'01'}_Stundennachweis`;
+  model.header.title = t; $('#f-title').value = t;
+}
+$('#f-title').addEventListener('input', e=>{ e.target.dataset.touched="1"; });
+bind('#f-anlage','header.anlage'); bind('#f-title','header.title');
+bind('#f-place','header.place'); bind('#f-date','header.date');
+bind('#f-auftrag-nr','meta.auftrag.nr'); bind('#f-auftrag-bez','meta.auftrag.bez');
+bind('#f-proj-name','meta.projekt.name'); bind('#f-proj-str','meta.projekt.strasse'); bind('#f-proj-ort','meta.projekt.ort');
+bind('#f-von','meta.zeitraum.von'); bind('#f-bis','meta.zeitraum.bis');
+
+const entriesBox = $('#entries');
+function escapeHtml(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function renderEntries(){
+  entriesBox.innerHTML = '<div class="e-head"><div>Datum</div><div>Tätigkeit</div><div>Bearbeiter</div><div>Std.</div><div></div></div>';
+  model.items.forEach((r,i)=>{
+    const row = document.createElement('div'); row.className='e-row';
+    row.innerHTML =
+      `<input type="date" data-i="${i}" data-k="datum" value="${r.datum||''}">`+
+      `<input type="text" data-i="${i}" data-k="taetigkeit" value="${escapeHtml(r.taetigkeit)}">`+
+      `<input type="text" data-i="${i}" data-k="bearbeiter" value="${escapeHtml(r.bearbeiter)}">`+
+      `<input type="number" step="0.25" class="num" data-i="${i}" data-k="stunden" value="${r.stunden??''}">`+
+      `<button class="del" data-i="${i}" title="Zeile löschen">×</button>`;
+    entriesBox.appendChild(row);
+  });
+  const tot = document.createElement('div'); tot.className='e-total';
+  tot.innerHTML = `<span>Gesamt</span><span>${hours(totalHours())}</span>`;
+  entriesBox.appendChild(tot);
+}
+entriesBox.addEventListener('input', e=>{
+  const i=+e.target.dataset.i, k=e.target.dataset.k; if(k==null) return;
+  model.items[i][k] = k==='stunden' ? parseFloat(e.target.value)||0 : e.target.value;
+  renderEntries(); render();
+});
+entriesBox.addEventListener('click', e=>{
+  if(!e.target.classList.contains('del')) return;
+  model.items.splice(+e.target.dataset.i,1); renderEntries(); render();
+});
+$('#btn-add').onclick = ()=>{ model.items.push({datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0}); renderEntries(); render(); };
+$('#btn-demo').onclick = ()=>{
+  const acts=["Erstellung von Plänen","Absprache mit APCOA","Baustellenbegehung","Abstimmung Fachplaner","Ausschreibungstext","Mengenermittlung"];
+  model.items = Array.from({length:14},(_,k)=>({
+    datum:`2026-08-${String(3+k).padStart(2,'0')}`, taetigkeit:acts[k%6],
+    bearbeiter:"Ann-Kathrin Salich", stunden:[0.5,1,2,1.5,3,0.75][k%6]
+  }));
+  renderEntries(); render();
+};
+
+$('#btn-save').onclick = ()=>{
+  const blob = new Blob([JSON.stringify(model,null,2)],{type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `${(model.header.title||'stundennachweis').replace(/[^\w-]+/g,'_')}.json`; a.click();
+};
+$('#btn-open').onclick = ()=> $('#file-open').click();
+$('#file-open').onchange = e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ model=JSON.parse(rd.result); syncForm(); renderEntries(); render(); }catch(err){ alert('Datei nicht lesbar: '+err); } };
+  rd.readAsText(f);
+};
+$('#btn-print').onclick = ()=> window.print();
+
+function syncForm(){
+  const g=(id,v)=>{ $(id).value = v||''; };
+  g('#f-anlage',model.header.anlage); g('#f-title',model.header.title);
+  g('#f-place',model.header.place); g('#f-date',model.header.date);
+  g('#f-auftrag-nr',model.meta.auftrag.nr); g('#f-auftrag-bez',model.meta.auftrag.bez);
+  g('#f-proj-name',model.meta.projekt.name); g('#f-proj-str',model.meta.projekt.strasse); g('#f-proj-ort',model.meta.projekt.ort);
+  g('#f-von',model.meta.zeitraum.von); g('#f-bis',model.meta.zeitraum.bis);
+}
+
+/* ---- Zoom ---- */
+let zoom = 1;
+const applyZoom = ()=> stage.style.transform = `scale(${zoom})`;
+function fitZoom(reset){
+  const avail = document.getElementById('preview').clientWidth - 56;
+  const target = Math.min(1, avail / (210*3.7795));
+  if(reset || zoom>1) zoom = target; else zoom = Math.min(zoom, target);
+  applyZoom();
+}
+$('#btn-zoom-in').onclick  = ()=>{ zoom=Math.min(2,zoom+0.1); applyZoom(); };
+$('#btn-zoom-out').onclick = ()=>{ zoom=Math.max(0.2,zoom-0.1); applyZoom(); };
+$('#btn-zoom-fit').onclick = ()=> fitZoom(true);
+window.addEventListener('resize', ()=> fitZoom(true));
+
+/* ---- Start ---- */
+model.header.date = isoToday();
+syncForm(); renderEntries(); render(); fitZoom(true);
+</script>
+</body>
+</html>
