@@ -12,6 +12,10 @@
  * Deploy: siehe README.md in diesem Ordner.
  */
 
+// Optionaler Zugriffsschutz: langen Zufallswert eintragen und im Tool (SHEET_TOKEN)
+// denselben setzen. Leer = aus (dann zählt nur die Bereitstellungs-Zugriffsstufe).
+const TOKEN = '';
+
 const CONFIG = {
   SHEET_ID: '14WcYfxy5oFoArQh3dWz2zNeP5lFLMlkyMxunm3b-SHI',   // Project Management NEW
   TZ: 'Europe/Berlin',
@@ -32,12 +36,13 @@ const CONFIG = {
 function doGet(e){
   const p = (e && e.parameter) || {};
   const action = p.action || 'ping';
+  if(TOKEN && p.token !== TOKEN) return reply({ ok:false, action:action, error:'nicht autorisiert' }, p.callback);
   let out;
   try{
     let data;
     switch(action){
       case 'ping':          data = { ts:new Date().toISOString() }; break;
-      case 'getFilterTree': data = getFilterTree(); break;
+      case 'getFilterTree': data = getFilterTreeCached(p.fresh === '1'); break;
       case 'getCompanyInfo':data = getCompanyInfo(); break;
       case 'getTimeRecords':data = getTimeRecords({
                               project:p.project || '', phase:p.phase || '', service:p.service || '',
@@ -58,6 +63,19 @@ function reply(obj, callback){
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
   return ContentService.createTextOutput(body).setMimeType(ContentService.MimeType.JSON);
+}
+
+/* Filter-Baum ändert sich selten -> 10 min im Script-Cache halten (spart die
+   schweren Sheet-Reads bei jedem Tool-Aufruf). ?fresh=1 erzwingt Neuaufbau. */
+function getFilterTreeCached(fresh){
+  const cache = CacheService.getScriptCache();
+  if(!fresh){
+    const hit = cache.get('filterTree');
+    if(hit) return JSON.parse(hit);
+  }
+  const data = getFilterTree();
+  try{ cache.put('filterTree', JSON.stringify(data), 600); }catch(_){ /* >100KB -> nicht cachen */ }
+  return data;
 }
 
 /* ------------------------------------------------------------------ */
@@ -189,13 +207,14 @@ function getTimeRecords(q){
 /*  Helfer                                                            */
 /* ------------------------------------------------------------------ */
 function ss_(){ return SpreadsheetApp.openById(CONFIG.SHEET_ID); }
-function json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
+var _rowsMemo = {};                 // pro Ausführung: jedes Tab nur einmal lesen
 function rows_(tab){
+  if(_rowsMemo[tab]) return _rowsMemo[tab];
   const sh = ss_().getSheetByName(tab);
   if(!sh) throw new Error('Tab nicht gefunden: '+tab);
   const v = sh.getDataRange().getValues();
-  if(v.length < 2) return [];
+  if(v.length < 2){ return (_rowsMemo[tab] = []); }
   const head = v[0].map(function(h){ return String(h).trim(); });
   const out = [];
   for(let i=1;i<v.length;i++){
@@ -204,7 +223,7 @@ function rows_(tab){
     for(let j=0;j<head.length;j++) if(head[j]) o[head[j]] = v[i][j];
     out.push(o);
   }
-  return out;
+  return (_rowsMemo[tab] = out);
 }
 function indexBy_(arr, key){ const m={}; arr.forEach(function(o){ const k=str_(o[key]); if(k) m[k]=o; }); return m; }
 function str_(v){ return v==null ? '' : String(v).trim(); }
