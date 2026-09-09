@@ -89,17 +89,16 @@ button:disabled{opacity:.4;cursor:not-allowed}
    ============================================================ */
 .doc-page{position:relative;width:210mm;height:297mm;background:var(--paper);
   box-shadow:0 3px 18px rgba(0,0,0,.15);overflow:hidden;color:var(--ink);font-family:var(--doc)}
-/* Text vertikal mittig im Band: line-height = Bandhöhe (inline gesetzt),
-   plus kleiner optischer Ausgleich nach unten (--tshift), weil die Schrift
-   sonst leicht zu hoch sitzt. */
-.doc-page{--tshift:0.20em}
+/* Text vertikal mittig im Band: line-height = Bandhöhe (inline gesetzt).
+   Der optische Ausgleich --tshift/--tshift-caps wird beim Start aus den echten
+   Schriftmetriken berechnet (calibrateText), nicht geraten. */
+:root{--tshift:0.075em;--tshift-caps:0.135em}   /* optischer Ausgleich, Text mittig im Band */
 .doc-page .b{position:absolute;white-space:nowrap;overflow:hidden;display:block}
-.doc-page .b>span{position:relative;top:var(--tshift)}
+.doc-page .b>span{position:relative;top:var(--tshift,0em)}
 .doc-page .b.r{text-align:right}
 .doc-page .b.top{overflow:visible;line-height:1!important}
 .doc-page .b.top>span{top:0}
-/* Versalien ohne Unterlängen sitzen optisch noch höher -> etwas mehr Ausgleich */
-.doc-page .s-metalabel>span,.doc-page .s-thead>span{top:calc(var(--tshift) + .05em)}
+.doc-page .s-metalabel>span,.doc-page .s-thead>span{top:var(--tshift-caps,0em)}
 .doc-page .line{position:absolute;height:0;border-top:1px solid var(--line)}
 .doc-page .monogram{position:absolute}
 .doc-page .monogram svg{display:block;width:100%;height:100%;fill:var(--ink)}
@@ -401,7 +400,7 @@ const MONOGRAM_PTS = [
 ];
 const LINE_RGB = [167,169,172];                 // #a7a9ac
 const LINE_W_MM = PT(0.5);                       // 0,5 pt
-const PDF_TSHIFT = 0.35;                         // mm, optischer Ausgleich (Text minimal tiefer)
+const CAPS_STYLES = { 's-metalabel':1, 's-thead':1 };
 
 function pdfFonts(doc){
   const R = window.ROTA_TTF;
@@ -419,6 +418,7 @@ const PDF_STYLE = {
 
 function exportPDF(){
   if(!window.jspdf || !window.ROTA_TTF){ alert('PDF-Bibliothek nicht geladen (Internet nötig).'); return; }
+  calibrateText();
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'mm', format:'a4', compress:true });
   pdfFonts(doc);
@@ -429,7 +429,8 @@ function exportPDF(){
     doc.setFont(fam, sty); doc.setFontSize(size); doc.setTextColor(10,10,10);
     const span = o.span || 1;
     const topMM = (o.topMM != null ? o.topMM : DS.G(o.k));
-    const y = topMM + span*BL/2 + PDF_TSHIFT;
+    const shiftEm = CAPS_STYLES[cls] ? TSHIFT_CAPS_EM : TSHIFT_EM;
+    const y = topMM + span*BL/2 + shiftEm * size * (25.4/72);
     const x = o.right ? DS.rightEdge : o.leftMM;
     doc.text(String(text), x, y, { align: o.right ? 'right' : 'left', baseline:'middle' });
   };
@@ -532,6 +533,11 @@ function renderGrid(page){
   }
   page.appendChild(ov);
 }
+
+/* Optischer vertikaler Textausgleich (em). Fest gewählt, damit Bildschirm und
+   PDF identisch sitzen. Werte korrespondieren mit --tshift / --tshift-caps im CSS. */
+const TSHIFT_EM = 0.075, TSHIFT_CAPS_EM = 0.135;
+function calibrateText(){ /* aktuell fest, siehe TSHIFT_EM */ }
 
 /* Linien exakt auf die Gerätepixel-Kante schieben -> alle gleich dick, kein Flimmern.
    Läuft nach jedem render() und bei jeder Zoomänderung. */
@@ -732,7 +738,10 @@ window.addEventListener('resize', ()=> fitZoom(true));
 
 /* ---- Start ---- */
 model.header.date = isoToday();
-syncForm(); renderEntries(); render(); fitZoom(true);
+syncForm(); renderEntries(); calibrateText(); render(); fitZoom(true);
+if(document.fonts && document.fonts.ready){
+  document.fonts.ready.then(()=>{ calibrateText(); render(); });
+}
 </script>
 </body>
 </html>
