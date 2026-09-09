@@ -33,13 +33,14 @@ Format: Entscheidung / Grund / Alternativen / Konsequenz.
 - **Konsequenz:** Titel-Herleitung ist ein offener Template-Punkt; Ort/Datum kommen als
   Felder ins Dokument-Modell, nicht als feste Textkonstante.
 
-## DECISION-004 — Linienfarbe = Brand-Grau #8C8C8C (Ann, 2026-09-09)
-- **Entscheidung:** Alle Hilfslinien/Regeln (Header-Linien, Tabellenlinien) in **`#8C8C8C`**
-  (Brand `--color-gray-600`), Strichstärke **0,5 pt**.
-- **Grund:** Der aus der PDF gemessene Wert `#A7A9AC` war ein Export-/Illustrator-Wert; Ann
-  wählt bewusst den Brand-Grauton für Konsistenz mit dem übrigen Design-System.
-- **Alternativen:** Messwert `#A7A9AC` behalten (verworfen — nicht im Token-System).
-- **Konsequenz:** Farbe kommt aus `design/tokens.css` (`--color-gray-600`), nicht hartkodiert.
+## DECISION-004 — Linienfarbe = #a7a9ac, alle Linien 0,5 pt (Ann, 2026-09-09; revidiert am selben Tag)
+- **Entscheidung:** **Alle** Dokumentlinien (Kopf-Linien, Tabellenlinien, Abschlusslinien)
+  einheitlich **0,5 pt** in **`#a7a9ac`** (der aus der Designquelle gemessene Wert).
+- **Verlauf:** Zunächst auf `#8C8C8C` (Brand gray-600) gesetzt; Ann hat am selben Tag am
+  laufenden Tool zurück auf `#a7a9ac` entschieden — „Linien alle gleich dick nämlich 0,5 pt
+  und doch grau #a7a9ac".
+- **Konsequenz:** `--line: #a7a9ac` als eigenes Token (nicht `--color-gray-600`). Der
+  Illustrator-Messwert ist damit doch der Sollwert. Regel-Register O-008 entsprechend.
 
 ## DECISION-003 — Typo-Skala: nur 10 pt und 8 pt (Ann, 2026-09-09)
 - **Entscheidung:** Schriftgrößen im gesamten Dokumentsystem sind **ausschließlich 10 pt oder
