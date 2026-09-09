@@ -73,6 +73,13 @@ button.ghost{background:#fff;color:var(--ink)}button:disabled{opacity:.4;cursor:
 .doc-page .monogram{position:absolute}
 .doc-page .monogram svg{display:block;width:100%;height:100%;fill:var(--ink)}
 
+/* Raster-Overlay (Diagnose, wie das Illustrator-Underlay). Ändert das Layout NICHT. */
+.doc-page .grid-ov{position:absolute;inset:0;pointer-events:none;z-index:99}
+.doc-page .grid-ov .col{position:absolute;top:0;bottom:0;background:rgba(255,0,255,.07);
+  border-left:.25pt solid rgba(255,0,255,.55);border-right:.25pt solid rgba(255,0,255,.55)}
+.doc-page .grid-ov .bl{position:absolute;left:0;right:0;border-top:.25pt solid rgba(0,180,255,.5)}
+.doc-page .grid-ov .frame{position:absolute;border:.5pt solid rgba(255,0,255,.85)}
+
 .s-wordmark {font-weight:300;font-size:8pt;letter-spacing:.02em;text-transform:uppercase}
 .s-title    {font-weight:500;font-size:10pt}
 .s-placedate{font-weight:500;font-size:10pt}
@@ -90,6 +97,7 @@ button.ghost{background:#fff;color:var(--ink)}button:disabled{opacity:.4;cursor:
   .stage{transform:none!important;gap:0}
   .doc-page{box-shadow:none;break-after:page}
   .doc-page:last-child{break-after:auto}
+  .grid-ov{display:none!important}
   @page{size:A4;margin:0}
 }
 </style>
@@ -99,6 +107,7 @@ button.ghost{background:#fff;color:var(--ink)}button:disabled{opacity:.4;cursor:
 <div id="preview"><div class="stage" id="stage"></div></div>
 
 <div id="toolbar">
+  <button class="ghost" id="btn-grid">Raster</button>
   <button class="ghost" id="btn-zoom-out">–</button>
   <button class="ghost" id="btn-zoom-in">+</button>
   <button class="ghost" id="btn-zoom-fit">Fit</button>
@@ -161,7 +170,7 @@ const PT = p => p*25.4/72;
 const BL = PT(13);                 // 1 Rastereinheit = 13 pt = 4.5861 mm
 const DS = {
   page:{w:210,h:297}, margin:15, rightEdge:195,
-  colW:10.7957, gutter:BL,
+  cols:12, colW:10.7957, gutter:BL,
   colX(n){ return 15 + (n-1)*(this.colW+this.gutter); },   // n = 1..12
   G(k){ return 15 + k*BL; },                               // Rasterlinie k ab Oberkante (mm)
 
@@ -314,11 +323,35 @@ function renderFooter(page, idx, count){
   page.appendChild(band('s-footer', {right:true, k:DS.footer.k2}, `${idx}/${count}`));
 }
 
+/* Raster-Overlay: 12 Spalten + 13-pt-Baselines + Satzspiegel-Rahmen.
+   Reine Diagnose — beeinflusst Positionen, Textfluss und Pagination nicht. */
+let showGrid = false;
+function renderGrid(page){
+  const ov = document.createElement('div'); ov.className = 'grid-ov';
+  const f = document.createElement('div'); f.className = 'frame';
+  f.style.left = DS.margin + 'mm'; f.style.top = DS.margin + 'mm';
+  f.style.width = (DS.rightEdge - DS.margin) + 'mm';
+  f.style.height = (DS.G(61) - DS.margin) + 'mm';
+  ov.appendChild(f);
+  for(let n=1;n<=DS.cols;n++){
+    const c = document.createElement('div'); c.className = 'col';
+    c.style.left = DS.colX(n) + 'mm'; c.style.width = DS.colW + 'mm';
+    ov.appendChild(c);
+  }
+  for(let k=0;k<=61;k++){
+    const b = document.createElement('div'); b.className = 'bl';
+    b.style.top = DS.G(k) + 'mm';
+    ov.appendChild(b);
+  }
+  page.appendChild(ov);
+}
+
 function render(){
   stage.innerHTML = '';
   const pages = paginate();
   pages.forEach((p,i)=>{
     const page = document.createElement('div'); page.className = 'doc-page';
+    if(showGrid) renderGrid(page);
     renderHeader(page);
     if(p.first) renderMeta(page);
     renderTable(page, p);
@@ -419,6 +452,7 @@ function fitZoom(reset){
 $('#btn-zoom-in').onclick  = ()=>{ zoom=Math.min(2,zoom+0.1); applyZoom(); };
 $('#btn-zoom-out').onclick = ()=>{ zoom=Math.max(0.2,zoom-0.1); applyZoom(); };
 $('#btn-zoom-fit').onclick = ()=> fitZoom(true);
+$('#btn-grid').onclick = ()=>{ showGrid = !showGrid; $('#btn-grid').style.background = showGrid ? 'var(--ink)' : '#fff'; $('#btn-grid').style.color = showGrid ? '#fff' : 'var(--ink)'; render(); };
 window.addEventListener('resize', ()=> fitZoom(true));
 
 /* ---- Start ---- */
