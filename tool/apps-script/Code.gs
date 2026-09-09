@@ -1,18 +1,25 @@
 /**
  * ann architecture — Dokumenten-System
  * Backend-Layer (Phase 1): Google Apps Script Web App über »Project Management NEW«.
- * Nur LESEND. Liefert JSON für das Stundennachweis-Tool und für KI-Agenten.
+ * NUR LESEND. Liefert JSON für das Stundennachweis-Tool und für KI-Agenten.
+ *
+ * Endpunkte (GET, ?action=…):
+ *   ping
+ *   getFilterTree                          -> Projekte/Phasen/Leistungen, die Buchungen haben
+ *   getCompanyInfo
+ *   getTimeRecords&project=…&phase=…&service=…&from=YYYY-MM-DD&to=YYYY-MM-DD&user=…
  *
  * Deploy: siehe README.md in diesem Ordner.
  */
 
 const CONFIG = {
   SHEET_ID: '14WcYfxy5oFoArQh3dWz2zNeP5lFLMlkyMxunm3b-SHI',   // Project Management NEW
-  TZ: 'Europe/Berlin',                                        // Ausgabe-Zeitzone (Mappe steht auf America/LA)
+  TZ: 'Europe/Berlin',
   TABS: {
-    timeTracking:        'TimeTracking',          // Tageskopf: Record_ID, Date, User
-    timeTrackingRecords: 'TimeTrackingRecords',   // Buchung:   Tracker_ID, Project_ID, Spent Time, ...
+    timeTracking:        'TimeTracking',
+    timeTrackingRecords: 'TimeTrackingRecords',
     projects:            'Projects',
+    projectPhases:       'Project Phases',
     services:            'Services',
     tasks:               'Tasks',
     subTasks:            'Sub Tasks',
@@ -22,51 +29,82 @@ const CONFIG = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Router                                                            */
-/* ------------------------------------------------------------------ */
-function doGet(e) {
+function doGet(e){
   const action = (e && e.parameter && e.parameter.action) || 'ping';
-  try {
+  try{
     let data;
-    switch (action) {
-      case 'ping':           data = { ok: true, ts: new Date().toISOString() }; break;
-      case 'getProjects':    data = getProjects(); break;
-      case 'getCompanyInfo': data = getCompanyInfo(); break;
-      case 'getTimeRecords': data = getTimeRecords({
-                               project: e.parameter.project || '',
-                               from:    e.parameter.from || '',
-                               to:      e.parameter.to || '',
-                               user:    e.parameter.user || ''
-                             }); break;
-      default: return json({ error: 'unknown action: ' + action }, 400);
+    switch(action){
+      case 'ping':          data = { ok:true, ts:new Date().toISOString() }; break;
+      case 'getFilterTree': data = getFilterTree(); break;
+      case 'getCompanyInfo':data = getCompanyInfo(); break;
+      case 'getTimeRecords':data = getTimeRecords({
+                              project:e.parameter.project || '',
+                              phase:  e.parameter.phase   || '',
+                              service:e.parameter.service || '',
+                              from:   e.parameter.from    || '',
+                              to:     e.parameter.to      || '',
+                              user:   e.parameter.user    || ''
+                            }); break;
+      default: return json({ ok:false, error:'unknown action: '+action });
     }
-    return json({ ok: true, action: action, data: data });
-  } catch (err) {
-    return json({ ok: false, action: action, error: String(err && err.message || err) }, 500);
+    return json({ ok:true, action:action, data:data });
+  }catch(err){
+    return json({ ok:false, action:action, error:String(err && err.message || err) });
   }
 }
 
 /* ------------------------------------------------------------------ */
-/*  Endpunkte                                                         */
+/*  Filter-Baum: nur Projekte/Phasen/Leistungen, für die es Buchungen gibt  */
 /* ------------------------------------------------------------------ */
+function getFilterTree(){
+  const projByName = indexBy_(rows_(CONFIG.TABS.projects), 'Project_ID');
+  const svcById    = indexBy_(rows_(CONFIG.TABS.services), 'Service_ID');
 
-/** Alle Projekte: [{ id, name, client, billable }] — sortiert nach Name. */
-function getProjects() {
-  return rows_(CONFIG.TABS.projects)
-    .map(function (r) {
-      return {
-        id:       str_(r['Project_ID']),
-        name:     str_(r['Project Name']) || str_(r['Project_ID']),
-        client:   str_(r['Client']),
-        billable: truthy_(r['Billable'])
-      };
-    })
-    .filter(function (p) { return p.id; })
-    .sort(function (a, b) { return a.name.localeCompare(b.name, 'de'); });
+  const projects = {};   // pKey -> { id, name, phases: { phKey -> { id, name, services: { sKey -> {id,name} } } } }
+
+  rows_(CONFIG.TABS.timeTrackingRecords).forEach(function(rec){
+    const pId = str_(rec['Project_ID']);   if(!pId) return;
+    const phId = str_(rec['Phase_ID']);
+    const sId  = str_(rec['Service_ID']);
+
+    if(!projects[pId]){
+      const pr = projByName[pId] || {};
+      projects[pId] = { id:pId, name: str_(pr['Project Name']) || pId, phases:{} };
+    }
+    const P = projects[pId];
+
+    const phKey = phId || '—';
+    if(!P.phases[phKey]) P.phases[phKey] = { id:phId, name: phId || '(ohne Phase)', services:{} };
+    const PH = P.phases[phKey];
+
+    if(sId){
+      if(!PH.services[sId]){
+        const sv = svcById[sId] || {};
+        PH.services[sId] = { id:sId, name: str_(sv['Service']) || sId };
+      }
+    }
+  });
+
+  // -> Arrays, sortiert
+  const out = Object.keys(projects).sort(cmpDe_).map(function(pKey){
+    const P = projects[pKey];
+    return {
+      id:P.id, name:P.name,
+      phases: Object.keys(P.phases).sort(cmpDe_).map(function(phKey){
+        const PH = P.phases[phKey];
+        return {
+          id:PH.id, name:PH.name,
+          services: Object.keys(PH.services).sort(function(a,b){ return cmpDe_(PH.services[a].name, PH.services[b].name); })
+                      .map(function(sKey){ return PH.services[sKey]; })
+        };
+      })
+    };
+  });
+  return { projects: out };
 }
 
-/** Büroprofil für den Footer. */
-function getCompanyInfo() {
+/* ------------------------------------------------------------------ */
+function getCompanyInfo(){
   const r = rows_(CONFIG.TABS.companyInfo)[0] || {};
   return {
     name:    str_(r['Company Name']),
@@ -77,140 +115,103 @@ function getCompanyInfo() {
   };
 }
 
-/**
- * Zeiteinträge eines Projekts im Zeitraum.
- * @param {{project:string, from:string, to:string, user?:string}} q  Datumsangaben yyyy-mm-dd.
- * @return {{items:Array, total:number, unresolved:number}}
- *   items: [{ datum:'yyyy-mm-dd', taetigkeit, bearbeiter, stunden, recordId, quelle }]
- */
-function getTimeRecords(q) {
-  if (!q.project) throw new Error('project fehlt');
+/* ------------------------------------------------------------------ */
+/*  Zeiteinträge                                                      */
+/* ------------------------------------------------------------------ */
+function getTimeRecords(q){
+  if(!q.project && !q.phase && !q.service) throw new Error('mindestens project, phase oder service angeben');
 
   const fromD = q.from ? parseISO_(q.from) : null;
   const toD   = q.to   ? parseISO_(q.to)   : null;
 
-  // Nachschlage-Tabellen
   const trackerById = indexBy_(rows_(CONFIG.TABS.timeTracking), 'Record_ID');
   const userByEmail = indexBy_(rows_(CONFIG.TABS.users), 'Email');
   const subById     = indexBy_(rows_(CONFIG.TABS.subTasks), 'Sub_Task_ID');
   const taskById    = indexBy_(rows_(CONFIG.TABS.tasks), 'Task_ID');
   const svcById     = indexBy_(rows_(CONFIG.TABS.services), 'Service_ID');
 
-  const projKey = normKey_(q.project);
-  const userKey = q.user ? normKey_(q.user) : '';
+  const kProj = q.project ? normKey_(q.project) : '';
+  const kPh   = q.phase   ? normKey_(q.phase)   : '';
+  const kSvc  = q.service ? normKey_(q.service) : '';
+  const kUser = q.user    ? normKey_(q.user)    : '';
 
-  const items = [];
-  let unresolved = 0;
+  const items = []; let unresolved = 0;
 
-  rows_(CONFIG.TABS.timeTrackingRecords).forEach(function (rec) {
-    // 1) Projektfilter (exakter ID-/Namensvergleich, nicht unscharf)
-    if (normKey_(rec['Project_ID']) !== projKey) return;
+  rows_(CONFIG.TABS.timeTrackingRecords).forEach(function(rec){
+    if(kProj && normKey_(rec['Project_ID']) !== kProj) return;
+    if(kPh   && normKey_(rec['Phase_ID'])   !== kPh)   return;
+    if(kSvc  && normKey_(rec['Service_ID']) !== kSvc)  return;
 
-    // 2) Tageskopf über Tracker_ID auflösen (Datum + Mitarbeiter kommen von dort)
     const head = trackerById[str_(rec['Tracker_ID'])] || {};
-    let dateVal = head['Date'];
-    if (!dateVal && rec['Record Date']) dateVal = rec['Record Date']; // Hilfsspalte als Fallback
-    const dateObj = toDate_(dateVal);
-    if (!dateObj) { unresolved++; return; }
+    let dv = head['Date']; if(!dv && rec['Record Date']) dv = rec['Record Date'];
+    const d = toDate_(dv);
+    if(!d){ unresolved++; return; }
+    if(fromD && d < fromD) return;
+    if(toD   && d > toD)   return;
 
-    // 3) Zeitraumfilter (lokales Kalenderdatum)
-    if (fromD && dateObj < fromD) return;
-    if (toD   && dateObj > toD)   return;
-
-    // 4) Mitarbeiter
     const email = str_(head['User']) || str_(rec['User']);
     const u = userByEmail[email] || {};
     const bearbeiter = str_(u['Name']) || email || '—';
-    if (userKey && normKey_(email) !== userKey && normKey_(bearbeiter) !== userKey) return;
+    if(kUser && normKey_(email) !== kUser && normKey_(bearbeiter) !== kUser) return;
 
-    // 5) Tätigkeitsbezeichnung: Sub-Task -> Task -> Leistung  (Reihenfolge noch fachlich zu bestätigen)
     let taetigkeit = '', quelle = '';
     const sub = subById[str_(rec['Sub_Task_ID'])];
     const tsk = taskById[str_(rec['Task_ID'])];
     const svc = svcById[str_(rec['Service_ID'])];
-    if (sub && str_(sub['Sub Task'])) { taetigkeit = str_(sub['Sub Task']); quelle = 'subtask'; }
-    else if (tsk && str_(tsk['Task'])) { taetigkeit = str_(tsk['Task']); quelle = 'task'; }
-    else if (svc && str_(svc['Service'])) { taetigkeit = str_(svc['Service']); quelle = 'service'; }
-    else { taetigkeit = ''; quelle = 'none'; unresolved++; }
-
-    const stunden = num_(rec['Spent Time']);
+    if(sub && str_(sub['Sub Task'])){ taetigkeit = str_(sub['Sub Task']); quelle='subtask'; }
+    else if(tsk && str_(tsk['Task'])){ taetigkeit = str_(tsk['Task']); quelle='task'; }
+    else if(svc && str_(svc['Service'])){ taetigkeit = str_(svc['Service']); quelle='service'; }
+    else { quelle='none'; unresolved++; }
 
     items.push({
-      datum:      Utilities.formatDate(dateObj, CONFIG.TZ, 'yyyy-MM-dd'),
+      datum:      Utilities.formatDate(d, CONFIG.TZ, 'yyyy-MM-dd'),
       taetigkeit: taetigkeit,
       bearbeiter: bearbeiter,
-      stunden:    stunden,
+      stunden:    num_(rec['Spent Time']),
       recordId:   str_(rec['Record_ID']),
       quelle:     quelle
     });
   });
 
-  // chronologisch; Gruppierung/Zusammenfassung bewusst NICHT hier (offene Dokumentregel)
-  items.sort(function (a, b) {
-    return a.datum === b.datum ? a.bearbeiter.localeCompare(b.bearbeiter) : a.datum.localeCompare(b.datum);
-  });
-
-  const total = items.reduce(function (s, it) { return s + (it.stunden || 0); }, 0);
-  return { items: items, total: Math.round(total * 100) / 100, unresolved: unresolved };
+  items.sort(function(a,b){ return a.datum === b.datum ? a.bearbeiter.localeCompare(b.bearbeiter) : a.datum.localeCompare(b.datum); });
+  const total = items.reduce(function(s,it){ return s + (it.stunden||0); }, 0);
+  return { items:items, total:Math.round(total*100)/100, unresolved:unresolved };
 }
 
 /* ------------------------------------------------------------------ */
 /*  Helfer                                                            */
 /* ------------------------------------------------------------------ */
-function ss_()            { return SpreadsheetApp.openById(CONFIG.SHEET_ID); }
-function json(obj, code)  { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
+function ss_(){ return SpreadsheetApp.openById(CONFIG.SHEET_ID); }
+function json(o){ return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
-/** Tab -> Array von Objekten (erste Zeile = Spaltenköpfe). */
-function rows_(tabName) {
-  const sh = ss_().getSheetByName(tabName);
-  if (!sh) throw new Error('Tab nicht gefunden: ' + tabName);
-  const values = sh.getDataRange().getValues();
-  if (values.length < 2) return [];
-  const head = values[0].map(function (h) { return String(h).trim(); });
+function rows_(tab){
+  const sh = ss_().getSheetByName(tab);
+  if(!sh) throw new Error('Tab nicht gefunden: '+tab);
+  const v = sh.getDataRange().getValues();
+  if(v.length < 2) return [];
+  const head = v[0].map(function(h){ return String(h).trim(); });
   const out = [];
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    if (row.every(function (c) { return c === '' || c === null; })) continue;
+  for(let i=1;i<v.length;i++){
+    if(v[i].every(function(c){ return c === '' || c === null; })) continue;
     const o = {};
-    for (let j = 0; j < head.length; j++) if (head[j]) o[head[j]] = row[j];
+    for(let j=0;j<head.length;j++) if(head[j]) o[head[j]] = v[i][j];
     out.push(o);
   }
   return out;
 }
-
-function indexBy_(arr, key) {
-  const m = {};
-  arr.forEach(function (o) { const k = str_(o[key]); if (k) m[k] = o; });
-  return m;
-}
-
-function str_(v)    { return v == null ? '' : String(v).trim(); }
-function num_(v)    { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? 0 : n; }
-function truthy_(v) { const s = String(v).trim().toLowerCase(); return s === 'true' || s === 'yes' || s === 'ja' || s === '1'; }
-function normKey_(v){ return str_(v).toLowerCase().replace(/\s+/g, ' '); }
-
-function parseISO_(s) {           // 'yyyy-mm-dd' -> Date (lokale Mitternacht)
-  const p = String(s).split('-');
-  return new Date(+p[0], +p[1] - 1, +p[2]);
-}
-function toDate_(v) {
-  if (v instanceof Date && !isNaN(v)) return new Date(v.getFullYear(), v.getMonth(), v.getDate());
-  if (typeof v === 'number' && v > 0) {           // Sheets-Seriennummer
-    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
-    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  }
-  const s = str_(v);
-  if (!s) return null;
-  let m = s.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})$/);   // TT.MM.JJJJ oder MM/TT/JJJJ
-  if (m) {
-    let a = +m[1], b = +m[2], y = +m[3]; if (y < 100) y += 2000;
-    // US-Mappe: MM/TT/JJJJ; deutsche Eingabe: TT.MM.JJJJ  -> heuristisch
-    const isDot = s.indexOf('.') > -1;
-    const day = isDot ? a : b, mon = isDot ? b : a;
-    return new Date(y, mon - 1, day);
-  }
+function indexBy_(arr, key){ const m={}; arr.forEach(function(o){ const k=str_(o[key]); if(k) m[k]=o; }); return m; }
+function str_(v){ return v==null ? '' : String(v).trim(); }
+function num_(v){ const n=parseFloat(String(v).replace(',', '.')); return isNaN(n)?0:n; }
+function normKey_(v){ return str_(v).toLowerCase().replace(/\s+/g,' '); }
+function cmpDe_(a,b){ return String(a).localeCompare(String(b), 'de'); }
+function parseISO_(s){ const p=String(s).split('-'); return new Date(+p[0], +p[1]-1, +p[2]); }
+function toDate_(v){
+  if(v instanceof Date && !isNaN(v)) return new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  if(typeof v === 'number' && v > 0){ const d=new Date(Math.round((v-25569)*86400*1000)); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); }
+  const s = str_(v); if(!s) return null;
+  let m = s.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})$/);
+  if(m){ let a=+m[1], b=+m[2], y=+m[3]; if(y<100) y+=2000; const isDot = s.indexOf('.')>-1; return new Date(y, (isDot?b:a)-1, isDot?a:b); }
   m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
-  const d = new Date(s);
-  return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  if(m) return new Date(+m[1], +m[2]-1, +m[3]);
+  const d = new Date(s); return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
