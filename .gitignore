@@ -7,5 +7,5 @@ design-sources/
 data-exports/
 reference-output/
 
-# gebautes Standalone (aus tool/build.py neu erzeugbar)
-tool/stundennachweis.standalone.html
+# tool/stundennachweis.standalone.html wird mitversioniert, damit es direkt
+# per htmlpreview / statischem Hosting aufrufbar ist (aus tool/build.py neu erzeugbar).
