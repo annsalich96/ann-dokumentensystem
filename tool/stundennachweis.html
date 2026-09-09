@@ -22,7 +22,7 @@
 
 :root{
   --ink:#0A0A0A;
-  --line:#8C8C8C;
+  --line:#a7a9ac;              /* alle Dokumentlinien: 0,5 pt, #a7a9ac */
   --paper:#ffffff;
   --ui-bg:#f5f5f3; --ui-border:#E0DDD8;
   --f:"Rota","Helvetica Neue",Arial,sans-serif;
@@ -38,14 +38,15 @@ body{font-family:var(--f);color:var(--ink);background:var(--ui-bg);display:flex;
 
 /* ---- Editor (RECHTS) ---- */
 #editor{
-  width:380px;min-width:340px;max-width:42vw;height:100%;overflow-y:auto;
-  background:var(--paper);border-left:1px solid var(--ui-border);padding:20px 18px 60px;order:2
+  width:clamp(380px, 34vw, 50vw);min-width:360px;height:100%;overflow:auto;
+  background:var(--paper);border-left:1px solid var(--ui-border);padding:24px 22px 80px;order:2;
+  resize:horizontal
 }
-#editor h1{font-size:15px;font-weight:700;margin:0 0 2px}
-#editor .sub{font-size:11px;color:#8C8C8C;margin:0 0 18px}
-#editor h2{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8C8C8C;margin:22px 0 8px;border-top:1px solid var(--ui-border);padding-top:14px}
-#editor label{display:block;font-size:11px;color:#8C8C8C;margin:10px 0 3px}
-#editor input,#editor textarea{width:100%;font-family:var(--f);font-size:13px;padding:6px 8px;border:1px solid var(--ui-border);border-radius:4px;background:#fff;color:var(--ink)}
+#editor h1{font-size:17px;font-weight:700;margin:0 0 2px}
+#editor .sub{font-size:12px;color:#8C8C8C;margin:0 0 20px}
+#editor h2{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8C8C8C;margin:26px 0 10px;border-top:1px solid var(--ui-border);padding-top:16px}
+#editor label{display:block;font-size:12px;color:#8C8C8C;margin:12px 0 4px}
+#editor input,#editor textarea{width:100%;font-family:var(--f);font-size:14px;padding:8px 10px;border:1px solid var(--ui-border);border-radius:5px;background:#fff;color:var(--ink)}
 #editor .row2{display:flex;gap:8px}#editor .row2>*{flex:1;min-width:0}
 button{font-family:var(--f);font-size:12px;padding:7px 12px;border:1px solid var(--ink);border-radius:4px;background:var(--ink);color:#fff;cursor:pointer}
 button.ghost{background:#fff;color:var(--ink)}button:disabled{opacity:.4;cursor:not-allowed}
@@ -175,19 +176,19 @@ const DS = {
   G(k){ return 15 + k*BL; },                               // Rasterlinie k ab Oberkante (mm)
 
   header:{
-    wordmarkTop1:12.3, wordmarkTop2:16.9,                  // mittig ~14.6 / ~19.2 mm
-    monogram:{right:195, top:15.2, w:31.2, h:13.5},
-    titleK:5, placedateK:7,                                // Text mittig in Rasterzeile k
+    monogram:{right:195, top:15, w:31.2, h:13.5},          // Oberkante = oberer Rand
+    wordmarkTop1:14.6, wordmarkTop2:19.2,                  // oben bündig mit dem Monogramm (align:'top')
+    titleK:5, placedateK:7,                                // Bänder [5..7] und [7..9] -> Text mittig zwischen den Linien
     ruleK:[5,7,9], ruleX1:122.65, ruleX2:195
   },
   meta:{ labelK:12, valK:[13,14,15] },
   table:{
     topRuleK_first:19, topRuleK_cont:12,                   // obere Tabellenlinie
     rowSpan:2,                                             // Zeilenabstand = 2 Rastereinheiten (26 pt)
-    maxRowK:49,                                            // letzte Zeile spätestens hier  (ANNAHME – justierbar)
+    maxRowK:52,                                            // letzte Zeile spätestens hier (dann Umbruch)
     cols:{ datum:1, taetigkeit:3, bearbeiter:8 }           // ZEITAUFWAND rechtsbündig an rightEdge
   },
-  total:{ k:52, span:2, labelCol:8 },                      // nur letzte Seite  (ANNAHME – docs O-012)
+  total:{ span:2, labelCol:8 },                            // sitzt direkt unter der letzten Zeile (nur letzte Seite)
   footer:{ k1:57, k2:58, blocks:[1,3,6,8] }
 };
 
@@ -244,13 +245,15 @@ function paginate(){
    ============================================================ */
 const stage = document.getElementById('stage');
 
-/* Text-Band: Box mit fester Höhe (span Rastereinheiten), Text darin vertikal mittig. */
+/* Text-Band: Box mit fester Höhe (span Rastereinheiten), Text darin vertikal mittig.
+   o.align:'top' -> Text oben bündig (für die Wortmarke, oben bündig mit dem Monogramm). */
 function band(cls, o, text){
   const d = document.createElement('div');
   d.className = 'b ' + cls + (o.right ? ' r' : '');
   const span = o.span || 1;
   d.style.top = (o.topMM != null ? o.topMM : DS.G(o.k)) + 'mm';
   d.style.height = (span*BL) + 'mm';
+  if(o.align === 'top') d.style.justifyContent = 'flex-start';
   if(o.right){ d.style.right = (DS.page.w - DS.rightEdge) + 'mm'; d.style.left = DS.colX(1) + 'mm'; }
   else       { d.style.left = o.leftMM + 'mm'; d.style.right = (DS.page.w - DS.rightEdge) + 'mm'; }
   if(text != null) d.textContent = text;
@@ -263,16 +266,17 @@ function rule(page, k, x1, x2){
 }
 
 function renderHeader(page){
-  page.appendChild(band('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1}, 'AN(N) ARCHITECTURE'));
-  page.appendChild(band('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, 'SOLUTION'));
+  page.appendChild(band('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1, align:'top'}, 'AN(N) ARCHITECTURE'));
+  page.appendChild(band('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2, align:'top'}, 'SOLUTION'));
   const m = document.createElement('div'); m.className = 'monogram';
   m.style.left = (DS.header.monogram.right - DS.header.monogram.w) + 'mm';
   m.style.top = DS.header.monogram.top + 'mm';
   m.style.width = DS.header.monogram.w + 'mm'; m.style.height = DS.header.monogram.h + 'mm';
   m.innerHTML = MONOGRAM_SVG; page.appendChild(m);
 
-  page.appendChild(band('s-title',     {right:true, k:DS.header.titleK},     model.header.title || ''));
-  page.appendChild(band('s-placedate', {right:true, k:DS.header.placedateK}, `${model.header.place}, ${deDate(model.header.date)}`));
+  // Titel + Ort/Datum: je mittig zwischen zwei Kopf-Linien (wie eine Tabellenzeile)
+  page.appendChild(band('s-title',     {right:true, k:DS.header.titleK,     span:2}, model.header.title || ''));
+  page.appendChild(band('s-placedate', {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`));
   DS.header.ruleK.forEach(k => rule(page, k, DS.header.ruleX1, DS.header.ruleX2));
 }
 
@@ -298,8 +302,8 @@ function renderTable(page, p){
   page.appendChild(band('s-thead', {right:true,                   k:topK}, 'ZEITAUFWAND'));
   rule(page, topK + 1, DS.colX(1), DS.rightEdge);               // Linie unter dem Kopf
   // Zeilen: Band-Höhe 2 Einheiten, Text mittig zwischen den Linien
-  p.rows.forEach((row,i)=>{
-    if(!row) return;
+  const rows = p.rows.filter(Boolean);
+  rows.forEach((row,i)=>{
     const bandTopK = topK + 1 + i*span;
     page.appendChild(band('s-cell', {leftMM:DS.colX(C.datum),      k:bandTopK, span}, deDate(row.datum) || '—'));
     page.appendChild(band('s-cell', {leftMM:DS.colX(C.taetigkeit), k:bandTopK, span}, row.taetigkeit || ''));
@@ -307,11 +311,14 @@ function renderTable(page, p){
     page.appendChild(band('s-cell', {right:true,                   k:bandTopK, span}, hours(row.stunden)));
     rule(page, bandTopK + span, DS.colX(1), DS.rightEdge);      // Linie auf der Rasterlinie unter der Zeile
   });
+  return topK + 1 + rows.length*span;                          // k direkt unter der letzten Zeile
 }
 
-function renderTotal(page){
-  page.appendChild(band('s-total', {leftMM:DS.colX(DS.total.labelCol), k:DS.total.k, span:DS.total.span}, 'Gesamt'));
-  page.appendChild(band('s-total', {right:true,                        k:DS.total.k, span:DS.total.span}, hours(totalHours())));
+function renderTotal(page, k){
+  const span = DS.total.span;
+  page.appendChild(band('s-total', {leftMM:DS.colX(DS.total.labelCol), k, span}, 'Gesamt'));
+  page.appendChild(band('s-total', {right:true,                        k, span}, hours(totalHours())));
+  rule(page, k + span, DS.colX(1), DS.rightEdge);              // Abschlusslinie unter der Summe
 }
 
 function renderFooter(page, idx, count){
@@ -354,8 +361,8 @@ function render(){
     if(showGrid) renderGrid(page);
     renderHeader(page);
     if(p.first) renderMeta(page);
-    renderTable(page, p);
-    if(p.last) renderTotal(page);
+    const lastRowK = renderTable(page, p);
+    if(p.last) renderTotal(page, lastRowK);
     renderFooter(page, i+1, pages.length);
     stage.appendChild(page);
   });
@@ -441,17 +448,17 @@ function syncForm(){
 }
 
 /* ---- Zoom ---- */
-let zoom = 1;
+let zoom = 1, userZoomed = false;
 const applyZoom = ()=> stage.style.transform = `scale(${zoom})`;
 function fitZoom(reset){
   const avail = document.getElementById('preview').clientWidth - 56;
-  const target = Math.min(1, avail / (210*3.7795));
-  if(reset || zoom>1) zoom = target; else zoom = Math.min(zoom, target);
+  const target = Math.max(0.35, Math.min(1.9, avail / (210*3.7795)));   // A4 füllt die Spalte, bis 1,9x
+  if(reset || !userZoomed) zoom = target;
   applyZoom();
 }
-$('#btn-zoom-in').onclick  = ()=>{ zoom=Math.min(2,zoom+0.1); applyZoom(); };
-$('#btn-zoom-out').onclick = ()=>{ zoom=Math.max(0.2,zoom-0.1); applyZoom(); };
-$('#btn-zoom-fit').onclick = ()=> fitZoom(true);
+$('#btn-zoom-in').onclick  = ()=>{ userZoomed=true; zoom=Math.min(3,zoom+0.15); applyZoom(); };
+$('#btn-zoom-out').onclick = ()=>{ userZoomed=true; zoom=Math.max(0.2,zoom-0.15); applyZoom(); };
+$('#btn-zoom-fit').onclick = ()=>{ userZoomed=false; fitZoom(true); };
 $('#btn-grid').onclick = ()=>{ showGrid = !showGrid; $('#btn-grid').style.background = showGrid ? 'var(--ink)' : '#fff'; $('#btn-grid').style.color = showGrid ? '#fff' : 'var(--ink)'; render(); };
 window.addEventListener('resize', ()=> fitZoom(true));
 
