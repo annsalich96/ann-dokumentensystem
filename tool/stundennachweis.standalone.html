@@ -260,7 +260,7 @@ const DS = {
     titleK:5, placedateK:7,
     ruleK:[5,7,9], ruleX1:122.65, ruleX2:195
   },
-  meta:{ labelK:12, valK:[13,14,15] },
+  meta:{ labelK:10 },   /* AUFTRAG- und PROJEKT-Block untereinander, linksbündig ab Spalte 3 */
   table:{
     topRuleK_first:19, topRuleK_cont:12,
     rowSpan:2,
@@ -420,18 +420,25 @@ function renderHeader(page){
   DS.header.ruleK.forEach(k => rule(page, k, DS.header.ruleX1, DS.header.ruleX2));
 }
 
-function renderMeta(page){
-  const L = DS.colX(3), R = DS.colX(8);
-  page.appendChild(band('s-metalabel', {leftMM:L, k:DS.meta.labelK}, 'AUFTRAG:'));
-  page.appendChild(band('s-metaval',   {leftMM:L, k:DS.meta.valK[0]}, model.meta.auftrag.nr || ''));
-  page.appendChild(band('s-metaval',   {leftMM:L, k:DS.meta.valK[1]}, model.meta.auftrag.bez || ''));
-  page.appendChild(band('s-metalabel', {leftMM:R, k:DS.meta.labelK}, 'PROJEKT:'));
-  page.appendChild(band('s-metaval',   {leftMM:R, k:DS.meta.valK[0]}, model.meta.projekt.name || ''));
-  addrLines(model.meta.projekt.adresse).forEach((ln,i)=>{
-    page.appendChild(band('s-metaval', {leftMM:R, k:DS.meta.valK[1] + i}, ln));
-  });
-}
 function addrLines(s){ return String(s || '').split('\n').map(x=>x.trim()).filter(Boolean).slice(0,3); }
+/* AUFTRAG-Block, eine Leerzeile, PROJEKT-Block — alles linksbündig, endet vor der Tabelle. */
+function metaLayout(){
+  const maxK = DS.table.topRuleK_first - 1;
+  const rows = []; let k = DS.meta.labelK;
+  const add = (cls, text) => { if(text != null && text !== '' && k <= maxK){ rows.push({ cls, k, text }); k++; } };
+  add('s-metalabel', 'AUFTRAG:');
+  add('s-metaval', model.meta.auftrag.nr || '');
+  addrLines(model.meta.auftrag.bez).forEach(ln => add('s-metaval', ln));
+  k++;   // Leerzeile zwischen den Blöcken
+  add('s-metalabel', 'PROJEKT:');
+  add('s-metaval', model.meta.projekt.name || '');
+  addrLines(model.meta.projekt.adresse).forEach(ln => add('s-metaval', ln));
+  return rows;
+}
+function renderMeta(page){
+  const L = DS.colX(3);
+  metaLayout().forEach(r => page.appendChild(band(r.cls, {leftMM:L, k:r.k}, r.text)));
+}
 
 function renderTable(page, p){
   const topK = p.first ? DS.table.topRuleK_first : DS.table.topRuleK_cont;
@@ -548,15 +555,8 @@ function exportPDF(){
 
     // Metadaten nur Seite 1
     if(p.first){
-      const L = DS.colX(3), R = DS.colX(8);
-      put('s-metalabel', {leftMM:L, k:DS.meta.labelK}, 'AUFTRAG:');
-      put('s-metaval',   {leftMM:L, k:DS.meta.valK[0]}, model.meta.auftrag.nr || '');
-      put('s-metaval',   {leftMM:L, k:DS.meta.valK[1]}, model.meta.auftrag.bez || '');
-      put('s-metalabel', {leftMM:R, k:DS.meta.labelK}, 'PROJEKT:');
-      put('s-metaval',   {leftMM:R, k:DS.meta.valK[0]}, model.meta.projekt.name || '');
-      addrLines(model.meta.projekt.adresse).forEach((ln,i)=>{
-        put('s-metaval', {leftMM:R, k:DS.meta.valK[1] + i}, ln);
-      });
+      const L = DS.colX(3);
+      metaLayout().forEach(r => put(r.cls, {leftMM:L, k:r.k}, r.text));
     }
 
     // Tabelle
