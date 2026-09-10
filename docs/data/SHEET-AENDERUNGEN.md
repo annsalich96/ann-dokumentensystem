@@ -4,10 +4,16 @@
 > Verknüpft: [[PLAN_KI-AUFBEREITUNG_UND_ABBUCHUNG]] · [[BACKEND]] · [[stundennachweis-datenquellen]]
 
 Aufgabenteilung:
-- **Claude / Dokumenten-System:** legt die neuen Spalten + den neuen Tab an (per
-  Apps-Script-Web-App, nur additiv) und beschreibt sie.
+- **Claude / Dokumenten-System:** legt die neuen Spalten + den neuen Tab an — **passiert
+  automatisch beim ersten `markBilled`** (`ensureBillingCols_` / `logRow_` in `Code.gs`),
+  rein additiv am Ende der Kopfzeile bzw. als neues Tab.
 - **Codex / ChatGPT:** zieht diese Struktur in der **AppSheet-App „ANN ARCHITECTURE"** nach
   (Spalten in die App-Definition übernehmen, Typen setzen, Views/Filter, Bots prüfen).
+
+> Stand 2026-09-10: `markBilled` / `unmarkBilled` sind in `Code.gs` implementiert. Schreiben
+> ist über die Script-Eigenschaft `WRITE_SECRET` abgesichert; jeder Aufruf läuft unter
+> `LockService` und trifft Zeilen nur per exaktem `Record_ID`-Match. Das Tool macht vor
+> jedem echten Abbuchen einen `dryRun`.
 
 ---
 

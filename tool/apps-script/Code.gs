@@ -1,25 +1,31 @@
 /**
  * ann architecture — Dokumenten-System
  * Backend-Layer (Phase 1): Google Apps Script Web App über »Project Management NEW«.
- * Die Tabelle wird NUR GELESEN. Für die Textaufbereitung ruft das Skript zusätzlich
- * einen KI-Anbieter (OpenAI oder Anthropic, Key in den Script-Properties) — kein
- * Schreibzugriff auf das Sheet.
+ * Lesen: unverändert. Schreiben: NUR additiv — fünf neue Spalten am Ende von
+ * `TimeTrackingRecords` und ein eigenes Tab `DocSystem_Log`. Keine bestehende
+ * Spalte/Zeile/Formel wird angefasst. Schreibzugriffe brauchen den WRITE_SECRET.
  *
  * Endpunkte (GET, ?action=…):
  *   ping
  *   getFilterTree                          -> Projekte/Phasen/Leistungen, die Buchungen haben
  *   getCompanyInfo
  *   getProjectMeta&project=…[&phase=…]     -> Stammdaten eines Projekts (Name, Adresse, …)
- *   getTimeRecords&project=…&phase=…&service=…&from=YYYY-MM-DD&to=YYYY-MM-DD&user=…
- *   cleanDescriptions&items=<JSON>[&project=…&phase=…]  -> KI-bereinigte Tätigkeitstexte
+ *   getTimeRecords&project=…&phase=…&service=…&from=…&to=…   (liefert auch billed-Status)
+ *   cleanDescriptions&items=<JSON>[&project=…&phase=…&maxChars=…]  -> KI-bereinigte Texte
+ *   markBilled&entries=<JSON>&document=…&date=…&secret=…[&dryRun=1]   -> Einträge abrechnen
+ *   unmarkBilled&document=…&secret=…[&ids=<JSON>]                     -> Abbuchung zurücknehmen
  *
- * Script-Properties für cleanDescriptions:
+ * Script-Properties:
+ *   WRITE_SECRET       nötig für markBilled/unmarkBilled (frei wählbarer Schlüssel)
  *   AI_PROVIDER        optional: 'openai' (Standard) oder 'anthropic'
  *   OPENAI_API_KEY     nötig bei openai   ·  OPENAI_MODEL     optional, Standard: gpt-4.1-mini
  *   ANTHROPIC_API_KEY  nötig bei anthropic ·  ANTHROPIC_MODEL optional, Standard: claude-sonnet-5
  *
  * Deploy: siehe README.md in diesem Ordner.
  */
+
+const BILLING_COLS = ['Billing_Description', 'Billed', 'Billed_On', 'Billed_Document', 'Billing_Note'];
+const LOG_TAB = 'DocSystem_Log';
 
 const CONFIG = {
   SHEET_ID: '14WcYfxy5oFoArQh3dWz2zNeP5lFLMlkyMxunm3b-SHI',   // Project Management NEW
@@ -52,6 +58,8 @@ function doGet(e){
       case 'getCompanyInfo':data = getCompanyInfo(); break;
       case 'getProjectMeta':data = getProjectMeta(p.project || '', p.phase || ''); break;
       case 'cleanDescriptions': data = cleanDescriptions(p); break;
+      case 'markBilled':    data = markBilled(p); break;
+      case 'unmarkBilled':  data = unmarkBilled(p); break;
       case 'getTimeRecords':data = getTimeRecords({
                               project:p.project || '', phase:p.phase || '', service:p.service || '',
                               from:p.from || '', to:p.to || '', user:p.user || ''
@@ -327,13 +335,152 @@ function getTimeRecords(q){
       bearbeiter: bearbeiter,
       stunden:    num_(rec['Spent Time']),
       recordId:   str_(rec['Record_ID']),
-      quelle:     quelle
+      quelle:     quelle,
+      billed:      bool_(rec['Billed']),
+      billedDoc:   str_(rec['Billed_Document']),
+      billingDesc: str_(rec['Billing_Description'])
     });
   });
 
   items.sort(function(a,b){ return a.datum === b.datum ? a.bearbeiter.localeCompare(b.bearbeiter) : a.datum.localeCompare(b.datum); });
   const total = items.reduce(function(s,it){ return s + (it.stunden||0); }, 0);
   return { items:items, total:Math.round(total*100)/100, unresolved:unresolved };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Abbuchen: schreibt NUR in die fünf neuen Spalten von TimeTrackingRecords,
+    Zeile für Zeile per Record_ID, unter LockService. Protokoll in DocSystem_Log. */
+/* ------------------------------------------------------------------ */
+function assertWriteAuth_(p){
+  var need = str_(PropertiesService.getScriptProperties().getProperty('WRITE_SECRET'));
+  if(!need) throw new Error('WRITE_SECRET ist in den Script-Properties nicht gesetzt — Schreiben deaktiviert.');
+  if(str_(p.secret) !== need) throw new Error('Schreib-Schlüssel fehlt oder ist falsch.');
+}
+
+/* Stellt die 5 Billing-Spalten am ENDE der Kopfzeile sicher. Bestehende Spalten
+   bleiben unberührt. Gibt {name: 1-basierter Spaltenindex} zurück. */
+function ensureBillingCols_(sh){
+  var lastCol = sh.getLastColumn();
+  var header = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h){ return String(h).trim(); });
+  var idx = {};
+  BILLING_COLS.forEach(function(name){
+    var at = header.indexOf(name);
+    if(at === -1){
+      lastCol += 1;
+      sh.getRange(1, lastCol, 1, 1).setValue(name);
+      header.push(name);
+      at = header.length - 1;
+    }
+    idx[name] = at + 1;
+  });
+  return idx;
+}
+
+function logRow_(action, recIds, doc, before, after){
+  try{
+    var ss = ss_();
+    var sh = ss.getSheetByName(LOG_TAB);
+    if(!sh){ sh = ss.insertSheet(LOG_TAB); sh.appendRow(['ts', 'user', 'action', 'record_ids', 'document', 'before', 'after']); }
+    sh.appendRow([
+      new Date(),
+      (Session.getActiveUser() && Session.getActiveUser().getEmail()) || '',
+      action, (recIds || []).join(','), str_(doc),
+      JSON.stringify(before || []).slice(0, 45000),
+      JSON.stringify(after || []).slice(0, 45000)
+    ]);
+  }catch(e){ /* Log darf die Aktion nie scheitern lassen */ }
+}
+
+function markBilled(p){
+  assertWriteAuth_(p);
+  var entries = [];
+  try{ entries = JSON.parse(p.entries || '[]'); }catch(e){ throw new Error('entries ist kein gültiges JSON'); }
+  if(!Array.isArray(entries) || !entries.length) return { updated: 0, notFound: 0 };
+  var doc = str_(p.document);
+  var on  = str_(p.date) || Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyy-MM-dd');
+  var dry = str_(p.dryRun) === '1';
+
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try{
+    var sh = ss_().getSheetByName(CONFIG.TABS.timeTrackingRecords);
+    if(!sh) throw new Error('Tab TimeTrackingRecords nicht gefunden');
+    var idx = ensureBillingCols_(sh);
+    var cols = BILLING_COLS.map(function(n){ return idx[n]; });
+    var contiguous = cols.every(function(c, k){ return k === 0 || c === cols[k - 1] + 1; });
+
+    var values = sh.getDataRange().getValues();
+    var header = values[0].map(function(h){ return String(h).trim(); });
+    var recCol = header.indexOf('Record_ID');
+    if(recCol === -1) throw new Error('Spalte Record_ID nicht gefunden');
+
+    var want = {};
+    entries.forEach(function(e){ if(e && e.id != null) want[String(e.id).trim()] = e; });
+
+    var before = [], after = [], writes = [];
+    for(var r = 1; r < values.length; r++){
+      var rid = String(values[r][recCol]).trim();
+      var e = want[rid]; if(!e) continue;
+      var cur = {};
+      BILLING_COLS.forEach(function(n){ cur[n] = values[r][idx[n] - 1]; });
+      var desc = (e.desc != null && String(e.desc).trim()) ? String(e.desc).trim() : cur['Billing_Description'];
+      var note = (e.note != null) ? String(e.note) : cur['Billing_Note'];
+      var row = { Billing_Description: desc, Billed: true, Billed_On: on, Billed_Document: doc, Billing_Note: note };
+      before.push(Object.assign({ id: rid }, cur));
+      after.push(Object.assign({ id: rid }, row));
+      writes.push({ rowNum: r + 1, row: row });
+    }
+
+    if(!dry){
+      writes.forEach(function(w){
+        var arr = BILLING_COLS.map(function(n){ return w.row[n]; });
+        if(contiguous){ sh.getRange(w.rowNum, cols[0], 1, cols.length).setValues([arr]); }
+        else { BILLING_COLS.forEach(function(n, k){ sh.getRange(w.rowNum, cols[k], 1, 1).setValue(arr[k]); }); }
+      });
+      SpreadsheetApp.flush();
+      logRow_('markBilled', after.map(function(x){ return x.id; }), doc, before, after);
+    }
+    return { updated: writes.length, notFound: entries.length - writes.length, dryRun: dry, date: on };
+  } finally { lock.releaseLock(); }
+}
+
+function unmarkBilled(p){
+  assertWriteAuth_(p);
+  var doc = str_(p.document);
+  if(!doc) throw new Error('document fehlt');
+  var onlyIds = null;
+  try{ var a = JSON.parse(p.ids || 'null'); if(Array.isArray(a)) onlyIds = {}; if(a) a.forEach(function(x){ onlyIds[String(x).trim()] = 1; }); }catch(e){}
+
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try{
+    var sh = ss_().getSheetByName(CONFIG.TABS.timeTrackingRecords);
+    if(!sh) throw new Error('Tab TimeTrackingRecords nicht gefunden');
+    var idx = ensureBillingCols_(sh);
+    var cols = BILLING_COLS.map(function(n){ return idx[n]; });
+    var contiguous = cols.every(function(c, k){ return k === 0 || c === cols[k - 1] + 1; });
+    var values = sh.getDataRange().getValues();
+    var header = values[0].map(function(h){ return String(h).trim(); });
+    var recCol = header.indexOf('Record_ID'), docCol = idx['Billed_Document'] - 1;
+
+    var before = [], ids = [], writes = [];
+    for(var r = 1; r < values.length; r++){
+      if(str_(values[r][docCol]) !== doc) continue;
+      var rid = String(values[r][recCol]).trim();
+      if(onlyIds && !onlyIds[rid]) continue;
+      var cur = {}; BILLING_COLS.forEach(function(n){ cur[n] = values[r][idx[n] - 1]; });
+      before.push(Object.assign({ id: rid }, cur));
+      ids.push(rid);
+      // Billing_Description bleibt erhalten, Rest wird geleert
+      writes.push({ rowNum: r + 1, row: { Billing_Description: cur['Billing_Description'], Billed: '', Billed_On: '', Billed_Document: '', Billing_Note: '' } });
+    }
+    writes.forEach(function(w){
+      var arr = BILLING_COLS.map(function(n){ return w.row[n]; });
+      if(contiguous){ sh.getRange(w.rowNum, cols[0], 1, cols.length).setValues([arr]); }
+      else { BILLING_COLS.forEach(function(n, k){ sh.getRange(w.rowNum, cols[k], 1, 1).setValue(arr[k]); }); }
+    });
+    SpreadsheetApp.flush();
+    if(ids.length) logRow_('unmarkBilled', ids, doc, before, []);
+    return { cleared: writes.length };
+  } finally { lock.releaseLock(); }
 }
 
 /* ------------------------------------------------------------------ */
@@ -353,6 +500,16 @@ function TEST_props(){
   Logger.log('AI_PROVIDER=' + (p.AI_PROVIDER || '(leer -> openai)'));
   Logger.log('OPENAI_API_KEY ' + (p.OPENAI_API_KEY ? 'gesetzt (' + p.OPENAI_API_KEY.length + ' Zeichen)' : 'FEHLT'));
   Logger.log('OPENAI_MODEL=' + (p.OPENAI_MODEL || '(leer -> gpt-4.1-mini)'));
+  Logger.log('WRITE_SECRET ' + (p.WRITE_SECRET ? 'gesetzt (' + p.WRITE_SECRET.length + ' Zeichen)' : 'FEHLT — Abbuchen deaktiviert'));
+}
+/* Testlauf ohne zu schreiben: zeigt, welche Zeilen markBilled treffen würde.
+   secret muss dem WRITE_SECRET entsprechen; RECORD_ID durch eine echte ersetzen. */
+function TEST_markBilled_dry(){
+  var secret = PropertiesService.getScriptProperties().getProperty('WRITE_SECRET') || '';
+  Logger.log(JSON.stringify(markBilled({
+    secret: secret, dryRun: '1', document: 'TEST-Nachweis', date: '2026-09-10',
+    entries: JSON.stringify([{ id: 'HIER_ECHTE_RECORD_ID', desc: 'Testbeschreibung', note: '' }])
+  }), null, 2));
 }
 
 /* ------------------------------------------------------------------ */
@@ -380,6 +537,7 @@ function rows_(tab){
 function rowsSafe_(tab){ try{ return rows_(tab); }catch(e){ return []; } }   // fehlender Tab -> [] statt Fehler
 function indexBy_(arr, key){ const m={}; arr.forEach(function(o){ const k=str_(o[key]); if(k) m[k]=o; }); return m; }
 function str_(v){ return v==null ? '' : String(v).trim(); }
+function bool_(v){ if(v === true) return true; const s = str_(v).toLowerCase(); return s === 'true' || s === 'wahr' || s === 'yes' || s === 'ja' || s === 'y' || s === '1'; }
 function num_(v){ const n=parseFloat(String(v).replace(',', '.')); return isNaN(n)?0:n; }
 function normKey_(v){ return str_(v).toLowerCase().replace(/\s+/g,' '); }
 function cmpDe_(a,b){ return String(a).localeCompare(String(b), 'de'); }

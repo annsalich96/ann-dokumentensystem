@@ -48,7 +48,24 @@ Google-Tabelle **„Project Management NEW"** (die Mappe hinter deiner AppSheet-
 | `…/exec?action=getCompanyInfo` | Büroangaben für die Fußzeile |
 | `…/exec?action=getProjectMeta&project=…[&phase=…]` | Projekt-Stammdaten: `{name, address, description, client, billName, billAddress, timeline, startDate, endDate, status, responsible, phase}` |
 | `…/exec?action=getTimeRecords&project=…&phase=…&service=…&from=YYYY-MM-DD&to=YYYY-MM-DD` | Zeiteinträge: `{items:[{datum,taetigkeit,bearbeiter,stunden,recordId}], total, unresolved}` |
-| `…/exec?action=cleanDescriptions&items=<JSON>[&project=…&phase=…]` | KI-bereinigte Tätigkeitstexte: `{items:[{i,text}]}` (ruft die Anthropic-API) |
+| `…/exec?action=cleanDescriptions&items=<JSON>[&project=…&phase=…&maxChars=…]` | KI-bereinigte Tätigkeitstexte: `{items:[{i,text}]}` |
+| `…/exec?action=markBilled&entries=<JSON>&document=…&date=…&secret=…[&dryRun=1]` | markiert Zeiteinträge als abgerechnet (schreibt 5 neue Spalten in `TimeTrackingRecords`) → `{updated, notFound, dryRun}` |
+| `…/exec?action=unmarkBilled&document=…&secret=…[&ids=<JSON>]` | nimmt die Abbuchung eines Dokuments zurück (`Billing_Description` bleibt) → `{cleared}` |
+
+## Abbuchen einrichten (für `markBilled` / `unmarkBilled`)
+
+Script-Eigenschaft **`WRITE_SECRET`** setzen — derselbe Wert wie `WRITE_SECRET` in
+`tool/stundennachweis.html` (aktuell `sn-wr-7Kx2Qm9pLeviaTr4Zb`). Ohne diese Eigenschaft
+sind die Schreib-Endpunkte deaktiviert.
+
+Was das Skript beim ersten Abbuchen anlegt (rein additiv, nichts Bestehendes wird berührt):
+- **5 neue Spalten am Ende von `TimeTrackingRecords`:** `Billing_Description`, `Billed`,
+  `Billed_On`, `Billed_Document`, `Billing_Note`.
+- **Neues Tab `DocSystem_Log`** (Protokoll: `ts, user, action, record_ids, document, before, after`).
+
+Vor dem ersten echten Lauf: im Editor `TEST_markBilled_dry` (eine echte `Record_ID` eintragen)
+oder im Tool „Im Sheet abbuchen" — das Tool macht immer erst einen Testlauf (`dryRun`) und
+fragt dann nach Bestätigung. Details siehe `docs/data/SHEET-AENDERUNGEN.md`.
 
 ## KI-Textaufbereitung einrichten (für `cleanDescriptions`)
 

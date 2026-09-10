@@ -198,6 +198,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <div class="btnbar">
     <button class="ghost" id="btn-load" disabled>Einträge laden</button>
     <button class="ghost" id="btn-demo">Demodaten</button>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ui-muted)"><input type="checkbox" id="f-only-open" checked style="width:auto"> nur nicht abgerechnete</label>
   </div>
   <p class="sub" id="sheet-status" style="margin-top:10px"></p>
 
@@ -225,6 +226,11 @@ button:disabled{opacity:.4;cursor:not-allowed}
     <button class="ghost" id="btn-open">Öffnen</button>
     <input type="file" id="file-open" accept="application/json" hidden>
   </div>
+  <div class="btnbar">
+    <button class="ghost" id="btn-bill">Im Sheet abbuchen</button>
+    <button class="ghost" id="btn-unbill" hidden>Abbuchung rückgängig</button>
+  </div>
+  <p class="sub" id="bill-status" style="margin-top:10px"></p>
   <p class="sub" style="margin-top:18px">Regeln &amp; Annahmen: <code>docs/</code>. Feedback → verfeinern.</p>
 </div>
 
@@ -759,6 +765,9 @@ $('#btn-demo').onclick = ()=>{
   // Konten beschränkt. Bleibt bei „Bereitstellung verwalten → Bearbeiten → Version Neu"
   // gleich; nur eine komplett neue Bereitstellung erzeugt eine neue URL.
   const SHEET_URL = 'https://script.google.com/a/macros/annarchitecture-studio.com/s/AKfycbyXg2mbuOKDwvgVkO70eoCUjQZaVgGfOTgnKMlIeJTzzozP_RoLuSvf0Is2pS-WUfjqpw/exec';
+  // Schlüssel für Schreibzugriffe (Abbuchen). Muss identisch als Script-Property
+  // WRITE_SECRET im Apps-Script hinterlegt sein.
+  const WRITE_SECRET = 'sn-wr-7Kx2Qm9pLeviaTr4Zb';
 
   const say = (msg, cls) => { statusEl.textContent = msg || ''; statusEl.className = 'sub ' + (cls||''); };
 
@@ -848,16 +857,21 @@ $('#btn-demo').onclick = ()=>{
         project: selP.value, phase: selPh.value || '', service: selS.value || '',
         from: $('#f-von').value || '', to: $('#f-bis').value || ''
       });
-      model.items = (d.items || []).map(it => ({
-        datum: it.datum || '', taetigkeit: it.taetigkeit || '',
-        taetigkeitOriginal: it.taetigkeit || '',            // Roh-Text für Vergleich / KI-Aufbereitung
+      let rows = d.items || [];
+      const skipped = $('#f-only-open').checked ? rows.filter(it => it.billed).length : 0;
+      if($('#f-only-open').checked) rows = rows.filter(it => !it.billed);
+      model.items = rows.map(it => ({
+        datum: it.datum || '',
+        taetigkeit: it.billingDesc || it.taetigkeit || '',   // schon aufbereiteter Text (falls vorhanden)
+        taetigkeitOriginal: it.taetigkeit || '',             // Roh-Text für Vergleich / KI-Aufbereitung
         bearbeiter: it.bearbeiter || '', stunden: Number(it.stunden) || 0,
-        recordId: it.recordId || ''
+        recordId: it.recordId || '', billed: !!it.billed
       }));
       $('#btn-ki-reset').hidden = true;
       renderEntries(); render();
       const warn = d.unresolved ? '  ·  ' + d.unresolved + ' ohne Tätigkeitsname' : '';
-      say(model.items.length + ' Einträge geladen · ' + hours(d.total) + warn, d.unresolved ? 'err' : 'ok');
+      const sk = skipped ? '  ·  ' + skipped + ' bereits abgerechnet ausgeblendet' : '';
+      say(model.items.length + ' Einträge geladen · ' + hours(totalHours()) + warn + sk, d.unresolved ? 'err' : 'ok');
     }catch(e){
       say('Laden fehlgeschlagen: ' + e.message, 'err');
     }finally{ loadBtn.disabled = false; }
@@ -936,6 +950,65 @@ $('#btn-demo').onclick = ()=>{
     renderEntries(); render();
     $('#btn-ki-reset').hidden = true;
     kistatus('Originaltexte wiederhergestellt.');
+  };
+
+  /* ---- Abbuchen: die einbezogenen Zeiteinträge im Sheet als abgerechnet markieren ---- */
+  const billstatus = (m,c)=>{ const el=$('#bill-status'); if(el){ el.textContent=m||''; el.className='sub '+(c||''); } };
+  function billDocId(){ return (model.header.title || 'Stundennachweis').trim(); }
+  function billEntries(){
+    const note = isTage() ? ('Nachweis: ' + fmtDays(totalDays())) : '';
+    return model.items
+      .filter(it => it.recordId)
+      .map(it => ({ id: it.recordId, desc: (it.taetigkeit || '').trim(), note }));
+  }
+  async function billApi(action, extra){
+    const CH = 12, ents = billEntries(); let updated = 0, notFound = 0;
+    if(action === 'unmarkBilled'){
+      const r = await api('unmarkBilled', Object.assign({ document: billDocId(), secret: WRITE_SECRET }, extra||{}), 45000);
+      return r || {};
+    }
+    for(let s=0; s<ents.length; s+=CH){
+      const r = await api('markBilled', Object.assign({
+        entries: JSON.stringify(ents.slice(s, s+CH)),
+        document: billDocId(), date: model.header.date || isoToday(), secret: WRITE_SECRET
+      }, extra||{}), 45000);
+      updated += (r && r.updated) || 0; notFound += (r && r.notFound) || 0;
+    }
+    return { updated, notFound };
+  }
+  $('#btn-bill').onclick = async ()=>{
+    const ents = billEntries();
+    if(!ents.length){ billstatus('Keine Einträge mit Sheet-Bezug (aus Time Tracking geladen).', 'err'); return; }
+    $('#btn-bill').disabled = true;
+    billstatus('Prüfe (Testlauf, noch kein Schreiben) …');
+    try{
+      const dry = await billApi('markBilled', { dryRun:'1' });
+      if(!dry.updated){ billstatus('Keiner der ' + ents.length + ' Einträge im Sheet gefunden – nichts abgebucht.', 'err'); return; }
+      if(!confirm(dry.updated + ' Einträge im Google-Sheet als abgerechnet markieren?\n\nDokument: ' + billDocId()
+        + (dry.notFound ? '\n(' + dry.notFound + ' nicht im Sheet gefunden, werden übersprungen)' : ''))){
+        billstatus('Abgebrochen.'); return;
+      }
+      billstatus('Buche ab …');
+      const res = await billApi('markBilled', {});
+      model.items.forEach(it=>{ if(it.recordId) it.billed = true; });
+      $('#btn-unbill').hidden = false;
+      billstatus(res.updated + ' Einträge im Sheet abgebucht (Dokument „' + billDocId() + '").'
+        + (res.notFound ? '  ' + res.notFound + ' nicht gefunden.' : ''), 'ok');
+    }catch(e){
+      billstatus('Abbuchen fehlgeschlagen: ' + e.message, 'err');
+    }finally{ $('#btn-bill').disabled = false; }
+  };
+  $('#btn-unbill').onclick = async ()=>{
+    if(!confirm('Abbuchung für „' + billDocId() + '" im Sheet zurücknehmen?')) return;
+    $('#btn-unbill').disabled = true; billstatus('Nehme Abbuchung zurück …');
+    try{
+      const r = await billApi('unmarkBilled', {});
+      model.items.forEach(it=>{ it.billed = false; });
+      $('#btn-unbill').hidden = true;
+      billstatus((r.cleared || 0) + ' Einträge wieder freigegeben.', 'ok');
+    }catch(e){
+      billstatus('Rücknahme fehlgeschlagen: ' + e.message, 'err');
+    }finally{ $('#btn-unbill').disabled = false; }
   };
 
   // Beim Laden automatisch verbinden (URL ist fest hinterlegt) — leise scheitern lassen.
