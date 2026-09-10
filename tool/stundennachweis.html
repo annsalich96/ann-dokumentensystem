@@ -197,6 +197,13 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <div id="entries"></div>
   <div class="btnbar"><button class="ghost" id="btn-add">+ Zeile</button></div>
 
+  <h2>Abrechnung</h2>
+  <div class="fg">
+    <div class="fld"><label>Einheit</label><select id="f-einheit"><option value="stunden">Stunden</option><option value="tage">Tage</option></select></div>
+    <div class="fld"><label>Stunden pro Tag</label><input type="number" id="f-stdtag" step="0.5" min="1" value="8"></div>
+  </div>
+  <p class="sub" style="margin-top:8px">Im Tage-Modus zeigt der Nachweis nur die Gesamt-Zeile in Tagen (Summe ÷ Stunden/Tag, kaufmännisch auf 0,25). Die Stunden-Spalte je Zeile entfällt.</p>
+
   <h2>Dokument</h2>
   <div class="btnbar">
     <button id="btn-pdf">PDF herunterladen</button>
@@ -259,6 +266,7 @@ let model = {
     projekt:{ name:"Kant Center – Parkhaus", strasse:"Krumme Str. 48", ort:"10627 Berlin" },
     zeitraum:{ von:"", bis:"" }
   },
+  settings:{ einheit:"stunden", stundenProTag:8 },
   items:[
     { datum:"", taetigkeit:"Erstellung von Plänen", bearbeiter:"Ann-Kathrin Salich", stunden:0.5 },
     { datum:"", taetigkeit:"Absprache mit APCOA",   bearbeiter:"Ann-Kathrin Salich", stunden:1.0 }
@@ -268,6 +276,15 @@ function isoToday(){ return new Date().toISOString().slice(0,10); }
 function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
 function hours(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" Std."; }
 function totalHours(){ return model.items.reduce((s,r)=>s+(Number(r.stunden)||0),0); }
+
+/* Einheit Stunden/Tage (nur Darstellung; erfasst wird immer in Stunden) */
+function normalizeModel(){ model.settings = Object.assign({ einheit:"stunden", stundenProTag:8 }, model.settings || {}); }
+function isTage(){ return model.settings && model.settings.einheit === "tage"; }
+function roundQuarter(n){ return Math.round((Number(n)||0)*4)/4; }        /* kaufmännisch auf 0,25 */
+function totalDays(){ const f = (model.settings && +model.settings.stundenProTag) || 8; return roundQuarter(totalHours()/f); }
+function fmtDays(n){ n = Number(n)||0; const s = n.toLocaleString("de-DE",{minimumFractionDigits:0,maximumFractionDigits:2}); return s + (n === 1 ? " Tag" : " Tage"); }
+function totalDocLabel(){ return isTage() ? fmtDays(totalDays()) : hours(totalHours()); }
+function editorTotalLabel(){ return isTage() ? `${fmtDays(totalDays())} (${hours(totalHours())})` : hours(totalHours()); }
 
 /* ============================================================
    3) PAGINATION-ENGINE
@@ -363,11 +380,12 @@ function renderMeta(page){
 function renderTable(page, p){
   const topK = p.first ? DS.table.topRuleK_first : DS.table.topRuleK_cont;
   const C = DS.table.cols, span = DS.table.rowSpan;
+  const showHours = !isTage();
   rule(page, topK, DS.colX(1), DS.rightEdge);
   page.appendChild(band('s-thead', {leftMM:DS.colX(C.datum),      k:topK}, 'DATUM'));
   page.appendChild(band('s-thead', {leftMM:DS.colX(C.taetigkeit), k:topK}, 'TÄTIGKEIT'));
   page.appendChild(band('s-thead', {leftMM:DS.colX(C.bearbeiter), k:topK}, 'BEARBEITER'));
-  page.appendChild(band('s-thead', {right:true,                   k:topK}, 'ZEITAUFWAND'));
+  if(showHours) page.appendChild(band('s-thead', {right:true,     k:topK}, 'ZEITAUFWAND'));
   rule(page, topK + 1, DS.colX(1), DS.rightEdge);
   const rows = p.rows.filter(Boolean);
   rows.forEach((row,i)=>{
@@ -375,7 +393,7 @@ function renderTable(page, p){
     page.appendChild(band('s-cell', {leftMM:DS.colX(C.datum),      k:bandTopK, span}, deDate(row.datum) || '—'));
     page.appendChild(band('s-cell', {leftMM:DS.colX(C.taetigkeit), k:bandTopK, span}, row.taetigkeit || ''));
     page.appendChild(band('s-cell', {leftMM:DS.colX(C.bearbeiter), k:bandTopK, span}, row.bearbeiter || ''));
-    page.appendChild(band('s-cell', {right:true,                   k:bandTopK, span}, hours(row.stunden)));
+    if(showHours) page.appendChild(band('s-cell', {right:true,     k:bandTopK, span}, hours(row.stunden)));
     rule(page, bandTopK + span, DS.colX(1), DS.rightEdge);
   });
   return topK + 1 + rows.length*span;
@@ -384,7 +402,7 @@ function renderTable(page, p){
 function renderTotal(page, k){
   const span = DS.total.span;
   page.appendChild(band('s-total', {leftMM:DS.colX(DS.total.labelCol), k, span}, 'Gesamt'));
-  page.appendChild(band('s-total', {right:true,                        k, span}, hours(totalHours())));
+  page.appendChild(band('s-total', {right:true,                        k, span}, totalDocLabel()));
   rule(page, k + span, DS.colX(DS.total.labelCol), DS.rightEdge);   // Linie nur unter dem Summenblock
 }
 
@@ -485,12 +503,13 @@ function exportPDF(){
     }
 
     // Tabelle
+    const showHours = !isTage();
     const topK = p.first ? DS.table.topRuleK_first : DS.table.topRuleK_cont;
     hline(topK, DS.colX(1), DS.rightEdge);
     put('s-thead', {leftMM:DS.colX(C.datum),      k:topK}, 'DATUM');
     put('s-thead', {leftMM:DS.colX(C.taetigkeit), k:topK}, 'TÄTIGKEIT');
     put('s-thead', {leftMM:DS.colX(C.bearbeiter), k:topK}, 'BEARBEITER');
-    put('s-thead', {right:true,                   k:topK}, 'ZEITAUFWAND');
+    if(showHours) put('s-thead', {right:true,     k:topK}, 'ZEITAUFWAND');
     hline(topK + 1, DS.colX(1), DS.rightEdge);
     const rows = p.rows.filter(Boolean);
     rows.forEach((row, i) => {
@@ -498,14 +517,14 @@ function exportPDF(){
       put('s-cell', {leftMM:DS.colX(C.datum),      k:bt, span}, deDate(row.datum) || '—');
       put('s-cell', {leftMM:DS.colX(C.taetigkeit), k:bt, span}, row.taetigkeit || '');
       put('s-cell', {leftMM:DS.colX(C.bearbeiter), k:bt, span}, row.bearbeiter || '');
-      put('s-cell', {right:true,                   k:bt, span}, hours(row.stunden));
+      if(showHours) put('s-cell', {right:true,     k:bt, span}, hours(row.stunden));
       hline(bt + span, DS.colX(1), DS.rightEdge);
     });
 
     if(p.last){
       const gk = topK + 1 + rows.length*span, gs = DS.total.span;
       put('s-total', {leftMM:DS.colX(DS.total.labelCol), k:gk, span:gs}, 'Gesamt');
-      put('s-total', {right:true,                        k:gk, span:gs}, hours(totalHours()));
+      put('s-total', {right:true,                        k:gk, span:gs}, totalDocLabel());
       hline(gk + gs, DS.colX(DS.total.labelCol), DS.rightEdge);
     }
 
@@ -591,6 +610,9 @@ bind('#f-auftrag-nr','meta.auftrag.nr'); bind('#f-auftrag-bez','meta.auftrag.bez
 bind('#f-proj-name','meta.projekt.name'); bind('#f-proj-str','meta.projekt.strasse'); bind('#f-proj-ort','meta.projekt.ort');
 bind('#f-von','meta.zeitraum.von'); bind('#f-bis','meta.zeitraum.bis');
 
+$('#f-einheit').addEventListener('change', e=>{ model.settings.einheit = e.target.value; renderEntries(); render(); });
+$('#f-stdtag').addEventListener('input', e=>{ model.settings.stundenProTag = parseFloat(e.target.value)||8; updateTotal(); render(); });
+
 const entriesBox = $('#entries');
 function escapeHtml(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function renderEntries(){
@@ -612,10 +634,10 @@ function renderEntries(){
     entriesBox.appendChild(row);
   });
   const tot = document.createElement('div'); tot.className='e-total';
-  tot.innerHTML = `<span>Gesamt</span><span id="e-total-val">${hours(totalHours())}</span>`;
+  tot.innerHTML = `<span>Gesamt</span><span id="e-total-val">${editorTotalLabel()}</span>`;
   entriesBox.appendChild(tot);
 }
-function updateTotal(){ const el = $('#e-total-val'); if(el) el.textContent = hours(totalHours()); }
+function updateTotal(){ const el = $('#e-total-val'); if(el) el.textContent = editorTotalLabel(); }
 
 /* Tippen: nur Modell + Vorschau + Summe aktualisieren — NICHT die Eingabefelder neu bauen
    (sonst verliert das Feld den Fokus mitten im Satz). */
@@ -788,12 +810,14 @@ $('#btn-pdf').onclick   = ()=>{ try{ exportPDF(); }catch(err){ alert('PDF-Export
 $('#btn-print').onclick = ()=> window.print();
 
 function syncForm(){
+  normalizeModel();
   const g=(id,v)=>{ $(id).value = v||''; };
   g('#f-title',model.header.title);
   g('#f-place',model.header.place); g('#f-date',model.header.date);
   g('#f-auftrag-nr',model.meta.auftrag.nr); g('#f-auftrag-bez',model.meta.auftrag.bez);
   g('#f-proj-name',model.meta.projekt.name); g('#f-proj-str',model.meta.projekt.strasse); g('#f-proj-ort',model.meta.projekt.ort);
   g('#f-von',model.meta.zeitraum.von); g('#f-bis',model.meta.zeitraum.bis);
+  $('#f-einheit').value = model.settings.einheit; $('#f-stdtag').value = model.settings.stundenProTag;
 }
 
 /* ---- Zoom ---- */
