@@ -196,13 +196,16 @@ function cleanDescriptions(p){
   var props = PropertiesService.getScriptProperties();
   var provider = (props.getProperty('AI_PROVIDER') || 'openai').toLowerCase();
   var maxTok = Math.min(4096, 300 + items.length * 90);
+  var maxChars = parseInt(p.maxChars, 10); if(isNaN(maxChars) || maxChars < 10) maxChars = 0;
 
   var sys =
     'Du redigierst Tätigkeitsbeschreibungen für den Stundennachweis eines Architektur- und Innenarchitekturbüros.\n' +
     'Wandle jeden Eintrag in knappes, professionelles Deutsch um, wie es in einem Stundennachweis an einen Auftraggeber steht.\n' +
     'Regeln:\n' +
     '- Deutsch, Nominalstil, sachlich. Keine Ich-Form, keine Anrede, keine Füllwörter, kein Datum, keine Uhrzeit, keine Personennamen.\n' +
-    '- Nichts erfinden. Nur sprachlich glätten und präzisieren; Bedeutung und Umfang beibehalten, Länge ähnlich wie das Original.\n' +
+    '- Nichts erfinden. Nur sprachlich glätten und präzisieren; Bedeutung erhalten.\n' +
+    (maxChars ? '- HARTE LÄNGENGRENZE: jede Beschreibung höchstens ' + maxChars + ' Zeichen inklusive Leerzeichen. Lieber knapper und mit gängigen Abkürzungen (z. B. „Abstimmung“ statt „Abstimmung und Koordination“) als überschreiten; die Kernaussage muss erhalten bleiben.\n'
+              : '- Länge ähnlich wie das Original.\n') +
     '- Architektur-/HOAI-Vokabular verwenden, wenn es eindeutig passt (z. B. Ausführungsplanung, Detail, Abstimmung, Koordination, Aufmaß, Bemusterung, Leistungsverzeichnis).\n' +
     '- Einheitliche Terminologie über alle Einträge.\n' +
     '- Leere oder unverständliche Einträge unverändert zurückgeben.\n' +
