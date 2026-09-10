@@ -206,6 +206,7 @@ function cleanDescriptions(p){
     '- Nichts erfinden. Nur sprachlich glätten und präzisieren; Bedeutung erhalten.\n' +
     (maxChars ? '- HARTE LÄNGENGRENZE: jede Beschreibung höchstens ' + maxChars + ' Zeichen inklusive Leerzeichen. Lieber knapper und mit gängigen Abkürzungen (z. B. „Abstimmung“ statt „Abstimmung und Koordination“) als überschreiten; die Kernaussage muss erhalten bleiben.\n'
               : '- Länge ähnlich wie das Original.\n') +
+    '- Hat ein Eintrag ein Feld "max", MUSS der bereinigte Text höchstens so viele Zeichen haben (zur Not weiter verdichten, Nebensächliches weglassen, abkürzen) — die Zahl ist eine harte Obergrenze.\n' +
     '- Architektur-/HOAI-Vokabular verwenden, wenn es eindeutig passt (z. B. Ausführungsplanung, Detail, Abstimmung, Koordination, Aufmaß, Bemusterung, Leistungsverzeichnis).\n' +
     '- Einheitliche Terminologie über alle Einträge.\n' +
     '- Leere oder unverständliche Einträge unverändert zurückgeben.\n' +

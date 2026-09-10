@@ -265,9 +265,29 @@ const DS = {
   footer:{ k1:57, k2:58, blocks:[1,3,6,8] }   /* ~15 mm Rand unten wie oben/seitlich */
 };
 
-/* Max. Zeichen für die TÄTIGKEIT-Spalte im Dokument (Rota 8 pt, Spalte 3 bis vor
-   BEARBEITER = 72,3 mm; gemessen ~56 Zeichen, konservativ 55). Wird an die KI übergeben. */
-const TAET_MAX_CHARS = 55;
+/* TÄTIGKEIT-Spalte im Dokument: Spalte 3 bis vor BEARBEITER, minus 1 Gutter.
+   Text wird in Rota 8 pt gesetzt -> echte Breite messen, nicht nur Zeichen zählen. */
+const TAET_AVAIL_MM = DS.colX(8) - DS.colX(3) - DS.gutter;                 // ~72,3 mm
+const TAET_AVAIL_PX = TAET_AVAIL_MM * 96/25.4;
+const TAET_MAX_CHARS = Math.floor(TAET_AVAIL_MM / 1.30);                   // grober Richtwert für die KI (~55)
+const _taetCtx = document.createElement('canvas').getContext('2d');
+function taetWidthPx(s){
+  _taetCtx.font = (8*96/72) + 'px "Rota","Helvetica Neue",Arial,sans-serif';
+  return _taetCtx.measureText(String(s || '')).width;
+}
+function taetFits(s){ return taetWidthPx(s) <= TAET_AVAIL_PX; }
+function ellipsizeToWidth(s){
+  s = String(s || '').trim();
+  if(taetFits(s)) return s;
+  const words = s.split(/\s+/); let out = '';
+  for(let k=0;k<words.length;k++){
+    const cand = (out ? out + ' ' : '') + words[k];
+    if(!taetFits(cand + '…')) break;
+    out = cand;
+  }
+  if(!out){ out = s; while(out.length > 1 && !taetFits(out + '…')) out = out.slice(0, -1); }
+  return out + '…';
+}
 
 /* Büroprofil — EIN Absender (ANN ARCHITECTURE). Später aus Google-Sheet »Company Info«. */
 const BUERO = { blocks:[
@@ -852,19 +872,53 @@ $('#btn-demo').onclick = ()=>{
 
   /* ---- KI: Tätigkeitsbeschreibungen aufbereiten ---- */
   const kistatus = (m,c)=>{ const el=$('#ki-status'); if(el){ el.textContent=m||''; el.className='sub '+(c||''); } };
-  async function kiCleanChunked(list){
+  const kiPhase = () => (selPh && selPh.value && selPh.selectedOptions[0]) ? selPh.selectedOptions[0].textContent : '';
+  async function kiCall(list){                         // list: [{i,text,max?}]
     const CH = 10, out = [];
-    const phase = (selPh && selPh.value && selPh.selectedOptions[0]) ? selPh.selectedOptions[0].textContent : '';
     for(let s=0; s<list.length; s+=CH){
       const r = await api('cleanDescriptions', {
         items: JSON.stringify(list.slice(s, s+CH)),
         project: model.meta.projekt.name || '',
-        phase: phase,
+        phase: kiPhase(),
         maxChars: String(TAET_MAX_CHARS)
       }, 45000);
       (r && r.items || []).forEach(o=> out.push(o));
     }
     return out;
+  }
+  function applyKi(res){                               // schreibt {i,text} ins Modell
+    let n = 0;
+    res.forEach(o=>{
+      const it = model.items[o.i];
+      if(!it || o.text == null || !String(o.text).trim()) return;
+      if(it.taetigkeitOriginal == null) it.taetigkeitOriginal = it.taetigkeit;
+      const t = String(o.text).trim();
+      if(t !== it.taetigkeit){ it.taetigkeit = t; n++; }
+    });
+    return n;
+  }
+  /* Solange nachkürzen lassen, bis jede Beschreibung in die Dokumentzeile passt.
+     Danach als letzte Sicherung am Wort abschneiden. */
+  async function kiFitToLine(){
+    for(let round=0; round<3; round++){
+      const over = model.items
+        .map((r,i)=>({ i, text: r.taetigkeit || '' }))
+        .filter(x => x.text.trim() && !taetFits(x.text));
+      if(!over.length) break;
+      const list = over.map(x=>{
+        const ratio = TAET_AVAIL_PX / taetWidthPx(x.text);
+        return { i:x.i, text:x.text, max: Math.max(12, Math.floor(x.text.length * ratio * 0.92)) };
+      });
+      kistatus(list.length + ' Beschreibung(en) noch zu lang – kürzen …');
+      let res; try{ res = await kiCall(list); }catch(_){ break; }
+      applyKi(res); renderEntries(); render();
+    }
+    let hard = 0;
+    model.items.forEach(it=>{
+      if((it.taetigkeit||'').trim() && !taetFits(it.taetigkeit)){ it.taetigkeit = ellipsizeToWidth(it.taetigkeit); hard++; }
+    });
+    if(hard){ renderEntries(); render(); }
+    return hard;
   }
   $('#btn-ki').onclick = async ()=>{
     const list = model.items
@@ -874,18 +928,12 @@ $('#btn-demo').onclick = ()=>{
     $('#btn-ki').disabled = true;
     kistatus('KI bereitet ' + list.length + ' Beschreibungen auf …');
     try{
-      const res = await kiCleanChunked(list);
-      let n = 0;
-      res.forEach(o=>{
-        const it = model.items[o.i];
-        if(!it || o.text == null || !String(o.text).trim()) return;
-        if(it.taetigkeitOriginal == null) it.taetigkeitOriginal = it.taetigkeit;
-        const t = String(o.text).trim();
-        if(t !== it.taetigkeit){ it.taetigkeit = t; n++; }
-      });
+      const n = applyKi(await kiCall(list));
       renderEntries(); render();
       $('#btn-ki-reset').hidden = n === 0;
-      kistatus(n + ' von ' + list.length + ' Beschreibungen überarbeitet. Jede Zeile ist weiter editierbar; der Originaltext steht darunter.', 'ok');
+      const hard = await kiFitToLine();
+      kistatus(n + ' von ' + list.length + ' Beschreibungen überarbeitet und auf Zeilenbreite gebracht'
+        + (hard ? ' (' + hard + ' davon am Wort gekürzt).' : '.'), 'ok');
     }catch(e){
       kistatus('KI-Aufbereitung fehlgeschlagen: ' + e.message, 'err');
     }finally{ $('#btn-ki').disabled = false; }
