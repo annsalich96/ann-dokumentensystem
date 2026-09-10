@@ -154,7 +154,7 @@ function getCompanyInfo(){
 function getProjectMeta(projectId, phaseId){
   if(!projectId) throw new Error('project fehlt');
   const pr = indexBy_(rows_(CONFIG.TABS.projects), 'Project_ID')[projectId] || {};
-  const cl = indexBy_(rows_(CONFIG.TABS.clients), 'Client_ID')[str_(pr['Client'])] || {};
+  const cl = indexBy_(rowsSafe_(CONFIG.TABS.clients), 'Client_ID')[str_(pr['Client'])] || {};
   return {
     id:          projectId,
     name:        str_(pr['Project Name']) || projectId,
@@ -172,13 +172,14 @@ function getProjectMeta(projectId, phaseId){
   };
 }
 
-/* "LP 05-KANT CENTER" / "Phase 05-…" -> "LP 05 — Ausführungsplanung" (aus Tab `Phases`) */
+/* "LP 05-KANT CENTER" / "Phase 05-…" -> "LP 05 — Ausführungsplanung" (aus Tab `Phases`).
+   Fällt bei fehlendem Tab / Treffer immer auf den Rohwert zurück. */
 function phaseLabel_(phaseId){
   const s = str_(phaseId); if(!s) return '';
   const m = s.match(/^(?:LP|Phase)\s*0*(\d+)/i);
   if(!m) return s;
   const code = 'LP ' + (m[1].length < 2 ? '0' + m[1] : m[1]);
-  const row = indexBy_(rows_(CONFIG.TABS.phases), 'Phase_ID')[code];
+  const row = indexBy_(rowsSafe_(CONFIG.TABS.phases), 'Phase_ID')[code];
   return (row && str_(row['Phase Name'])) ? code + ' — ' + str_(row['Phase Name']) : s;
 }
 
@@ -353,6 +354,7 @@ function rows_(tab){
   }
   return (_rowsMemo[tab] = out);
 }
+function rowsSafe_(tab){ try{ return rows_(tab); }catch(e){ return []; } }   // fehlender Tab -> [] statt Fehler
 function indexBy_(arr, key){ const m={}; arr.forEach(function(o){ const k=str_(o[key]); if(k) m[k]=o; }); return m; }
 function str_(v){ return v==null ? '' : String(v).trim(); }
 function num_(v){ const n=parseFloat(String(v).replace(',', '.')); return isNaN(n)?0:n; }
