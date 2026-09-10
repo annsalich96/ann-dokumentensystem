@@ -868,6 +868,7 @@ $('#btn-demo').onclick = ()=>{
         recordId: it.recordId || '', billed: !!it.billed
       }));
       $('#btn-ki-reset').hidden = true;
+      $('#btn-unbill').hidden = !model.items.some(it => it.billed);   // schon abgerechnete geladen -> Rücknahme anbieten
       renderEntries(); render();
       const warn = d.unresolved ? '  ·  ' + d.unresolved + ' ohne Tätigkeitsname' : '';
       const sk = skipped ? '  ·  ' + skipped + ' bereits abgerechnet ausgeblendet' : '';
