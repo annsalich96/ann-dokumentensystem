@@ -9,8 +9,9 @@ Format: Entscheidung / Grund / Alternativen / Konsequenz.
 - **Entscheidung:** Vier Erweiterungen des Stundennachweis-Tools, Details in
   [[PLAN_KI-AUFBEREITUNG_UND_ABBUCHUNG]]:
   1. **KI-Aufbereitung** der Tätigkeitstexte per Button, ein Aufruf für alle Zeilen, über
-     die bestehende Apps-Script-Web-App (`cleanDescriptions`, Anthropic-Key in
-     Script-Properties). Editor zeigt neuen Text über dem Original, Vorschau sofort.
+     die bestehende Apps-Script-Web-App (`cleanDescriptions`). Anbieter **OpenAI**
+     (Standard, `gpt-4.1-mini`), per `AI_PROVIDER` auf Anthropic umschaltbar; Key in den
+     Script-Properties. Editor zeigt neuen Text über dem Original, Vorschau sofort.
   2. **Abbuchen** — erster Schreibpfad. Fünf neue Spalten am Ende von `TimeTrackingRecords`
      (`Billing_Description`, `Billed`, `Billed_On`, `Billed_Document`, `Billing_Note`),
      eigener Button getrennt vom PDF-Export, plus „Abbuchung rückgängig". Schutz:

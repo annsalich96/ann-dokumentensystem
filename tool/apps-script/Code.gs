@@ -2,7 +2,8 @@
  * ann architecture — Dokumenten-System
  * Backend-Layer (Phase 1): Google Apps Script Web App über »Project Management NEW«.
  * Die Tabelle wird NUR GELESEN. Für die Textaufbereitung ruft das Skript zusätzlich
- * die Anthropic-API (Key in den Script-Properties) — kein Schreibzugriff auf das Sheet.
+ * einen KI-Anbieter (OpenAI oder Anthropic, Key in den Script-Properties) — kein
+ * Schreibzugriff auf das Sheet.
  *
  * Endpunkte (GET, ?action=…):
  *   ping
@@ -12,8 +13,10 @@
  *   getTimeRecords&project=…&phase=…&service=…&from=YYYY-MM-DD&to=YYYY-MM-DD&user=…
  *   cleanDescriptions&items=<JSON>[&project=…&phase=…]  -> KI-bereinigte Tätigkeitstexte
  *
- * Script-Properties: ANTHROPIC_API_KEY (nötig für cleanDescriptions),
- *                    ANTHROPIC_MODEL   (optional, Standard: claude-sonnet-5)
+ * Script-Properties für cleanDescriptions:
+ *   AI_PROVIDER        optional: 'openai' (Standard) oder 'anthropic'
+ *   OPENAI_API_KEY     nötig bei openai   ·  OPENAI_MODEL     optional, Standard: gpt-4.1-mini
+ *   ANTHROPIC_API_KEY  nötig bei anthropic ·  ANTHROPIC_MODEL optional, Standard: claude-sonnet-5
  *
  * Deploy: siehe README.md in diesem Ordner.
  */
@@ -181,7 +184,7 @@ function phaseLabel_(phaseId){
 
 /* ------------------------------------------------------------------ */
 /*  KI: Tätigkeitsbeschreibungen für den Stundennachweis aufbereiten  */
-/*  Ruft die Anthropic-API (Key in den Script-Properties).            */
+/*  Ruft OpenAI oder Anthropic (Key in den Script-Properties).        */
 /*  Kein Schreibzugriff auf die Tabelle.                              */
 /* ------------------------------------------------------------------ */
 function cleanDescriptions(p){
@@ -190,9 +193,8 @@ function cleanDescriptions(p){
   if(!Array.isArray(items) || !items.length) return { items: [] };
 
   var props = PropertiesService.getScriptProperties();
-  var key = props.getProperty('ANTHROPIC_API_KEY');
-  if(!key) throw new Error('ANTHROPIC_API_KEY fehlt in den Script-Properties');
-  var modelId = props.getProperty('ANTHROPIC_MODEL') || 'claude-sonnet-5';
+  var provider = (props.getProperty('AI_PROVIDER') || 'openai').toLowerCase();
+  var maxTok = Math.min(4096, 300 + items.length * 90);
 
   var sys =
     'Du redigierst Tätigkeitsbeschreibungen für den Stundennachweis eines Architektur- und Innenarchitekturbüros.\n' +
@@ -205,32 +207,57 @@ function cleanDescriptions(p){
     '- Leere oder unverständliche Einträge unverändert zurückgeben.\n' +
     'Antworte AUSSCHLIESSLICH mit JSON, exakt: {"items":[{"i":<zahl>,"text":"<bereinigt>"}]} — gleiche i-Werte wie in der Eingabe, kein Markdown, keine Erklärung.';
 
-  var userObj = { projekt: str_(p.project), phase: str_(p.phase), eintraege: items };
-  var body = {
-    model: modelId,
-    max_tokens: Math.min(4096, 300 + items.length * 90),
-    system: sys,
-    messages: [{ role: 'user', content: 'Eingabe:\n' + JSON.stringify(userObj) }]
-  };
+  var userText = 'Eingabe:\n' + JSON.stringify({ projekt: str_(p.project), phase: str_(p.phase), eintraege: items });
 
-  var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-    payload: JSON.stringify(body)
-  });
-  var code = res.getResponseCode();
-  var txt = res.getContentText();
-  if(code !== 200) throw new Error('Anthropic ' + code + ': ' + txt.slice(0, 300));
+  var raw = (provider === 'anthropic')
+    ? aiAnthropic_(props, sys, userText, maxTok)
+    : aiOpenAI_(props, sys, userText, maxTok);
 
-  var data = JSON.parse(txt);
-  var out = (data.content && data.content[0] && data.content[0].text) || '';
-  var parsed = parseModelJson_(out);
+  var parsed = parseModelJson_(raw);
   if(!parsed || !parsed.items) throw new Error('KI-Antwort nicht lesbar');
 
   var clean = parsed.items
     .map(function(o){ return { i: Number(o.i), text: str_(o.text) }; })
     .filter(function(o){ return !isNaN(o.i); });
   return { items: clean };
+}
+
+function aiOpenAI_(props, sys, userText, maxTok){
+  var key = props.getProperty('OPENAI_API_KEY');
+  if(!key) throw new Error('OPENAI_API_KEY fehlt in den Script-Properties');
+  var model = props.getProperty('OPENAI_MODEL') || 'gpt-4.1-mini';
+  var res = UrlFetchApp.fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + key },
+    payload: JSON.stringify({
+      model: model,
+      messages: [{ role: 'system', content: sys }, { role: 'user', content: userText }],
+      response_format: { type: 'json_object' },
+      max_completion_tokens: maxTok
+    })
+  });
+  var code = res.getResponseCode(), txt = res.getContentText();
+  if(code !== 200) throw new Error('OpenAI ' + code + ': ' + txt.slice(0, 300));
+  var data = JSON.parse(txt);
+  return (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+}
+
+function aiAnthropic_(props, sys, userText, maxTok){
+  var key = props.getProperty('ANTHROPIC_API_KEY');
+  if(!key) throw new Error('ANTHROPIC_API_KEY fehlt in den Script-Properties');
+  var model = props.getProperty('ANTHROPIC_MODEL') || 'claude-sonnet-5';
+  var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify({
+      model: model, max_tokens: maxTok,
+      system: sys, messages: [{ role: 'user', content: userText }]
+    })
+  });
+  var code = res.getResponseCode(), txt = res.getContentText();
+  if(code !== 200) throw new Error('Anthropic ' + code + ': ' + txt.slice(0, 300));
+  var data = JSON.parse(txt);
+  return (data.content && data.content[0] && data.content[0].text) || '';
 }
 
 function parseModelJson_(s){

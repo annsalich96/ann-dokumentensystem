@@ -17,10 +17,10 @@ Tätigkeitstexte in einheitliches, professionelles Architektendeutsch für den S
 - **Auslöser:** Button „Beschreibungen aufbereiten" im Editor. Verarbeitet **alle** Einträge
   des aktuellen Nachweises in **einem** Aufruf (konsistente Terminologie, günstiger).
 - **Weg:** neuer Endpunkt `action=cleanDescriptions` in der Apps-Script-Web-App. Das Script
-  ruft die Anthropic-API per `UrlFetchApp`.
-  - API-Key liegt in den **Script-Properties** (`ANTHROPIC_API_KEY`), von Ann selbst
+  ruft einen KI-Anbieter per `UrlFetchApp`.
+  - **Standard OpenAI** (`OPENAI_API_KEY`, Modell `gpt-4.1-mini`); per `AI_PROVIDER=anthropic`
+    auf Claude umschaltbar. Key liegt in den **Script-Properties**, von Ann selbst
     eingetragen — nie im Browser, nie im Chat.
-  - Modell: `claude-sonnet-5` (gutes Deutsch, kleines Volumen).
   - Input je Eintrag: roher Tätigkeitstext (aufgelöst aus Sub Task → Task → Service),
     optional `TimeTracking.Notes` des Tages, Projekt- und Phasenname als Kontext.
   - Output: bereinigter deutscher Text pro `Record_ID`.

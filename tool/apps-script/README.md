@@ -54,12 +54,17 @@ Google-Tabelle **„Project Management NEW"** (die Mappe hinter deiner AppSheet-
 
 Im Skript-Editor: **Projekteinstellungen (Zahnrad) → Script-Eigenschaften → Eigenschaft hinzufügen**
 
+Standard-Anbieter ist **OpenAI**:
+
 | Eigenschaft | Wert |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | dein Anthropic-API-Key (hier direkt eintragen, **nicht** in einen Chat kopieren) |
-| `ANTHROPIC_MODEL` | optional, Standard `claude-sonnet-5` |
+| `OPENAI_API_KEY` | dein OpenAI-Key `sk-…` — von <https://platform.openai.com/api-keys> („Create new secret key"; vorher unter **Settings → Billing** Guthaben/Zahlungsmittel hinterlegen). Hier direkt eintragen, **nicht** in einen Chat kopieren. |
+| `OPENAI_MODEL` | optional, Standard `gpt-4.1-mini` |
 
-Danach **Version „Neu" bereitstellen**. Ohne Key meldet das Tool „ANTHROPIC_API_KEY fehlt".
+Auf Anthropic umstellen: zusätzlich `AI_PROVIDER` = `anthropic` und `ANTHROPIC_API_KEY`
+(optional `ANTHROPIC_MODEL`, Standard `claude-sonnet-5`).
+
+Danach **Version „Neu" bereitstellen**. Ohne Key meldet das Tool z. B. „OPENAI_API_KEY fehlt".
 
 > `getProjectMeta` und die Klartext-Phasennamen im `getFilterTree` sind seit 2026-09-10 dabei —
 > dafür einmal **Version „Neu" bereitstellen**, sonst antwortet das alte Skript mit
