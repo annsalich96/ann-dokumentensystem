@@ -5,6 +5,30 @@ Format: Entscheidung / Grund / Alternativen / Konsequenz.
 
 ---
 
+## DECISION-008 — KI-Aufbereitung, Abbuchen, Tage-Modus, Projekt-Autofüllung (Ann, 2026-09-10)
+- **Entscheidung:** Vier Erweiterungen des Stundennachweis-Tools, Details in
+  [[PLAN_KI-AUFBEREITUNG_UND_ABBUCHUNG]]:
+  1. **KI-Aufbereitung** der Tätigkeitstexte per Button, ein Aufruf für alle Zeilen, über
+     die bestehende Apps-Script-Web-App (`cleanDescriptions`, Anthropic-Key in
+     Script-Properties). Editor zeigt neuen Text über dem Original, Vorschau sofort.
+  2. **Abbuchen** — erster Schreibpfad. Fünf neue Spalten am Ende von `TimeTrackingRecords`
+     (`Billing_Description`, `Billed`, `Billed_On`, `Billed_Document`, `Billing_Note`),
+     eigener Button getrennt vom PDF-Export, plus „Abbuchung rückgängig". Schutz:
+     `WRITE_SECRET` in Script-Properties, `LockService`, `Record_ID`-Match, `DocSystem_Log`.
+     Filter „nur nicht abgerechnete" im Editor (Standard AN).
+  3. **Tage-Modus** — Umschalter Stunden/Tage, Faktor 8 (einstellbar), nur die Gesamt-Zeile
+     rechnet um, kaufmännisch auf 0,25 gerundet, Anzeige nur „2,75 Tage", Stunden-Spalte
+     pro Zeile ausgeblendet.
+  4. **Projekt-Autofüllung** — `getProjectMeta` (nur lesend), bei Projektwahl werden alle
+     Felder neu gefüllt (überschreiben). Dokument bekommt **einen Adressblock** statt
+     getrennter Straße/PLZ. Auftrags-Nr. + Bezeichnung + Titel bleiben vorerst frei.
+- **Grund:** Anns Anforderungen aus der Praxis (rohe/zweisprachige Zeittexte, keine
+  Doppel-Abrechnung, Tagespauschalen, Projektstammdaten nicht abtippen).
+- **Konsequenz:** Backend wird von rein-lesend auf **additiv schreibend** erweitert —
+  ausschließlich neue Spalten/Tabs, `Project Management NEW` sonst unangetastet
+  ([[SHEET-AENDERUNGEN]]). AppSheet-Anpassungen macht Codex. Umsetzung in 4 Schritten,
+  beginnend mit dem risikofreien Tage-Umschalter (reines Frontend).
+
 ## DECISION-007 — GitHub-Repo `annsalich96/ann-dokumentensystem` (Ann, 2026-09-09)
 - **Entscheidung:** Eigenes Repo, enthält `docs/` + `tool/`. Git-Arbeitskopie = der
   Drive-Projektordner `DOKUMENTEN-SYSTEM/`. `design-sources/` (24-MB-PDF etc.) bleibt via
