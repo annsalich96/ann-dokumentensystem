@@ -86,6 +86,14 @@ button:disabled{opacity:.4;cursor:not-allowed}
 #entries input:focus{outline:2px solid var(--ink);outline-offset:-2px}
 #entries .del{border:0;background:#fff;color:#B0291E;font-size:17px;padding:0;cursor:pointer}
 #entries .num{text-align:right}
+#entries .e-taet{display:flex;flex-direction:column;min-width:0}
+#entries .e-taet>input{flex:0 0 auto}
+#entries .e-orig{display:flex;align-items:flex-start;gap:6px;padding:2px 10px 7px;
+  font-size:11px;line-height:1.35;color:var(--ui-muted)}
+#entries .e-orig>span{flex:1;min-width:0}
+#entries .e-orig>.revert{flex:0 0 auto;border:1px solid var(--ui-border);background:#fff;
+  border-radius:4px;cursor:pointer;font-size:11px;line-height:16px;padding:0 5px;color:var(--ui-muted)}
+#entries .e-orig>.revert:hover{color:var(--ink);border-color:var(--ink)}
 .e-total{display:flex;justify-content:space-between;width:max-content;min-width:100%;
   font-size:13.5px;font-weight:700;padding:11px 10px;box-sizing:border-box}
 
@@ -195,7 +203,12 @@ button:disabled{opacity:.4;cursor:not-allowed}
 
   <h2>Zeiteinträge</h2>
   <div id="entries"></div>
-  <div class="btnbar"><button class="ghost" id="btn-add">+ Zeile</button></div>
+  <div class="btnbar">
+    <button class="ghost" id="btn-add">+ Zeile</button>
+    <button class="ghost" id="btn-ki">Beschreibungen aufbereiten</button>
+    <button class="ghost" id="btn-ki-reset" hidden>Alle Originaltexte</button>
+  </div>
+  <p class="sub" id="ki-status" style="margin-top:8px"></p>
 
   <h2>Abrechnung</h2>
   <div class="fg">
@@ -632,9 +645,13 @@ function renderEntries(){
     '</div>';
   model.items.forEach((r,i)=>{
     const row = document.createElement('div'); row.className='e-row';
+    const hasOrig = r.taetigkeitOriginal != null && r.taetigkeitOriginal !== r.taetigkeit;
     row.innerHTML =
       `<input type="date" data-i="${i}" data-k="datum" value="${r.datum||''}">`+
-      `<input type="text" data-i="${i}" data-k="taetigkeit" value="${escapeHtml(r.taetigkeit)}">`+
+      `<div class="e-taet">`+
+        `<input type="text" data-i="${i}" data-k="taetigkeit" value="${escapeHtml(r.taetigkeit)}">`+
+        (hasOrig ? `<div class="e-orig"><span>${escapeHtml(r.taetigkeitOriginal)}</span><button class="revert" data-i="${i}" title="Originaltext übernehmen">↺</button></div>` : ``)+
+      `</div>`+
       `<input type="text" data-i="${i}" data-k="bearbeiter" value="${escapeHtml(r.bearbeiter)}">`+
       `<input type="number" step="0.25" class="num" data-i="${i}" data-k="stunden" value="${r.stunden??''}">`+
       `<button class="del" data-i="${i}" title="Zeile löschen">×</button>`;
@@ -654,8 +671,13 @@ entriesBox.addEventListener('input', e=>{
   updateTotal(); render();
 });
 entriesBox.addEventListener('click', e=>{
-  if(!e.target.classList.contains('del')) return;
-  model.items.splice(+e.target.dataset.i,1); renderEntries(); render();
+  if(e.target.classList.contains('del')){
+    model.items.splice(+e.target.dataset.i,1); renderEntries(); render(); return;
+  }
+  if(e.target.classList.contains('revert')){
+    const it = model.items[+e.target.dataset.i];
+    if(it && it.taetigkeitOriginal != null){ it.taetigkeit = it.taetigkeitOriginal; renderEntries(); render(); }
+  }
 });
 /* Spaltenbreiten der Eingabetabelle ziehen (Datum / Tätigkeit) */
 (function(){
@@ -708,12 +730,12 @@ $('#btn-demo').onclick = ()=>{
 
   // JSONP statt fetch: umgeht CORS komplett. Setzt voraus, dass die Web-App als
   // „Zugriff: Jeder (in der Organisation)" bereitgestellt ist.
-  function jsonp(base, action, params){
+  function jsonp(base, action, params, timeoutMs){
     return new Promise((resolve, reject)=>{
       const cb = 'sn_cb_' + Date.now() + '_' + Math.floor(Math.random()*1e6);
       const q = new URLSearchParams({ action, callback:cb, ...(params||{}) });
       const s = document.createElement('script');
-      const t = setTimeout(()=>{ done(); reject(new Error('Zeitüberschreitung – Bereitstellung / Zugriff „Jeder" prüfen.')); }, 20000);
+      const t = setTimeout(()=>{ done(); reject(new Error('Zeitüberschreitung – Bereitstellung / Zugriff „Jeder" prüfen.')); }, timeoutMs || 20000);
       function done(){ clearTimeout(t); try{ delete window[cb]; }catch(_){ window[cb] = undefined; } s.remove(); }
       window[cb] = (resp)=>{ done(); (resp && resp.ok) ? resolve(resp.data) : reject(new Error(resp && resp.error || 'Fehler im Skript.')); };
       s.onerror = ()=>{ done(); reject(new Error('Skript nicht erreichbar. Ist es als Web-App mit Zugriff „Jeder" bereitgestellt?')); };
@@ -721,10 +743,10 @@ $('#btn-demo').onclick = ()=>{
       document.head.appendChild(s);
     });
   }
-  async function api(action, params){
+  async function api(action, params, timeoutMs){
     const base = SHEET_URL;
     for(let attempt=0; attempt<2; attempt++){                 // Cold-Start: 1x wiederholen
-      try{ return await jsonp(base, action, params); }
+      try{ return await jsonp(base, action, params, timeoutMs); }
       catch(e){ if(attempt === 0){ await new Promise(r=>setTimeout(r,1500)); continue; } throw e; }
     }
   }
@@ -794,14 +816,63 @@ $('#btn-demo').onclick = ()=>{
       });
       model.items = (d.items || []).map(it => ({
         datum: it.datum || '', taetigkeit: it.taetigkeit || '',
-        bearbeiter: it.bearbeiter || '', stunden: Number(it.stunden) || 0
+        taetigkeitOriginal: it.taetigkeit || '',            // Roh-Text für Vergleich / KI-Aufbereitung
+        bearbeiter: it.bearbeiter || '', stunden: Number(it.stunden) || 0,
+        recordId: it.recordId || ''
       }));
+      $('#btn-ki-reset').hidden = true;
       renderEntries(); render();
       const warn = d.unresolved ? '  ·  ' + d.unresolved + ' ohne Tätigkeitsname' : '';
       say(model.items.length + ' Einträge geladen · ' + hours(d.total) + warn, d.unresolved ? 'err' : 'ok');
     }catch(e){
       say('Laden fehlgeschlagen: ' + e.message, 'err');
     }finally{ loadBtn.disabled = false; }
+  };
+
+  /* ---- KI: Tätigkeitsbeschreibungen aufbereiten ---- */
+  const kistatus = (m,c)=>{ const el=$('#ki-status'); if(el){ el.textContent=m||''; el.className='sub '+(c||''); } };
+  async function kiCleanChunked(list){
+    const CH = 10, out = [];
+    const phase = (selPh && selPh.value && selPh.selectedOptions[0]) ? selPh.selectedOptions[0].textContent : '';
+    for(let s=0; s<list.length; s+=CH){
+      const r = await api('cleanDescriptions', {
+        items: JSON.stringify(list.slice(s, s+CH)),
+        project: model.meta.projekt.name || '',
+        phase: phase
+      }, 45000);
+      (r && r.items || []).forEach(o=> out.push(o));
+    }
+    return out;
+  }
+  $('#btn-ki').onclick = async ()=>{
+    const list = model.items
+      .map((r,i)=>({ i, text: (r.taetigkeitOriginal != null ? r.taetigkeitOriginal : r.taetigkeit) || '' }))
+      .filter(x => x.text.trim());
+    if(!list.length){ kistatus('Keine Tätigkeitstexte vorhanden.', 'err'); return; }
+    $('#btn-ki').disabled = true;
+    kistatus('KI bereitet ' + list.length + ' Beschreibungen auf …');
+    try{
+      const res = await kiCleanChunked(list);
+      let n = 0;
+      res.forEach(o=>{
+        const it = model.items[o.i];
+        if(!it || o.text == null || !String(o.text).trim()) return;
+        if(it.taetigkeitOriginal == null) it.taetigkeitOriginal = it.taetigkeit;
+        const t = String(o.text).trim();
+        if(t !== it.taetigkeit){ it.taetigkeit = t; n++; }
+      });
+      renderEntries(); render();
+      $('#btn-ki-reset').hidden = n === 0;
+      kistatus(n + ' von ' + list.length + ' Beschreibungen überarbeitet. Jede Zeile ist weiter editierbar; der Originaltext steht darunter.', 'ok');
+    }catch(e){
+      kistatus('KI-Aufbereitung fehlgeschlagen: ' + e.message, 'err');
+    }finally{ $('#btn-ki').disabled = false; }
+  };
+  $('#btn-ki-reset').onclick = ()=>{
+    model.items.forEach(it=>{ if(it.taetigkeitOriginal != null) it.taetigkeit = it.taetigkeitOriginal; });
+    renderEntries(); render();
+    $('#btn-ki-reset').hidden = true;
+    kistatus('Originaltexte wiederhergestellt.');
   };
 
   // Beim Laden automatisch verbinden (URL ist fest hinterlegt) — leise scheitern lassen.

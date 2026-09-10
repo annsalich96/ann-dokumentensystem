@@ -48,6 +48,18 @@ Google-Tabelle **„Project Management NEW"** (die Mappe hinter deiner AppSheet-
 | `…/exec?action=getCompanyInfo` | Büroangaben für die Fußzeile |
 | `…/exec?action=getProjectMeta&project=…[&phase=…]` | Projekt-Stammdaten: `{name, address, description, client, billName, billAddress, timeline, startDate, endDate, status, responsible, phase}` |
 | `…/exec?action=getTimeRecords&project=…&phase=…&service=…&from=YYYY-MM-DD&to=YYYY-MM-DD` | Zeiteinträge: `{items:[{datum,taetigkeit,bearbeiter,stunden,recordId}], total, unresolved}` |
+| `…/exec?action=cleanDescriptions&items=<JSON>[&project=…&phase=…]` | KI-bereinigte Tätigkeitstexte: `{items:[{i,text}]}` (ruft die Anthropic-API) |
+
+## KI-Textaufbereitung einrichten (für `cleanDescriptions`)
+
+Im Skript-Editor: **Projekteinstellungen (Zahnrad) → Script-Eigenschaften → Eigenschaft hinzufügen**
+
+| Eigenschaft | Wert |
+| --- | --- |
+| `ANTHROPIC_API_KEY` | dein Anthropic-API-Key (hier direkt eintragen, **nicht** in einen Chat kopieren) |
+| `ANTHROPIC_MODEL` | optional, Standard `claude-sonnet-5` |
+
+Danach **Version „Neu" bereitstellen**. Ohne Key meldet das Tool „ANTHROPIC_API_KEY fehlt".
 
 > `getProjectMeta` und die Klartext-Phasennamen im `getFilterTree` sind seit 2026-09-10 dabei —
 > dafür einmal **Version „Neu" bereitstellen**, sonst antwortet das alte Skript mit

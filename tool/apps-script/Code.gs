@@ -1,7 +1,8 @@
 /**
  * ann architecture — Dokumenten-System
  * Backend-Layer (Phase 1): Google Apps Script Web App über »Project Management NEW«.
- * NUR LESEND. Liefert JSON für das Stundennachweis-Tool und für KI-Agenten.
+ * Die Tabelle wird NUR GELESEN. Für die Textaufbereitung ruft das Skript zusätzlich
+ * die Anthropic-API (Key in den Script-Properties) — kein Schreibzugriff auf das Sheet.
  *
  * Endpunkte (GET, ?action=…):
  *   ping
@@ -9,6 +10,10 @@
  *   getCompanyInfo
  *   getProjectMeta&project=…[&phase=…]     -> Stammdaten eines Projekts (Name, Adresse, …)
  *   getTimeRecords&project=…&phase=…&service=…&from=YYYY-MM-DD&to=YYYY-MM-DD&user=…
+ *   cleanDescriptions&items=<JSON>[&project=…&phase=…]  -> KI-bereinigte Tätigkeitstexte
+ *
+ * Script-Properties: ANTHROPIC_API_KEY (nötig für cleanDescriptions),
+ *                    ANTHROPIC_MODEL   (optional, Standard: claude-sonnet-5)
  *
  * Deploy: siehe README.md in diesem Ordner.
  */
@@ -43,6 +48,7 @@ function doGet(e){
       case 'getFilterTree': data = getFilterTreeCached(p.fresh === '1'); break;
       case 'getCompanyInfo':data = getCompanyInfo(); break;
       case 'getProjectMeta':data = getProjectMeta(p.project || '', p.phase || ''); break;
+      case 'cleanDescriptions': data = cleanDescriptions(p); break;
       case 'getTimeRecords':data = getTimeRecords({
                               project:p.project || '', phase:p.phase || '', service:p.service || '',
                               from:p.from || '', to:p.to || '', user:p.user || ''
@@ -171,6 +177,68 @@ function phaseLabel_(phaseId){
   const code = 'LP ' + (m[1].length < 2 ? '0' + m[1] : m[1]);
   const row = indexBy_(rows_(CONFIG.TABS.phases), 'Phase_ID')[code];
   return (row && str_(row['Phase Name'])) ? code + ' — ' + str_(row['Phase Name']) : s;
+}
+
+/* ------------------------------------------------------------------ */
+/*  KI: Tätigkeitsbeschreibungen für den Stundennachweis aufbereiten  */
+/*  Ruft die Anthropic-API (Key in den Script-Properties).            */
+/*  Kein Schreibzugriff auf die Tabelle.                              */
+/* ------------------------------------------------------------------ */
+function cleanDescriptions(p){
+  var items;
+  try{ items = JSON.parse(p.items || '[]'); }catch(e){ throw new Error('items ist kein gültiges JSON'); }
+  if(!Array.isArray(items) || !items.length) return { items: [] };
+
+  var props = PropertiesService.getScriptProperties();
+  var key = props.getProperty('ANTHROPIC_API_KEY');
+  if(!key) throw new Error('ANTHROPIC_API_KEY fehlt in den Script-Properties');
+  var modelId = props.getProperty('ANTHROPIC_MODEL') || 'claude-sonnet-5';
+
+  var sys =
+    'Du redigierst Tätigkeitsbeschreibungen für den Stundennachweis eines Architektur- und Innenarchitekturbüros.\n' +
+    'Wandle jeden Eintrag in knappes, professionelles Deutsch um, wie es in einem Stundennachweis an einen Auftraggeber steht.\n' +
+    'Regeln:\n' +
+    '- Deutsch, Nominalstil, sachlich. Keine Ich-Form, keine Anrede, keine Füllwörter, kein Datum, keine Uhrzeit, keine Personennamen.\n' +
+    '- Nichts erfinden. Nur sprachlich glätten und präzisieren; Bedeutung und Umfang beibehalten, Länge ähnlich wie das Original.\n' +
+    '- Architektur-/HOAI-Vokabular verwenden, wenn es eindeutig passt (z. B. Ausführungsplanung, Detail, Abstimmung, Koordination, Aufmaß, Bemusterung, Leistungsverzeichnis).\n' +
+    '- Einheitliche Terminologie über alle Einträge.\n' +
+    '- Leere oder unverständliche Einträge unverändert zurückgeben.\n' +
+    'Antworte AUSSCHLIESSLICH mit JSON, exakt: {"items":[{"i":<zahl>,"text":"<bereinigt>"}]} — gleiche i-Werte wie in der Eingabe, kein Markdown, keine Erklärung.';
+
+  var userObj = { projekt: str_(p.project), phase: str_(p.phase), eintraege: items };
+  var body = {
+    model: modelId,
+    max_tokens: Math.min(4096, 300 + items.length * 90),
+    system: sys,
+    messages: [{ role: 'user', content: 'Eingabe:\n' + JSON.stringify(userObj) }]
+  };
+
+  var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify(body)
+  });
+  var code = res.getResponseCode();
+  var txt = res.getContentText();
+  if(code !== 200) throw new Error('Anthropic ' + code + ': ' + txt.slice(0, 300));
+
+  var data = JSON.parse(txt);
+  var out = (data.content && data.content[0] && data.content[0].text) || '';
+  var parsed = parseModelJson_(out);
+  if(!parsed || !parsed.items) throw new Error('KI-Antwort nicht lesbar');
+
+  var clean = parsed.items
+    .map(function(o){ return { i: Number(o.i), text: str_(o.text) }; })
+    .filter(function(o){ return !isNaN(o.i); });
+  return { items: clean };
+}
+
+function parseModelJson_(s){
+  s = String(s || '').trim();
+  try{ return JSON.parse(s); }catch(e){}
+  var a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if(a > -1 && b > a){ try{ return JSON.parse(s.slice(a, b + 1)); }catch(e){} }
+  return null;
 }
 
 /* ------------------------------------------------------------------ */
