@@ -182,8 +182,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <h2>Projekt</h2>
   <div class="fg">
     <div class="fld wide"><label>Projektname</label><input type="text" id="f-proj-name" value="Kant Center – Parkhaus"></div>
-    <div class="fld"><label>Straße</label><input type="text" id="f-proj-str" value="Krumme Str. 48"></div>
-    <div class="fld"><label>PLZ / Ort</label><input type="text" id="f-proj-ort" value="10627 Berlin"></div>
+    <div class="fld wide"><label>Projekt-Adresse</label><textarea id="f-proj-adr" rows="2" style="resize:vertical">Krumme Str. 48
+10627 Berlin</textarea></div>
   </div>
 
   <h2>Aus Time Tracking laden</h2>
@@ -270,7 +270,7 @@ let model = {
   header:{ title:"Anlage 01_Stundennachweis", place:"Berlin", date:isoToday() },
   meta:{
     auftrag:{ nr:"OFF_KHP_N_01_260301", bez:"Nachtrag 01 – Bodenmarkierungsplanung" },
-    projekt:{ name:"Kant Center – Parkhaus", strasse:"Krumme Str. 48", ort:"10627 Berlin" },
+    projekt:{ name:"Kant Center – Parkhaus", adresse:"Krumme Str. 48\n10627 Berlin" },
     zeitraum:{ von:"", bis:"" }
   },
   settings:{ einheit:"stunden", stundenProTag:8 },
@@ -285,7 +285,11 @@ function hours(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFraction
 function totalHours(){ return model.items.reduce((s,r)=>s+(Number(r.stunden)||0),0); }
 
 /* Einheit Stunden/Tage (nur Darstellung; erfasst wird immer in Stunden) */
-function normalizeModel(){ model.settings = Object.assign({ einheit:"stunden", stundenProTag:8 }, model.settings || {}); }
+function normalizeModel(){
+  model.settings = Object.assign({ einheit:"stunden", stundenProTag:8 }, model.settings || {});
+  const pj = model.meta && model.meta.projekt;
+  if(pj && pj.adresse == null) pj.adresse = [pj.strasse, pj.ort].filter(Boolean).join("\n");   // alte Modelle: Straße/PLZ -> Adressblock
+}
 function isTage(){ return model.settings && model.settings.einheit === "tage"; }
 function roundQuarter(n){ return Math.round((Number(n)||0)*4)/4; }        /* kaufmännisch auf 0,25 */
 function totalDays(){ const f = (model.settings && +model.settings.stundenProTag) || 8; return roundQuarter(totalHours()/f); }
@@ -380,9 +384,11 @@ function renderMeta(page){
   page.appendChild(band('s-metaval',   {leftMM:L, k:DS.meta.valK[1]}, model.meta.auftrag.bez || ''));
   page.appendChild(band('s-metalabel', {leftMM:R, k:DS.meta.labelK}, 'PROJEKT:'));
   page.appendChild(band('s-metaval',   {leftMM:R, k:DS.meta.valK[0]}, model.meta.projekt.name || ''));
-  page.appendChild(band('s-metaval',   {leftMM:R, k:DS.meta.valK[1]}, model.meta.projekt.strasse || ''));
-  page.appendChild(band('s-metaval',   {leftMM:R, k:DS.meta.valK[2]}, model.meta.projekt.ort || ''));
+  addrLines(model.meta.projekt.adresse).forEach((ln,i)=>{
+    page.appendChild(band('s-metaval', {leftMM:R, k:DS.meta.valK[1] + i}, ln));
+  });
 }
+function addrLines(s){ return String(s || '').split('\n').map(x=>x.trim()).filter(Boolean).slice(0,3); }
 
 function renderTable(page, p){
   const topK = p.first ? DS.table.topRuleK_first : DS.table.topRuleK_cont;
@@ -505,8 +511,9 @@ function exportPDF(){
       put('s-metaval',   {leftMM:L, k:DS.meta.valK[1]}, model.meta.auftrag.bez || '');
       put('s-metalabel', {leftMM:R, k:DS.meta.labelK}, 'PROJEKT:');
       put('s-metaval',   {leftMM:R, k:DS.meta.valK[0]}, model.meta.projekt.name || '');
-      put('s-metaval',   {leftMM:R, k:DS.meta.valK[1]}, model.meta.projekt.strasse || '');
-      put('s-metaval',   {leftMM:R, k:DS.meta.valK[2]}, model.meta.projekt.ort || '');
+      addrLines(model.meta.projekt.adresse).forEach((ln,i)=>{
+        put('s-metaval', {leftMM:R, k:DS.meta.valK[1] + i}, ln);
+      });
     }
 
     // Tabelle
@@ -614,7 +621,7 @@ function bind(id,path){ const el=$(id); el.addEventListener('input',()=>{ setPat
 bind('#f-title','header.title');
 bind('#f-place','header.place'); bind('#f-date','header.date');
 bind('#f-auftrag-nr','meta.auftrag.nr'); bind('#f-auftrag-bez','meta.auftrag.bez');
-bind('#f-proj-name','meta.projekt.name'); bind('#f-proj-str','meta.projekt.strasse'); bind('#f-proj-ort','meta.projekt.ort');
+bind('#f-proj-name','meta.projekt.name'); bind('#f-proj-adr','meta.projekt.adresse');
 bind('#f-von','meta.zeitraum.von'); bind('#f-bis','meta.zeitraum.bis');
 
 $('#f-einheit').addEventListener('change', e=>{ model.settings.einheit = e.target.value; renderEntries(); render(); });
@@ -750,27 +757,34 @@ $('#btn-demo').onclick = ()=>{
     let hadCache = false;
     try{
       const c = JSON.parse(localStorage.getItem('sn.tree') || 'null');
-      if(c && c.url === SHEET_URL && (Date.now() - c.at) < 21600000){ applyTree(c.tree, ' (gecacht)'); hadCache = true; }
+      if(c && c.v === 2 && c.url === SHEET_URL && (Date.now() - c.at) < 21600000){ applyTree(c.tree, ' (gecacht)'); hadCache = true; }
     }catch(_){}
     if(!hadCache) say('Verbinde mit Time Tracking …');
     // 2) frisch nachladen
     try{
       const t = await api('getFilterTree');
-      try{ localStorage.setItem('sn.tree', JSON.stringify({ url:SHEET_URL, at:Date.now(), tree:t })); }catch(_){}
+      try{ localStorage.setItem('sn.tree', JSON.stringify({ v:2, url:SHEET_URL, at:Date.now(), tree:t })); }catch(_){}
       applyTree(t, ' mit Buchungen.');
     }catch(e){
       if(!hadCache){ tree = null; say('Verbindung fehlgeschlagen: ' + e.message, 'err'); }
     }
   }
 
-  selP.onchange = () => {
+  function applyProjectMeta(m){
+    if(m.name != null){ model.meta.projekt.name = m.name; $('#f-proj-name').value = m.name; }
+    if(m.address != null){ model.meta.projekt.adresse = m.address; $('#f-proj-adr').value = m.address; }
+    render();
+  }
+  selP.onchange = async () => {
     const p = curProject();
     fillSelect(selPh, p ? p.phases : [], '— alle Phasen —');
     selS.innerHTML = '<option value="">— alle Leistungen —</option>'; selS.disabled = true;
     loadBtn.disabled = !p;
-    if(p){                                  // Projektname ins Dokument übernehmen (überschreibbar)
-      model.meta.projekt.name = p.name; $('#f-proj-name').value = p.name; render();
-    }
+    if(!p) return;
+    applyProjectMeta({ name: p.name });                  // Name haben wir sofort
+    try{                                                 // Stammdaten (Adresse …) nachladen; still scheitern lassen
+      applyProjectMeta(await api('getProjectMeta', { project: p.id }));
+    }catch(_){ /* Endpunkt evtl. noch nicht bereitgestellt */ }
   };
   selPh.onchange = () => {
     const ph = curPhase();
@@ -822,7 +836,7 @@ function syncForm(){
   g('#f-title',model.header.title);
   g('#f-place',model.header.place); g('#f-date',model.header.date);
   g('#f-auftrag-nr',model.meta.auftrag.nr); g('#f-auftrag-bez',model.meta.auftrag.bez);
-  g('#f-proj-name',model.meta.projekt.name); g('#f-proj-str',model.meta.projekt.strasse); g('#f-proj-ort',model.meta.projekt.ort);
+  g('#f-proj-name',model.meta.projekt.name); g('#f-proj-adr',model.meta.projekt.adresse);
   g('#f-von',model.meta.zeitraum.von); g('#f-bis',model.meta.zeitraum.bis);
   $('#f-einheit').value = model.settings.einheit; $('#f-stdtag').value = model.settings.stundenProTag;
 }

@@ -46,7 +46,12 @@ Google-Tabelle **„Project Management NEW"** (die Mappe hinter deiner AppSheet-
 | `…/exec?action=ping` | `{ok:true, ts:…}` — Verbindungstest |
 | `…/exec?action=getFilterTree` | Baum **Projekt → Phase → Leistung**, nur mit vorhandenen Buchungen |
 | `…/exec?action=getCompanyInfo` | Büroangaben für die Fußzeile |
+| `…/exec?action=getProjectMeta&project=…[&phase=…]` | Projekt-Stammdaten: `{name, address, description, client, billName, billAddress, timeline, startDate, endDate, status, responsible, phase}` |
 | `…/exec?action=getTimeRecords&project=…&phase=…&service=…&from=YYYY-MM-DD&to=YYYY-MM-DD` | Zeiteinträge: `{items:[{datum,taetigkeit,bearbeiter,stunden,recordId}], total, unresolved}` |
+
+> `getProjectMeta` und die Klartext-Phasennamen im `getFilterTree` sind seit 2026-09-10 dabei —
+> dafür einmal **Version „Neu" bereitstellen**, sonst antwortet das alte Skript mit
+> `unknown action` (das Tool fällt dann still auf „nur Projektname" zurück).
 
 ## Getestete Tabellenstruktur (aus der echten Mappe)
 

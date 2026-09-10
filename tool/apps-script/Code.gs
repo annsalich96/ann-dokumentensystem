@@ -7,6 +7,7 @@
  *   ping
  *   getFilterTree                          -> Projekte/Phasen/Leistungen, die Buchungen haben
  *   getCompanyInfo
+ *   getProjectMeta&project=…[&phase=…]     -> Stammdaten eines Projekts (Name, Adresse, …)
  *   getTimeRecords&project=…&phase=…&service=…&from=YYYY-MM-DD&to=YYYY-MM-DD&user=…
  *
  * Deploy: siehe README.md in diesem Ordner.
@@ -20,10 +21,12 @@ const CONFIG = {
     timeTrackingRecords: 'TimeTrackingRecords',
     projects:            'Projects',
     projectPhases:       'Project Phases',
+    phases:              'Phases',
     services:            'Services',
     tasks:               'Tasks',
     subTasks:            'Sub Tasks',
     users:               'Users',
+    clients:             'Clients',
     companyInfo:         'Company Info'
   }
 };
@@ -39,6 +42,7 @@ function doGet(e){
       case 'ping':          data = { ts:new Date().toISOString() }; break;
       case 'getFilterTree': data = getFilterTreeCached(p.fresh === '1'); break;
       case 'getCompanyInfo':data = getCompanyInfo(); break;
+      case 'getProjectMeta':data = getProjectMeta(p.project || '', p.phase || ''); break;
       case 'getTimeRecords':data = getTimeRecords({
                               project:p.project || '', phase:p.phase || '', service:p.service || '',
                               from:p.from || '', to:p.to || '', user:p.user || ''
@@ -94,7 +98,7 @@ function getFilterTree(){
     const P = projects[pId];
 
     const phKey = phId || '—';
-    if(!P.phases[phKey]) P.phases[phKey] = { id:phId, name: phId || '(ohne Phase)', services:{} };
+    if(!P.phases[phKey]) P.phases[phKey] = { id:phId, name: phId ? phaseLabel_(phId) : '(ohne Phase)', services:{} };
     const PH = P.phases[phKey];
 
     if(sId){
@@ -133,6 +137,40 @@ function getCompanyInfo(){
     phone:   str_(r['Company Telefon']),
     email:   str_(r['Company Email'])
   };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Projekt-Stammdaten (für die Autofüllung im Stundennachweis-Tool)  */
+/* ------------------------------------------------------------------ */
+function getProjectMeta(projectId, phaseId){
+  if(!projectId) throw new Error('project fehlt');
+  const pr = indexBy_(rows_(CONFIG.TABS.projects), 'Project_ID')[projectId] || {};
+  const cl = indexBy_(rows_(CONFIG.TABS.clients), 'Client_ID')[str_(pr['Client'])] || {};
+  return {
+    id:          projectId,
+    name:        str_(pr['Project Name']) || projectId,
+    address:     str_(pr['Address']),
+    description: str_(pr['Description']),
+    client:      str_(cl['Client Name']) || str_(pr['Client']),
+    billName:    str_(pr['Bill Name']),
+    billAddress: str_(pr['Bill Address']),
+    timeline:    str_(pr['Timeline']),
+    startDate:   str_(pr['Project StartDate']),
+    endDate:     str_(pr['Project EndDate']),
+    status:      str_(pr['Status']),
+    responsible: str_(pr['Responsible']),
+    phase:       phaseId ? phaseLabel_(phaseId) : ''
+  };
+}
+
+/* "LP 05-KANT CENTER" / "Phase 05-…" -> "LP 05 — Ausführungsplanung" (aus Tab `Phases`) */
+function phaseLabel_(phaseId){
+  const s = str_(phaseId); if(!s) return '';
+  const m = s.match(/^(?:LP|Phase)\s*0*(\d+)/i);
+  if(!m) return s;
+  const code = 'LP ' + (m[1].length < 2 ? '0' + m[1] : m[1]);
+  const row = indexBy_(rows_(CONFIG.TABS.phases), 'Phase_ID')[code];
+  return (row && str_(row['Phase Name'])) ? code + ' — ' + str_(row['Phase Name']) : s;
 }
 
 /* ------------------------------------------------------------------ */
