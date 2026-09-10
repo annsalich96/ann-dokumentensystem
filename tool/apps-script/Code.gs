@@ -333,6 +333,25 @@ function getTimeRecords(q){
 }
 
 /* ------------------------------------------------------------------ */
+/*  Tests — im Editor per „Ausführen" aufrufbar, Ergebnis unter „Ausführungsprotokoll".
+    Umgehen die Bereitstellung komplett: zeigen, ob der CODE stimmt.                 */
+/* ------------------------------------------------------------------ */
+function TEST_getProjectMeta(){
+  Logger.log(JSON.stringify(getProjectMeta('ANDERMATT HOTEL', ''), null, 2));
+}
+function TEST_cleanDescriptions(){
+  Logger.log(JSON.stringify(cleanDescriptions({
+    items: JSON.stringify([{ i:0, text:'preparing 3d model and fixing doors kant parkhaus' }])
+  }), null, 2));
+}
+function TEST_props(){
+  var p = PropertiesService.getScriptProperties().getProperties();
+  Logger.log('AI_PROVIDER=' + (p.AI_PROVIDER || '(leer -> openai)'));
+  Logger.log('OPENAI_API_KEY ' + (p.OPENAI_API_KEY ? 'gesetzt (' + p.OPENAI_API_KEY.length + ' Zeichen)' : 'FEHLT'));
+  Logger.log('OPENAI_MODEL=' + (p.OPENAI_MODEL || '(leer -> gpt-4.1-mini)'));
+}
+
+/* ------------------------------------------------------------------ */
 /*  Helfer                                                            */
 /* ------------------------------------------------------------------ */
 function ss_(){ return SpreadsheetApp.openById(CONFIG.SHEET_ID); }
