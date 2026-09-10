@@ -260,7 +260,7 @@ const DS = {
     titleK:5, placedateK:7,
     ruleK:[5,7,9], ruleX1:122.65, ruleX2:195
   },
-  meta:{ labelK:10 },   /* AUFTRAG- und PROJEKT-Block untereinander, linksbündig ab Spalte 3 */
+  meta:{ labelK:12, gapK:3 },   /* AUFTRAG-/PROJEKT-Block untereinander, 3 Raster Abstand nach oben (Kopf-Linie K9) und unten (Tabelle) */
   table:{
     topRuleK_first:19, topRuleK_cont:12,
     rowSpan:2,
@@ -358,7 +358,7 @@ function paginate(){
   const pages = [];
   let first = true;
   while(rest.length){
-    const topK = first ? DS.table.topRuleK_first : DS.table.topRuleK_cont;
+    const topK = first ? firstTableK() : DS.table.topRuleK_cont;
     const cap = capFor(topK, false);
     pages.push({ first, rows: rest.slice(0, cap) });
     rest = rest.slice(cap);
@@ -366,7 +366,7 @@ function paginate(){
   }
   // Letzte Seite: Platz für die Summenzeile sicherstellen
   const last = pages[pages.length-1];
-  const lastTopK = last.first ? DS.table.topRuleK_first : DS.table.topRuleK_cont;
+  const lastTopK = last.first ? firstTableK() : DS.table.topRuleK_cont;
   const capWithTotal = capFor(lastTopK, true);
   const lastCount = last.rows.filter(Boolean).length;
   if(lastCount > capWithTotal){
@@ -421,9 +421,9 @@ function renderHeader(page){
 }
 
 function addrLines(s){ return String(s || '').split('\n').map(x=>x.trim()).filter(Boolean).slice(0,3); }
-/* AUFTRAG-Block, eine Leerzeile, PROJEKT-Block — alles linksbündig, endet vor der Tabelle. */
+/* AUFTRAG-Block, eine Leerzeile, PROJEKT-Block — alles linksbündig ab Spalte 3. */
 function metaLayout(){
-  const maxK = DS.table.topRuleK_first - 1;
+  const maxK = DS.meta.labelK + 14;   // Sicherheitsnetz gegen Endlos-Umbruch
   const rows = []; let k = DS.meta.labelK;
   const add = (cls, text) => { if(text != null && text !== '' && k <= maxK){ rows.push({ cls, k, text }); k++; } };
   add('s-metalabel', 'AUFTRAG:');
@@ -435,13 +435,16 @@ function metaLayout(){
   addrLines(model.meta.projekt.adresse).forEach(ln => add('s-metaval', ln));
   return rows;
 }
+function metaLastK(){ const r = metaLayout(); return r.length ? r[r.length - 1].k : DS.meta.labelK - 1; }
+/* Tabelle auf Seite 1 beginnt 3 Raster nach dem Metadaten-Block, mindestens aber bei topRuleK_first. */
+function firstTableK(){ return Math.max(DS.table.topRuleK_first, metaLastK() + 1 + DS.meta.gapK); }
 function renderMeta(page){
   const L = DS.colX(3);
   metaLayout().forEach(r => page.appendChild(band(r.cls, {leftMM:L, k:r.k}, r.text)));
 }
 
 function renderTable(page, p){
-  const topK = p.first ? DS.table.topRuleK_first : DS.table.topRuleK_cont;
+  const topK = p.first ? firstTableK() : DS.table.topRuleK_cont;
   const C = DS.table.cols, span = DS.table.rowSpan;
   const showHours = !isTage();
   rule(page, topK, DS.colX(1), DS.rightEdge);
@@ -561,7 +564,7 @@ function exportPDF(){
 
     // Tabelle
     const showHours = !isTage();
-    const topK = p.first ? DS.table.topRuleK_first : DS.table.topRuleK_cont;
+    const topK = p.first ? firstTableK() : DS.table.topRuleK_cont;
     hline(topK, DS.colX(1), DS.rightEdge);
     put('s-thead', {leftMM:DS.colX(C.datum),      k:topK}, 'DATUM');
     put('s-thead', {leftMM:DS.colX(C.taetigkeit), k:topK}, 'TÄTIGKEIT');
