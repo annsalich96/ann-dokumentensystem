@@ -7,5 +7,8 @@ design-sources/
 data-exports/
 reference-output/
 
+# Entwicklungs-/QA-Screenshots aus dem Tool-Bau (bleiben nur im Drive)
+dev-screenshots/
+
 # tool/stundennachweis.standalone.html wird mitversioniert, damit es direkt
 # per htmlpreview / statischem Hosting aufrufbar ist (aus tool/build.py neu erzeugbar).

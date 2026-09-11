@@ -11,7 +11,14 @@ Kernprinzipien: **DATA ≠ DOCUMENT**. Google Sheets bleibt bewusst das Phase-1-
 
 ## Status
 
-**Spezifikationsphase — noch kein Code.** Reihenfolge: Analyse → Doku → Architektur → erst dann Implementierung.
+**Erster Dokumenttyp gebaut und in Nutzung:** Stundennachweis (`tool/stundennachweis.html`,
+Backend `tool/apps-script/Code.gs`) — inkl. KI-Aufbereitung der Tätigkeitstexte, Abbuchen ins
+Sheet, Tage-Modus, Projekt-Autofüllung (DECISION-008). Regeln, die dabei für **jeden**
+Dokumenttyp klar wurden, stehen gesammelt in
+[[allgemeine-systemregeln]].
+
+**Zweiter Dokumenttyp gestartet:** Rechnung — Layout-Quelle liegt in
+`design-sources/rechnung/`, STEP 1 (Illustrator-Analyse) steht aus.
 
 Die verbindliche Projektablage ist dieser Drive-Ordner. Frühere Codex-Arbeitsstände außerhalb des ANN Workspace sind nur Zwischenstände und werden nicht als parallele Hauptdokumentation weitergeführt.
 

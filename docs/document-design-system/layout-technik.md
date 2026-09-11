@@ -1,7 +1,7 @@
 # Layout — wie eine Seite technisch aufgebaut wird
 
 > Letzte Aktualisierung: 2026-09-09
-> Verknüpft: [[01_SYSTEM_ARCHITECTURE]] · [[grid-system]] · [[abstaende-und-raster]] · [[typografie]]
+> Verknüpft: [[01_SYSTEM_ARCHITECTURE]] · [[grid-system]] · [[abstaende-und-raster]] · [[typografie]] · [[allgemeine-systemregeln]]
 
 ## Grundprinzip
 
@@ -58,6 +58,10 @@ Wie viele Zeilen braucht ein Absatz (10 pt / 13 pt) in einer Spalte der Breite W
   Vorschau und PDF identisch.
 - Hinter einer `measure(text, style, width)`-Schnittstelle gekapselt, damit später ein
   reiner JS-Zeilenumbruch (ohne DOM, voll deterministisch) eingesetzt werden kann.
+- Für einzeilige, breitenbegrenzte Spalten (z. B. TÄTIGKEIT) hat sich im Bau eine leichtere
+  Variante bewährt: reale Textbreite per Canvas `measureText` in der Dokumentschrift messen,
+  statt Zeichen zu zählen — Zeichenzahl ist höchstens ein grober Richtwert. Details:
+  [[allgemeine-systemregeln]] §3.
 
 ## Seitenumbruch (Engine-Schleife)
 
@@ -86,11 +90,11 @@ assignPageNumbers()                 // erst jetzt: n von m in jeden Footer
 
 | Zone | Platzierung |
 | --- | --- |
-| Header | fest: Wortmarke `colX(1)` / Monogramm rechtsbündig `colRight(12)` / Titelblock rechtsbündig, Linien bei `bl(5) / bl(7) / bl(9)` |
-| Metadaten-Block | fest, Erstseite: Labels bei `bl(12)`, Werte `bl(13..)`; AUFTRAG bei `colX(3)`, PROJEKT bei `colX(8)` |
+| Header | fest: Wortmarke `colX(1)` / Monogramm rechtsbündig `colRight(12)` / Titelblock rechtsbündig, Linien bei `bl(5) / bl(7) / bl(9)`, spannen nur unter dem Titelblock (x ≈ 122,65–195 mm), nicht volle Breite |
+| Metadaten-Block | fest, Erstseite: Labels bei `bl(12)`. **Korrektur ggü. Erstplanung:** AUFTRAG- und PROJEKT-Block stehen **untereinander** (nicht nebeneinander bei `colX(3)`/`colX(8)`), mit 3 BL Abstand darüber (ab Kopf-Linie) und 3 BL darunter (zur Tabelle) — siehe [[allgemeine-systemregeln]] §5 |
 | Tabellenkopf | fest: Erstseite `bl(19)` (= Metadaten + 4 BL), Folgeseite `bl(12)` (= Header + 3 BL). Spalten: DATUM `colX(1)` · TÄTIGKEIT `colX(3)` · BEARBEITER `colX(8)` · ZEITAUFWAND rechtsbündig `colRight(12)` |
 | Zeilen | Fluss: je 2 BL, Graulinie unten. Überlauf → neue Seite, Tabellenkopf neu |
-| `Gesamt` | fest an `bl(53)` **nur auf der letzten Seite**; Label `colX(8)`, Wert rechtsbündig `colRight(12)` |
+| `Gesamt` | **reservierter Platz statt fixem mm-Wert**, nur auf der letzten Seite (Engine hält Summenzeile + Mindestabstand zum Footer frei); Label `colX(8)`, Wert rechtsbündig `colRight(12)` — siehe [[allgemeine-systemregeln]] §5 |
 | Footer | fest: 2 Zeilen `bl(57) / bl(58)`, 5 Blöcke bei `colX(1/3/6/8)` + Seitenangabe rechtsbündig |
 
 ## Beispiel B — Rechnung

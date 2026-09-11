@@ -74,7 +74,8 @@ Stils rastet auf das 13-pt-Raster.
   Silbentrennung gesetzt. **Standard ist linksbündig (Flattersatz).** Blocksatz ist eine
   Option pro Dokumenttyp, kein globaler Zwang. → *offen: welche Dokumenttypen nutzen Blocksatz?*
 - **VERSALIEN** (`text-transform: uppercase`) gilt für: `wordmark`, `meta-label`, `table-head`.
-  Leichte Laufweite (Tracking) sichtbar in der Quelle — Wert noch nicht vermessen, → *offen*.
+  Laufweite (Tracking) **bestätigt: `0,02em`** — aus dem gebauten Tool übernommen, siehe
+  [[allgemeine-systemregeln]] §5.
 - **Zahlen** in Tabellen und Summen sind **rechtsbündig** an der jeweiligen Spaltenkante.
   Format Stunden: `0,00 Std.` · Beträge: `0.000,00 €` (deutsche Schreibweise).
 - **Waisen/Hurenkinder:** Eine allein umgebrochene Zeile am Seitenanfang/-ende wird vermieden;
@@ -82,7 +83,7 @@ Stils rastet auf das 13-pt-Raster.
 
 ## 5. Offene Punkte
 
-1. Laufweite (Letter-Spacing) für VERSALIEN-Stile — Wert aus der AI-Quelle nachmessen.
+1. ~~Laufweite (Letter-Spacing) für VERSALIEN-Stile~~ — **geklärt, `0,02em`** (s. o.).
 2. Welche Dokumenttypen setzen Fließtext im Blocksatz, welche linksbündig?
 3. Silbentrennung: aktiv (de) mit welchen Mindestlängen?
 4. Gibt es einen kursiven Einsatz (Rota Italic) irgendwo? In den Quellen bisher nicht.

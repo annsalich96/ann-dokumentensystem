@@ -1,7 +1,7 @@
 # Abstände und vertikaler Rhythmus
 
 > Letzte Aktualisierung: 2026-09-09
-> Verknüpft: [[grid-system]] · [[typografie]] · [[header-footer]] · [[regel-register]]
+> Verknüpft: [[grid-system]] · [[typografie]] · [[header-footer]] · [[regel-register]] · [[allgemeine-systemregeln]]
 
 ## Status
 
@@ -79,17 +79,20 @@ Vorschlag zur Vereinheitlichung:
   Spalte 3 (wie Baustellendoku) — **eine** Regel wählen. → *offen*.
 - Aufzählung: `•` an der Textkante, Text +1 Modul (15,4 mm) eingerückt (belegt: `•` Sp. 3, Text Sp. 4).
 
-## 6. „Gesamt"-Zeile (offen)
+## 6. „Gesamt"-Zeile (Grundfall geklärt)
 
 Gemessen: Grundlinie bei ~52,7 BL, also **~5 BL über der ersten Footerzeile**, unabhängig von
-der Zeilenzahl (bei 2 Datenzeilen bleibt darüber viel Leerraum). Anzunehmende Regel:
-**Summe ist am unteren Ende der Bodyzone fix verankert, nur auf der letzten Seite.**
-Zwischensummen je Seite: bisher nicht belegt. → mit Ann bestätigen, dann nach
-[[pagination-regeln]] übertragen.
+der Zeilenzahl (bei 2 Datenzeilen bleibt darüber viel Leerraum). Am gebauten Stundennachweis
+bestätigt: **kein fixer mm-Wert, sondern reservierter Platz** — die Pagination-Engine
+reserviert Summenzeile + Mindestabstand zum Footer nur auf der **letzten** Seite; auf
+Zwischenseiten läuft der Body bis kurz vor den Footer durch. Details: [[allgemeine-systemregeln]] §5.
+Zwischensummen je Seite: weiterhin nicht belegt/offen.
 
 ## 7. Offene Punkte
 
-1. Fließtext-Einrückung: Spalte 1 oder Spalte 3 als globale Regel?
-2. „Gesamt": fixe Position unten, nur letzte Seite? Zwischensummen?
+1. Fließtext-Einrückung: Spalte 1 oder Spalte 3 als globale Regel? (Für Tabellen bereits
+   entschieden: volle Breite/Spalte 1.)
+2. ~~„Gesamt": fixe Position unten, nur letzte Seite?~~ — **geklärt**, siehe §6. Zwischensummen
+   weiterhin offen.
 3. Mindestabstand Bild → Text (Baustellendoku S. 3: Bild ~17 BL hoch, Abstände noch grob).
 4. Absatz-zu-Absatz ist aktuell 1 BL (kein extra Weißraum). Gilt das für alle Dokumenttypen?

@@ -57,12 +57,13 @@
 | O-006 | Wiederholung | Exakte Headerregeln auf Seite 2+ | **geklärt** — voller Header/Footer auf jeder Seite (R-011) |
 | O-007 | System | Ein oder mehrere Büro-/Absenderprofile | offen |
 | O-008 | Farbe | `#A7A9AC` vs. Quellwert | **geklärt** — `#8C8C8C` Brand-Grau (DECISION-004) |
-| O-009 | Rhythmus | Fließtext-Einrückung global: Spalte 1 oder Spalte 3 | offen |
-| O-010 | Typografie | Laufweite (Tracking) für VERSALIEN-Stile | offen — aus AI-Quelle nachmessen |
+| O-009 | Rhythmus | Fließtext-Einrückung global: Spalte 1 oder Spalte 3 | offen — für Tabellen bereits entschieden: volle Breite/Spalte 1 (Stundennachweis); für reinen Fließtext weiter offen |
+| O-010 | Typografie | Laufweite (Tracking) für VERSALIEN-Stile | **geklärt** — `0,02em`, aus dem gebauten Tool übernommen ([[allgemeine-systemregeln]] §5) |
 | O-011 | Typografie | Welche Dokumenttypen nutzen Blocksatz, welche Flattersatz | offen |
-| O-012 | Body | „Gesamt"/Summe: fixe Position unten, nur letzte Seite? Zwischensummen? | offen |
+| O-012 | Body | „Gesamt"/Summe: fixe Position unten, nur letzte Seite? Zwischensummen? | **geklärt (Grundfall)** — reservierter Platz, nur letzte Seite, bestätigt am laufenden Tool ([[allgemeine-systemregeln]] §5); Zwischensummen je Seite weiter offen |
 
 ## Verknüpfte Dokumentation
 
 - [[grid-system]]
 - [[header-footer]]
+- [[allgemeine-systemregeln]] — Regeln, die erst beim Bauen des Stundennachweises klar wurden und für jeden Dokumenttyp gelten
