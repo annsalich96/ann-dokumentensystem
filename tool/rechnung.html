@@ -353,6 +353,16 @@ function paginate(){
   pages.push(cur);
   let cursor = cur.topK;
 
+  // Passt die Tabelle (mindestens Kopfzeile) gar nicht mehr auf die aktuelle Seite (z. B.
+  // weil die Einleitung schon fast die ganze Seite füllt), dann verschiebt sich die GANZE
+  // Tabelle auf eine neue Seite — nie erzwungen über den Footer hinaus rendern.
+  if(cursor + 1 > FOOTER_SAFE_K){
+    cur.topK = null;
+    cur = { first:false, topK:CONT_TOP_K, rows:[], posStart:0 };
+    pages.push(cur);
+    cursor = CONT_TOP_K;
+  }
+
   // -- Tabellenzeilen über so viele Seiten wie nötig verteilen --
   const items = model.items.length ? model.items.slice() : [null];
   let idx = 0;
@@ -391,7 +401,7 @@ function paginate(){
   r.page.schlussK = r.k; r.page.schlussLines = L.schlussLines;
   r = ensure(2, 2);                                          // Leerzeile + Gruß + Name
   r.page.grussK = r.k;
-  r = ensure(DS.gapBlock, 4);                                // Bankblock (Linie/3 Zeilen/Linie)
+  r = ensure(DS.gapBlock, 3);                                // Bankblock: Linie+Name teilen sich k, dann 2 Zeilen, Linie bei k+3
   r.page.bankK = r.k;
 
   pages.L = L;
@@ -488,12 +498,14 @@ function renderGruss(page, k){
   page.appendChild(band("s-body", {leftMM:DS.colX(1), k:k+1}, model.brief.absender || ""));
 }
 function renderBank(page, k){
+  // Linie und Name teilen sich dieselbe Rasterzeile (wie der Tabellenkopf: Linie oben an
+  // der Textzeile, nicht eine Zeile davor) -- gemessen im Original, siehe STEP2-Findings.
   const x1 = DS.colX(1), x2 = DS.bank.x1();
   rule(page, k, x1, x2);
-  page.appendChild(band("s-cell", {leftMM:x1, k:k+1}, model.bank.name || ""));
-  page.appendChild(band("s-cell", {leftMM:x1, k:k+2}, "IBAN: " + (model.bank.iban || "")));
-  page.appendChild(band("s-cell", {leftMM:x1, k:k+3}, "BIC: " + (model.bank.bic || "")));
-  rule(page, k+4, x1, x2);
+  page.appendChild(band("s-cell", {leftMM:x1, k:k}, model.bank.name || ""));
+  page.appendChild(band("s-cell", {leftMM:x1, k:k+1}, "IBAN: " + (model.bank.iban || "")));
+  page.appendChild(band("s-cell", {leftMM:x1, k:k+2}, "BIC: " + (model.bank.bic || "")));
+  rule(page, k+3, x1, x2);
 }
 function renderFooter(page, idx, count){
   BUERO.blocks.forEach((b,i)=>{
@@ -682,10 +694,10 @@ function exportPDF(){
     if(p.bankK != null){
       const bk = p.bankK, x1 = DS.colX(1), x2 = DS.bank.x1();
       hline(bk, x1, x2);
-      put("s-cell", {leftMM:x1, k:bk+1}, model.bank.name || "");
-      put("s-cell", {leftMM:x1, k:bk+2}, "IBAN: " + (model.bank.iban || ""));
-      put("s-cell", {leftMM:x1, k:bk+3}, "BIC: " + (model.bank.bic || ""));
-      hline(bk+4, x1, x2);
+      put("s-cell", {leftMM:x1, k:bk}, model.bank.name || "");
+      put("s-cell", {leftMM:x1, k:bk+1}, "IBAN: " + (model.bank.iban || ""));
+      put("s-cell", {leftMM:x1, k:bk+2}, "BIC: " + (model.bank.bic || ""));
+      hline(bk+3, x1, x2);
     }
 
     BUERO.blocks.forEach((b, i) => {
