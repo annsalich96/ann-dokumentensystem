@@ -13,9 +13,9 @@ Kernprinzipien: **DATA ≠ DOCUMENT**. Google Sheets bleibt bewusst das Phase-1-
 
 **Erster Dokumenttyp gebaut und in Nutzung:** Stundennachweis (`tool/stundennachweis.html`,
 Backend `tool/apps-script/Code.gs`) — inkl. KI-Aufbereitung der Tätigkeitstexte, Abbuchen ins
-Sheet, Tage-Modus, Projekt-Autofüllung (DECISION-008). Regeln, die dabei für **jeden**
-Dokumenttyp klar wurden, stehen gesammelt in
-[[allgemeine-systemregeln]].
+Sheet, Tage-Modus, Projekt-Autofüllung (DECISION-008). Feste, für jeden Dokumenttyp geltende
+Design-Grundwerte (Schriftgrößen, Liniendicke, Farben, Mindestabstände) stehen in
+[[typografie]] und [[abstaende-und-raster]]; Layout/Grid ist pro Dokumenttyp eigen.
 
 **Zweiter Dokumenttyp gestartet:** Rechnung — Layout-Quelle liegt in
 `design-sources/rechnung/`, STEP 1 (Illustrator-Analyse) steht aus.

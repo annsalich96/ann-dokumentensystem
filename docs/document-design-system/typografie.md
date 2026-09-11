@@ -74,8 +74,7 @@ Stils rastet auf das 13-pt-Raster.
   Silbentrennung gesetzt. **Standard ist linksbündig (Flattersatz).** Blocksatz ist eine
   Option pro Dokumenttyp, kein globaler Zwang. → *offen: welche Dokumenttypen nutzen Blocksatz?*
 - **VERSALIEN** (`text-transform: uppercase`) gilt für: `wordmark`, `meta-label`, `table-head`.
-  Laufweite (Tracking) **bestätigt: `0,02em`** — aus dem gebauten Tool übernommen, siehe
-  [[allgemeine-systemregeln]] §5.
+  Laufweite (Tracking) **bestätigt: `0,02em`**.
 - **Zahlen** in Tabellen und Summen sind **rechtsbündig** an der jeweiligen Spaltenkante.
   Format Stunden: `0,00 Std.` · Beträge: `0.000,00 €` (deutsche Schreibweise).
 - **Waisen/Hurenkinder:** Eine allein umgebrochene Zeile am Seitenanfang/-ende wird vermieden;

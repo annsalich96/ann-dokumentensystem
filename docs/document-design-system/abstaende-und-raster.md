@@ -1,7 +1,7 @@
 # Abstände und vertikaler Rhythmus
 
 > Letzte Aktualisierung: 2026-09-09
-> Verknüpft: [[grid-system]] · [[typografie]] · [[header-footer]] · [[regel-register]] · [[allgemeine-systemregeln]]
+> Verknüpft: [[grid-system]] · [[typografie]] · [[header-footer]] · [[regel-register]]
 
 ## Status
 
@@ -81,12 +81,10 @@ Vorschlag zur Vereinheitlichung:
 
 ## 6. „Gesamt"-Zeile (Grundfall geklärt)
 
-Gemessen: Grundlinie bei ~52,7 BL, also **~5 BL über der ersten Footerzeile**, unabhängig von
-der Zeilenzahl (bei 2 Datenzeilen bleibt darüber viel Leerraum). Am gebauten Stundennachweis
-bestätigt: **kein fixer mm-Wert, sondern reservierter Platz** — die Pagination-Engine
-reserviert Summenzeile + Mindestabstand zum Footer nur auf der **letzten** Seite; auf
-Zwischenseiten läuft der Body bis kurz vor den Footer durch. Details: [[allgemeine-systemregeln]] §5.
-Zwischensummen je Seite: weiterhin nicht belegt/offen.
+Bestätigt am gebauten Stundennachweis: Die Gesamt-Zeile steht nur auf der **letzten Seite**,
+mit **mindestens 2 Rastereinheiten (BL) Abstand zur Fußzeile** — auf Zwischenseiten läuft der
+Body ohne Gesamt-Zeile bis kurz vor den Footer durch. Zwischensummen je Seite: weiterhin nicht
+belegt/offen.
 
 ## 7. Offene Punkte
 
