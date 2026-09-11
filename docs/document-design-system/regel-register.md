@@ -24,6 +24,7 @@
 | R-009 | Header | Ort editierbar, Standard `Berlin`; Datum `TT.MM.JJJJ`; Footer-Seitenwort `Page` | Ann, 2026-09-09 → DECISION-005 |
 | R-010 | Rhythmus | Vertikale Abstände sind Vielfache von 13 pt: 1 BL Zeile, 2 BL Abschnitt/Tabellenzeile, 3 BL Header→Body, 4 BL Metadaten→Body | Vermessung, [[abstaende-und-raster]] |
 | R-011 | Wiederholung | Header und Footer stehen vollständig und positionsgleich auf jeder Seite | Ann, 2026-09-09 (bestätigt R-201) |
+| R-012 | Typografie | Text sitzt optisch mittig in seinem Rasterband, per Korrekturwert `--tshift`/`--tshift-caps` (0,075em / 0,135em) statt reiner CSS-Zentrierung — global, unabhängig vom Dokumenttyp | Stundennachweis-Bau, [[typografie]] §5 — Werte selbst noch nicht final von Ann bestätigt (siehe O-013) |
 
 ## Sichtbar belegte Regeln
 
@@ -61,6 +62,7 @@
 | O-010 | Typografie | Laufweite (Tracking) für VERSALIEN-Stile | **geklärt** — `0,02em` |
 | O-011 | Typografie | Welche Dokumenttypen nutzen Blocksatz, welche Flattersatz | offen |
 | O-012 | Body | „Gesamt"/Summe: fixe Position unten, nur letzte Seite? Zwischensummen? | **geklärt (Grundfall)** — steht nur auf der letzten Seite, mind. 2 Rastereinheiten Abstand zur Fußzeile; Zwischensummen je Seite weiter offen |
+| O-013 | Typografie | `--tshift`/`--tshift-caps`-Werte (R-012) — passen sie wirklich, oder nur optisch „gut genug"? | offen |
 
 ## Verknüpfte Dokumentation
 

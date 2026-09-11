@@ -80,10 +80,47 @@ Stils rastet auf das 13-pt-Raster.
 - **Waisen/Hurenkinder:** Eine allein umgebrochene Zeile am Seitenanfang/-ende wird vermieden;
   Regel wird in [[pagination-regeln]] festgelegt.
 
-## 5. Offene Punkte
+## 5. Vertikale Zentrierung in der Zeile
+
+**Status: implementiert (Stundennachweis-Tool), Werte nicht final von Ann gegengeprüft.**
+Gilt global für jede Text-in-Zeile-Platzierung, unabhängig vom Dokumenttyp — im Unterschied
+zu Grid-/Abstandsentscheidungen einzelner Dokumente (die bekommen ihr eigenes Layout).
+
+Jeder Text soll optisch mittig in seinem Rasterband sitzen (bei Fließtext 1 BL, bei
+Tabellenzeilen 2 BL). Reine CSS-Zentrierung (`line-height` = Bandhöhe) reicht nicht: Rotas
+eigene Metriken (Ascender/Descender) liegen nicht symmetrisch zur Boxmitte, und der Effekt
+weicht zwischen Bildschirm-Rendering und PDF-Export (jsPDF nutzt die TTF-Metriken direkt)
+leicht voneinander ab. Ohne Korrektur wirkt Text in beiden Fällen zu hoch.
+
+**Technik:** zusätzlich zur Bandmitte wird der Text um einen optischen Korrekturwert
+(Bruchteil der Schriftgröße, in em) nach unten verschoben:
+
+| Konstante | Wert | Gilt für |
+| --- | ---: | --- |
+| `--tshift` / `TSHIFT_EM` | `0,075em` | Normaltext-Stile (Groß-/Kleinschreibung gemischt) |
+| `--tshift-caps` / `TSHIFT_CAPS_EM` | `0,135em` | reine VERSALIEN-Stile (`meta-label`, `table-head`) — brauchen mehr Korrektur, weil ihnen die Unterlänge fehlt und ihr optisches Zentrum dadurch höher liegt |
+
+**Wo im Code:** als CSS Custom Properties (`--tshift`, `--tshift-caps`, gesetzt auf
+`.doc-page .b>span`) für die Bildschirm-Vorschau **und** als gleichnamige JS-Konstanten im
+PDF-Renderer. **Beide Stellen führen denselben Wert getrennt** — zwei Rendering-Engines (DOM
+und jsPDF), keine automatische Synchronisierung. Bei einer Wertänderung immer beide anpassen.
+
+**Herkunft der Werte:** empirisch am Stundennachweis kalibriert (Screenshot-Vergleich), nicht
+berechnet. Ein Versuch, sie automatisch aus den Font-Metriken herzuleiten, ist gescheitert
+(das Mess-Element lag außerhalb des echten `.doc-page`-Kontexts und griff auf
+Fallback-Metriken zurück) — deshalb feste Werte statt Formel.
+
+**Für neue Dokumenttypen:** dieselben zwei Werte übernehmen — sie hängen an der Schrift Rota
+und den beiden Textklassen (normal/VERSALIEN), nicht am Dokumenttyp. Kommt ein neuer
+Schriftgrad hinzu, der im Stundennachweis nicht vorkommt (z. B. eine dritte Größe), den Sitz
+an einer Testzeile im Tool prüfen statt die Werte blind zu übernehmen — sie sind optisch
+kalibriert, keine mathematische Konstante.
+
+## 6. Offene Punkte
 
 1. ~~Laufweite (Letter-Spacing) für VERSALIEN-Stile~~ — **geklärt, `0,02em`** (s. o.).
 2. Welche Dokumenttypen setzen Fließtext im Blocksatz, welche linksbündig?
 3. Silbentrennung: aktiv (de) mit welchen Mindestlängen?
 4. Gibt es einen kursiven Einsatz (Rota Italic) irgendwo? In den Quellen bisher nicht.
 5. Umgang mit sehr langen Header-Titeln (umbrechen / verkleinern / kürzen) — siehe [[header-footer]] O-001.
+6. TSHIFT-Werte (§5) nie final von Ann gegengeprüft — bei Gelegenheit am Original abgleichen.
