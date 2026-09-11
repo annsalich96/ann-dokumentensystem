@@ -20,11 +20,14 @@
 | R-005 | Grid | Cyan/magenta Raster ist Underlay und kein Dokumentinhalt | Ann, 2026-09-09 |
 | R-006 | Architektur | Globales Designsystem und dokumentabhängige Templates werden getrennt | Projektbrief |
 | R-007 | Typografie | Schriftgrößen nur 10 pt oder 8 pt; Rota Light/Medium/Bold; Zeilenabstand 13 pt | Ann, 2026-09-09 → DECISION-003, [[typografie]] |
-| R-008 | Linien | Alle Linien 0,5 pt in `#8C8C8C` (Brand `--color-gray-600`) | Ann, 2026-09-09 → DECISION-004 |
+| R-008 | Linien | Alle Linien 0,5 pt in `#a7a9ac` (Messwert aus der Designquelle) | Ann, 2026-09-09 → DECISION-004 (revidiert von `#8C8C8C` auf `#a7a9ac`, siehe DECISION-004) |
 | R-009 | Header | Ort editierbar, Standard `Berlin`; Datum `TT.MM.JJJJ`; Footer-Seitenwort `Page` | Ann, 2026-09-09 → DECISION-005 |
 | R-010 | Rhythmus | Vertikale Abstände sind Vielfache von 13 pt: 1 BL Zeile, 2 BL Abschnitt/Tabellenzeile, 3 BL Header→Body, 4 BL Metadaten→Body | Vermessung, [[abstaende-und-raster]] |
 | R-011 | Wiederholung | Header und Footer stehen vollständig und positionsgleich auf jeder Seite | Ann, 2026-09-09 (bestätigt R-201) |
 | R-012 | Typografie | Text sitzt optisch mittig in seinem Rasterband, per Korrekturwert `--tshift`/`--tshift-caps` (0,075em / 0,135em) statt reiner CSS-Zentrierung — global, unabhängig vom Dokumenttyp | Stundennachweis-Bau, [[typografie]] §5 — Werte selbst noch nicht final von Ann bestätigt (siehe O-013) |
+| R-013 | Header | Wortmarke ist mit der Oberkante des Monogramms oben bündig (nicht optisch tiefer/höher versetzt) | Ann, 2026-09-11, [[header-footer]] |
+| R-014 | Pagination | Bevor der Body auf eine neue Seite umbricht: mindestens 2 Rasterzeilen (BL) Luft zwischen letztem Inhalt und Fußzeile — gilt unabhängig davon, ob eine Summenzeile existiert | Ann, 2026-09-11, [[abstaende-und-raster]] §6 |
+| R-015 | Footer | Footer sitzt ca. 15 mm vom unteren Blattrand entfernt — symmetrisch zum oberen/seitlichen 15-mm-Rand, fixe Rasterposition `bl(57)/bl(58)` | Ann, 2026-09-11, [[header-footer]] |
 
 ## Sichtbar belegte Regeln
 
@@ -57,12 +60,13 @@
 | O-005 | Footer | Ausnahmen, bei denen der Footer entfallen darf | offen |
 | O-006 | Wiederholung | Exakte Headerregeln auf Seite 2+ | **geklärt** — voller Header/Footer auf jeder Seite (R-011) |
 | O-007 | System | Ein oder mehrere Büro-/Absenderprofile | offen |
-| O-008 | Farbe | `#A7A9AC` vs. Quellwert | **geklärt** — `#8C8C8C` Brand-Grau (DECISION-004) |
+| O-008 | Farbe | `#A7A9AC` vs. Quellwert | **geklärt** — `#a7a9ac`, der gemessene Quellwert (DECISION-004, revidiert von `#8C8C8C`) |
 | O-009 | Rhythmus | Fließtext-Einrückung global: Spalte 1 oder Spalte 3 | offen |
 | O-010 | Typografie | Laufweite (Tracking) für VERSALIEN-Stile | **geklärt** — `0,02em` |
 | O-011 | Typografie | Welche Dokumenttypen nutzen Blocksatz, welche Flattersatz | offen |
-| O-012 | Body | „Gesamt"/Summe: fixe Position unten, nur letzte Seite? Zwischensummen? | **geklärt (Grundfall)** — steht nur auf der letzten Seite, mind. 2 Rastereinheiten Abstand zur Fußzeile; Zwischensummen je Seite weiter offen |
+| O-012 | Body | „Gesamt"/Summe: fixe Position unten, nur letzte Seite? Zwischensummen? | **Stundennachweis geklärt, NICHT global** (Ann, 2026-09-11) — dort steht „Gesamt" direkt unter der letzten Tabellenzeile, nur auf der letzten Seite. Ob andere Dokumenttypen (z. B. Rechnung: Gesamt netto/MwSt./Gesamt brutto) dieselbe Regel oder eine eigene bekommen, wird pro Dokumenttyp neu entschieden. Global gilt nur R-014 (Mindestabstand zur Fußzeile). Zwischensummen je Seite weiter offen |
 | O-013 | Typografie | `--tshift`/`--tshift-caps`-Werte (R-012) — passen sie wirklich, oder nur optisch „gut genug"? | offen |
+| O-014 | Body | Text-in-Zeile-Breitenprüfung (harte Grenze + KI-Kürzung, wie im Stundennachweis bei TÄTIGKEIT) — global für jede Tabellenspalte mit freiem/automatisch befülltem Text, oder nur wo Text automatisch generiert wird? | offen — im Stundennachweis bestätigt (Ann, 2026-09-11: „nur Stundennachweis"), bei anderen Dokumenttypen mit von Ann selbst getipptem Text evtl. unnötig |
 
 ## Verknüpfte Dokumentation
 

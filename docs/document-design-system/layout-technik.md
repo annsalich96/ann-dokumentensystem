@@ -79,7 +79,7 @@ assignPageNumbers()                 // erst jetzt: n von m in jeden Footer
 - **Tabellenkopf-Wiederholung:** beim Umbruch mitten in einer Tabelle wird `table-header`
   als erster Block der neuen Seite neu ausgegeben.
 - **Kein Waisenkind:** eine einzelne Tabellenzeile oder Überschrift am Seitenende wird auf
-  die nächste Seite geschoben (Mindest­rest 2 Zeilen — Wert in [[pagination-regeln]]).
+  die nächste Seite geschoben (Mindestrest 2 Zeilen vor der Fußzeile — R-014, [[abstaende-und-raster]] §6).
 - **Seitenzahlen** werden erst nach vollständiger Pagination gesetzt (`m` steht erst dann fest).
 
 ## Beispiel A — Stundennachweis
@@ -87,10 +87,10 @@ assignPageNumbers()                 // erst jetzt: n von m in jeden Footer
 | Zone | Platzierung |
 | --- | --- |
 | Header | fest: Wortmarke `colX(1)` / Monogramm rechtsbündig `colRight(12)` / Titelblock rechtsbündig, Linien bei `bl(5) / bl(7) / bl(9)`, spannen nur unter dem Titelblock (x ≈ 122,65–195 mm), nicht volle Breite |
-| Metadaten-Block | fest, Erstseite: Labels bei `bl(12)`. **Korrektur ggü. Erstplanung:** AUFTRAG- und PROJEKT-Block stehen **untereinander** (nicht nebeneinander bei `colX(3)`/`colX(8)`), mit 3 BL Abstand darüber (ab Kopf-Linie) und 3 BL darunter (zur Tabelle). Gilt nur für dieses Layout — die Rechnung bekommt ihr eigenes Grid, keine automatische Übernahme. |
-| Tabellenkopf | fest: Erstseite `bl(19)` (= Metadaten + 4 BL), Folgeseite `bl(12)` (= Header + 3 BL). Spalten: DATUM `colX(1)` · TÄTIGKEIT `colX(3)` · BEARBEITER `colX(8)` · ZEITAUFWAND rechtsbündig `colRight(12)` |
-| Zeilen | Fluss: je 2 BL, Graulinie unten. Überlauf → neue Seite, Tabellenkopf neu |
-| `Gesamt` | steht nur auf der letzten Seite, mit mind. 2 BL Abstand zur Fußzeile (kein fixer mm-Wert); Label `colX(8)`, Wert rechtsbündig `colRight(12)` |
+| Metadaten-Block | Erstseite: Labels ab `bl(12)` (= Kopf-Linie `bl(9)` + 3 BL). **Korrektur ggü. Erstplanung:** AUFTRAG- und PROJEKT-Block stehen **untereinander** (nicht nebeneinander bei `colX(3)`/`colX(8)`), beide linksbündig ab `colX(3)`, mit 3 BL Abstand darüber (ab Kopf-Linie `bl(9)`) und 3 BL darunter (zur Tabelle). Gilt nur für dieses Layout — die Rechnung bekommt ihr eigenes Grid, keine automatische Übernahme. |
+| Tabellenkopf | Erstseite: **dynamisch** = letzte Metadaten-Zeile + 1 + 3 BL (mind. `bl(19)`) — wächst mit, wenn Bezeichnung/Adresse mehrzeilig sind, damit der 3-BL-Abstand immer stimmt. Folgeseite fest `bl(12)` (= Header + 3 BL). Spalten: DATUM `colX(1)` · TÄTIGKEIT `colX(3)` · BEARBEITER `colX(8)` · ZEITAUFWAND rechtsbündig `colRight(12)` |
+| Zeilen | Fluss: je 2 BL, Graulinie unten. Überlauf → neue Seite, Tabellenkopf neu. TÄTIGKEIT-Text darf die Spaltenbreite nicht überschreiten (Breite messen statt Zeichen zählen, s. u.) — **Stundennachweis-spezifisch**, siehe [[regel-register]] O-014 |
+| `Gesamt` | steht nur auf der letzten Seite, direkt unter der letzten Tabellenzeile (kein fixer mm-Wert) — **Stundennachweis-spezifisch**, siehe [[abstaende-und-raster]] §6 und [[regel-register]] O-012. Global gilt nur: mind. 2 BL Abstand zur Fußzeile (R-014). Label `colX(8)`, Wert rechtsbündig `colRight(12)` |
 | Footer | fest: 2 Zeilen `bl(57) / bl(58)`, 5 Blöcke bei `colX(1/3/6/8)` + Seitenangabe rechtsbündig |
 
 ## Beispiel B — Rechnung

@@ -84,6 +84,14 @@ Jeder Schritt wird einzeln gezeigt und abgenommen, bevor der nächste beginnt.
 - **Start als eigenständiges HTML-Tool** wie der Bauzeitenplan (schnell sichtbar,
   einfach zu hosten). Wenn die AppSheet-Anbindung mehr braucht, kommt ein kleiner
   Server-/Apps-Script-Teil **nur für den Datenzugriff** dazu — der Rest bleibt gleich.
-- **PDF-Export**: zuerst über den Browser-Druck (wie Bauzeitenplan), später ggf. exakter
-  Renderer, falls nötig.
+- **PDF-Export (global, für jeden Dokumenttyp):** echtes Vektor-PDF per jsPDF, **direkter
+  Download ohne Browser-Druckdialog** (Ann, 2026-09-09/10 — „das will ich nicht" zum
+  Druckdialog). Voraussetzung: Rota-Schriften als **TTF** einbetten (jsPDF kann kein
+  OTF/CFF; Konvertierung per `otf2ttf`). HTML-Vorschau und PDF-Renderer teilen sich dieselben
+  Layout-Positionen (eine Funktion, kein zweiter, getrennt gepflegter Satz Koordinaten —
+  sonst laufen Vorschau und PDF auseinander).
+- **Druckausgabe (`@media print`, global):** explizite Seitenhöhe knapp unter A4
+  (296,6 mm statt 297 mm) + `page-break-after`-Regeln, sonst hängt eine leere Zusatzseite an.
+- **Bildschirm-Zoom der Vorschau:** CSS `transform: scale()`, **nicht** CSS `zoom` — `zoom`
+  verzerrt/bricht den Textsatz bei hohen Werten.
 - **Rendering-Einheit**: Millimeter, 1:1 zu A4 — kein Pixel-Rätselraten.

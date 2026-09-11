@@ -79,12 +79,21 @@ Vorschlag zur Vereinheitlichung:
   Spalte 3 (wie Baustellendoku) — **eine** Regel wählen. → *offen*.
 - Aufzählung: `•` an der Textkante, Text +1 Modul (15,4 mm) eingerückt (belegt: `•` Sp. 3, Text Sp. 4).
 
-## 6. „Gesamt"-Zeile (Grundfall geklärt)
+## 6. Seitenumbruch vor der Fußzeile (global) vs. „Gesamt"-Position (Stundennachweis)
 
-Bestätigt am gebauten Stundennachweis: Die Gesamt-Zeile steht nur auf der **letzten Seite**,
-mit **mindestens 2 Rastereinheiten (BL) Abstand zur Fußzeile** — auf Zwischenseiten läuft der
-Body ohne Gesamt-Zeile bis kurz vor den Footer durch. Zwischensummen je Seite: weiterhin nicht
-belegt/offen.
+Zwei getrennte Regeln, die beim Stundennachweis-Bau anfangs vermischt waren — jetzt von Ann
+auseinandersortiert (2026-09-11):
+
+- **Global (R-014):** Bevor der Body auf eine neue Seite umbricht, bleiben **mindestens 2
+  Rastereinheiten (BL) Luft** zwischen letztem Inhalt und Fußzeile. Gilt für jeden
+  Dokumenttyp, unabhängig davon, ob eine Summenzeile existiert.
+- **Nur Stundennachweis:** Die „Gesamt"-Zeile steht **direkt unter der letzten Tabellenzeile**
+  (nicht unten auf der Seite fixiert) und erscheint nur auf der letzten Seite. Das ist eine
+  bewusste Entscheidung für diesen Dokumenttyp, **keine automatisch übertragbare Regel** —
+  andere Dokumenttypen mit eigener Summenzeile (z. B. Rechnung: „Gesamt netto/MwSt./Gesamt
+  brutto") bekommen ihre eigene Positionierungsregel, siehe [[regel-register]] O-012.
+
+Zwischensummen je Seite: weiterhin nicht belegt/offen.
 
 ## 7. Offene Punkte
 

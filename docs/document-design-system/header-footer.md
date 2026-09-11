@@ -18,13 +18,13 @@ Gilt global für **alle** Dokumenttypen.
 
 | Element | Regel |
 | --- | --- |
-| Wortmarke | `AN(N) ARCHITECTURE` / `SOLUTION`, Rota **Light 8 pt**, VERSALIEN, linksbündig an Spalte 1 (15 mm), 2 Zeilen im 13-pt-Raster |
+| Wortmarke | `AN(N) ARCHITECTURE` / `SOLUTION`, Rota **Light 8 pt**, VERSALIEN, linksbündig an Spalte 1 (15 mm), 2 Zeilen im 13-pt-Raster. **Oberkante oben bündig mit dem Monogramm** (beide an 15 mm Oberkante) — nicht optisch tiefer/höher versetzt (Ann, 2026-09-11) |
 | Monogramm | Vektor `design-sources/_assets/monogram.svg`, **31,2 × 13,5 mm**, rechte Kante an 195 mm, Oberkante an 15 mm. Kein Bleed |
 | Titelzeile (`doc-title`) | Rota **Medium 10 pt**, **rechtsbündig** an 195 mm, Grundlinie `bl(5,5)` |
 | Ort/Datum (`doc-place-date`) | Rota **Medium 10 pt**, rechtsbündig an 195 mm, Grundlinie `bl(7,5)`. Format **`Berlin, TT.MM.JJJJ`** |
 | Ort | Feld ist **editierbar**, Standardwert **`Berlin`** (Büro derzeit überwiegend Berlin) |
 | Datum | Format **`TT.MM.JJJJ`** |
-| Graue Linien | 3 Stück, **0,5 pt**, Farbe **`#8C8C8C`** (Brand `--color-gray-600`), bei `bl(5) / bl(7) / bl(9)` |
+| Graue Linien | 3 Stück, **0,5 pt**, Farbe **`#a7a9ac`** (Messwert aus der Designquelle, DECISION-004), bei `bl(5) / bl(7) / bl(9)` |
 | Wiederholung | Header steht **vollständig auf jeder Seite** (auch Folgeseiten), positionsgleich |
 
 ### Footer
@@ -36,6 +36,7 @@ Gilt global für **alle** Dokumenttypen.
 | Seitenangabe | Wort **`Page`** (Zeile 1) + **`n/m`** ohne Leerzeichen (Zeile 2). `m` erst nach vollständiger Pagination |
 | Inhalt | aus zentralem Büroprofil (`Company Info`), **nie** pro Template dupliziert |
 | Wiederholung | Footer steht **auf jeder Dokumentseite** |
+| Abstand zum unteren Rand | ca. **15 mm** vom unteren Blattrand — symmetrisch zum 15-mm-Rand oben/links/rechts (Ann, 2026-09-11); technisch die fixe Rasterposition `bl(57)/bl(58)` |
 | Keine Trennlinie | zwischen Body und Footer |
 
 ### Noch offen (auch im eingefrorenen Rahmen)
@@ -43,7 +44,6 @@ Gilt global für **alle** Dokumenttypen.
 - Titelzeile: „intelligent" herleiten (aus Dokumenttyp + laufender Nummer o. Ä.), **zusätzlich
   editierbar**. Herleitungsquelle pro Dokumenttyp später festlegen (Ann, 2026-09-09).
 - Verhalten bei zu langem Titel (umbrechen / verkleinern / kürzen).
-- Farbe `#8C8C8C` ersetzt den Messwert `#A7A9AC` (Ann-Entscheidung 2026-09-09).
 
 ## Quellenbasis
 
