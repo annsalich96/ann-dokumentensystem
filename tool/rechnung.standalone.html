@@ -93,6 +93,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
 #items input{border:0;border-radius:0;font-size:13.5px;padding:9px 10px;width:100%}
 #items input:focus{outline:2px solid var(--ink);outline-offset:-2px}
 #items .num{text-align:right}
+#items .i-gesamt{display:flex;align-items:center;justify-content:flex-end;padding:9px 10px;
+  font-size:13.5px;color:var(--ui-muted)}   /* berechnet: Menge × Satz netto, nicht editierbar */
 #items .del{border:0;background:#fff;color:#B0291E;font-size:17px;padding:0;cursor:pointer}
 .i-total{display:flex;flex-direction:column;gap:4px;width:max-content;min-width:100%;
   font-size:13.5px;padding:11px 10px;box-sizing:border-box}
@@ -240,13 +242,20 @@ const DS = {
   table:{
     rowSpan:2,
     cols:{ leistung:2, art:6, menge:8 },
-    satzRightX(){ return this.__satzX || (this.__satzX = 15+10*(10.7957+BL)); },  /* colX(11) */
-    minGapBeforeFooter:2
+    satzRightX(){ return this.__satzX || (this.__satzX = 15+10*(10.7957+BL)); }  /* colX(11) */
   },
   total:{ labelCol:8, rowSpan:1 },
   bank:{ x1(){ return 15+7*(10.7957+BL); }, /* colX(8) */ },
   footer:{ k1:57, k2:58, blocks:[1,3,6,8] }
 };
+/* Die Tabelle bestimmt den ganzen Seitenumbruch (Ann, 2026-09-11: "wir müssen eigentlich nur
+   den Zeilenabstand von Tabelle nach oben und unten festlegen, dann passt sich der Rest an"):
+   2 Raster Luft VOR der Tabelle, 3 Raster Luft NACH dem letzten Inhalt vor dem Footer. Jeder
+   Block danach (Summenblock/Schlusstext/Gruß/Bankblock) prüft selbst, ob er noch auf die
+   aktuelle Seite passt -- sonst beginnt eine neue Seite erst dann, nicht vorsorglich früher. */
+const TABLE_ABOVE_GAP = 2;
+const FOOTER_GAP_K = 3;
+const CONT_TOP_K = 12;         /* Fortsetzungsseite: wie Header + 3 BL (Beispiel A) */
 
 const BUERO = { blocks:[
   ["Wilmersdorfer Str. 108", "10627 Berlin"],
@@ -271,10 +280,10 @@ let model = {
     gruss:"Mit freundlichen Grüßen,", absender:"Ann-Kathrin Salich"
   },
   items:[
-    { leistung:"Phase 02 — Entwurfsausarbeitung", art:"Zeithonorar", menge:"400 Std.", satz:90, gesamt:6000 },
-    { leistung:"Phase 03 — Spezifikationsplanung", art:"Zeithonorar", menge:"500 Std", satz:90, gesamt:5000 },
-    { leistung:"Phase 01: Konzeptentwicklung", art:"pauschal", menge:"1", satz:5500, gesamt:5500 },
-    { leistung:"Mieterszenarioplanung", art:"pauschal", menge:"2", satz:6250, gesamt:12500 }
+    { leistung:"Phase 02 — Entwurfsausarbeitung", art:"Zeithonorar", menge:"400 Std.", satz:90 },
+    { leistung:"Phase 03 — Spezifikationsplanung", art:"Zeithonorar", menge:"500 Std", satz:90 },
+    { leistung:"Phase 01: Konzeptentwicklung", art:"pauschal", menge:"1", satz:5500 },
+    { leistung:"Mieterszenarioplanung", art:"pauschal", menge:"2", satz:6250 }
   ],
   mwstProzent:19,
   bank:{ name:"Ann-Kathrin Salich", iban:"DE66 1001 1001 2590 9000 54", bic:"NTSBDEB1XXX" }
@@ -282,7 +291,15 @@ let model = {
 function isoToday(){ return new Date().toISOString().slice(0,10); }
 function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
 function eur(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
-function totalNetto(){ return model.items.reduce((s,r)=>s+(Number(r.gesamt)||0),0); }
+/* GESAMT NETTO ist immer Menge × Satz netto (Ann, 2026-09-11) -- kein freies Feld mehr.
+   MENGE bleibt Text ("400 Std.", "2,5 Tage"), die erste Zahl darin wird herausgelesen. */
+function parseMenge(s){
+  const m = String(s||"").match(/\d+(?:[.,]\d+)?/);
+  if(!m) return 0;
+  return parseFloat(m[0].replace(",", ".")) || 0;
+}
+function rowGesamt(r){ return parseMenge(r.menge) * (Number(r.satz)||0); }
+function totalNetto(){ return model.items.reduce((s,r)=>s+rowGesamt(r),0); }
 function totalMwst(){ return totalNetto() * (Number(model.mwstProzent)||0) / 100; }
 function totalBrutto(){ return totalNetto() + totalMwst(); }
 function textLines(s){ return String(s||"").split("\n").map(x=>x.trim()).filter(Boolean); }
@@ -315,61 +332,76 @@ function wrapLines(text, maxWidthMM, weightCss, sizePt){
 const BODY_WIDTH_MM = DS.rightEdge - DS.colX(1);   /* volle Satzbreite, 180mm */
 
 /* ============================================================
-   4) LAYOUT — Cursor-basiert (fixer Kopf + Empfänger + Brieftext,
-      Tabelle mit Seitenumbruch wie im Stundennachweis, Summenblock +
-      Schlusstext + Bankblock nur auf der letzten Seite)
-   ============================================================ */
-function computeLayout(){
-  const L = {};
-  L.empfLines = textLines(model.empfaenger);
-  let k = DS.header.ruleK[DS.header.ruleK.length-1];      // 9
-  L.empfK = k + DS.gapBlock; k = L.empfK + L.empfLines.length;
-  L.anredeK = k + DS.gapBlock; k = L.anredeK + 1;
-  L.einlLines = wrapLines(model.brief.einleitung, BODY_WIDTH_MM, "500", 10);
-  L.einlK = k + 1; k = L.einlK + L.einlLines.length;
-  L.tableFirstK = k + 2;
-
-  L.schlussLines = wrapLines(model.brief.schluss, BODY_WIDTH_MM, "500", 10);
-  // Platzbedarf NACH der Tabelle (Summenblock + Schlusstext + Gruß + Bankblock), in BL:
-  L.postRows = 3 /* Summenzeilen */ + 1 /* Abschlusslinie zählt als 1 BL Reserve */
-    + DS.gapBlock + L.schlussLines.length
-    + 2 /* Leerzeile + Gruß */ + 1 /* Absendername */
-    + DS.gapBlock + 1 /* obere Bank-Linie */ + 3 /* Name/IBAN/BIC */ + 1 /* untere Linie */;
-  return L;
-}
-
-/* ============================================================
-   5) PAGINATION-ENGINE (Tabelle; Vor-/Nachspann fest auf erster/letzter Seite)
+   4) LAYOUT + PAGINATION — ein einziger Fluss von oben nach unten.
+      Kopf/Empfänger/Anrede/Einleitung stehen immer auf Seite 1. Die Tabelle
+      läuft mit 2 BL Abstand darüber los und füllt jede Seite bis 3 BL vor
+      dem Footer (R-014-Nachbarregel, hier konkret 3 statt der globalen
+      Mindest-2). Summenblock/Schlusstext/Gruß/Bankblock werden danach
+      Block für Block angehängt — jeder prüft selbst, ob er noch auf die
+      aktuelle Seite passt; sonst beginnt genau dort eine neue Seite
+      (Ann, 2026-09-11: „dann passt sich das alles automatisch an").
    ============================================================ */
 function paginate(){
-  const L = computeLayout();
-  const F = DS.footer.k1, GAP = DS.table.minGapBeforeFooter, span = DS.table.rowSpan;
-  const capFor = (topK, reservePost) => {
-    const budget = F - GAP - (reservePost ? L.postRows : 0) - (topK + 1);
-    return Math.max(reservePost ? 0 : 1, Math.floor(budget / span));
+  const L = {
+    empfLines: textLines(model.empfaenger),
+    einlLines: wrapLines(model.brief.einleitung, BODY_WIDTH_MM, "500", 10),
+    schlussLines: wrapLines(model.brief.schluss, BODY_WIDTH_MM, "500", 10)
   };
-  let rest = model.items.slice();
-  if(!rest.length) rest = [null];
-  const pages = []; let first = true;
-  while(rest.length){
-    const topK = first ? L.tableFirstK : DS.table.topRuleK_cont || 12;
-    const cap = capFor(topK, false);
-    pages.push({ first, rows: rest.slice(0, cap) });
-    rest = rest.slice(cap);
-    first = false;
+  const FOOTER_SAFE_K = DS.footer.k1 - FOOTER_GAP_K;
+  const span = DS.table.rowSpan;
+
+  let k = DS.header.ruleK[DS.header.ruleK.length-1];       // 9 (letzte Kopf-Linie)
+  L.empfK = k + DS.gapBlock; k = L.empfK + L.empfLines.length;
+  L.anredeK = k + DS.gapBlock; k = L.anredeK + 1;
+  L.einlK = k + 1; k = L.einlK + L.einlLines.length;
+
+  const pages = [];
+  let cur = { first:true, topK: k + TABLE_ABOVE_GAP, rows:[], posStart:0 };
+  pages.push(cur);
+  let cursor = cur.topK;
+
+  // -- Tabellenzeilen über so viele Seiten wie nötig verteilen --
+  const items = model.items.length ? model.items.slice() : [null];
+  let idx = 0;
+  while(idx < items.length){
+    const rowsStartK = cursor + 1;
+    const maxRows = Math.max(1, Math.floor((FOOTER_SAFE_K - rowsStartK) / span));
+    const take = Math.min(items.length - idx, maxRows);
+    cur.posStart = idx;
+    cur.rows = items.slice(idx, idx + take);
+    idx += take;
+    cursor = rowsStartK + take*span;
+    if(idx < items.length){
+      cur = { first:false, topK:CONT_TOP_K, rows:[], posStart:idx };
+      pages.push(cur);
+      cursor = CONT_TOP_K;
+    }
   }
-  const last = pages[pages.length-1];
-  const lastTopK = last.first ? L.tableFirstK : (DS.table.topRuleK_cont || 12);
-  const capWithPost = capFor(lastTopK, true);
-  const lastCount = last.rows.filter(Boolean).length;
-  if(lastCount > capWithPost){
-    const overflow = last.rows.slice(capWithPost);
-    last.rows = last.rows.slice(0, capWithPost);
-    if(last.rows.length === 0) last.rows = [null];
-    pages.push({ first:false, rows: overflow });
+
+  // -- Nachspann: jeder Block prüft, ob er noch passt, sonst neue Seite --
+  function ensure(gap, height){
+    if(cursor + gap + height > FOOTER_SAFE_K){
+      cur = { first:false, topK:null, rows:[] };
+      pages.push(cur);
+      cursor = CONT_TOP_K;
+    } else {
+      cursor += gap;
+    }
+    const k0 = cursor;
+    cursor += height;
+    return { page:cur, k:k0 };
   }
-  pages[pages.length-1].last = true;
-  pages.forEach(p => p.layout = L);
+  let r;
+  r = ensure(0, 4);                                         // Summenblock direkt unter letzter Zeile
+  r.page.totalsK = r.k;
+  r = ensure(DS.gapBlock, Math.max(1, L.schlussLines.length));
+  r.page.schlussK = r.k; r.page.schlussLines = L.schlussLines;
+  r = ensure(2, 2);                                          // Leerzeile + Gruß + Name
+  r.page.grussK = r.k;
+  r = ensure(DS.gapBlock, 4);                                // Bankblock (Linie/3 Zeilen/Linie)
+  r.page.bankK = r.k;
+
+  pages.L = L;
   return pages;
 }
 
@@ -421,8 +453,8 @@ function renderBriefTop(page, L){
   page.appendChild(band("s-body", {leftMM:DS.colX(1), k:L.anredeK}, model.brief.anrede || ""));
   L.einlLines.forEach((ln,i)=> page.appendChild(band("s-body", {leftMM:DS.colX(1), k:L.einlK+i}, ln)));
 }
-function renderTable(page, p, L){
-  const topK = p.first ? L.tableFirstK : (DS.table.topRuleK_cont || 12);
+function renderTable(page, p){
+  const topK = p.topK;
   const span = DS.table.rowSpan, C = DS.table.cols;
   rule(page, topK, DS.colX(1), DS.rightEdge);
   page.appendChild(band("s-thead", {leftMM:DS.colX(1),         k:topK}, "POS."));
@@ -433,20 +465,17 @@ function renderTable(page, p, L){
   page.appendChild(band("s-thead", {right:true,                 k:topK}, "GESAMT NETTO"));
   rule(page, topK + 1, DS.colX(1), DS.rightEdge);
   const rows = p.rows.filter(Boolean);
-  let posBase = 0;
-  for(let i=0;i<pages_.indexOf(p);i++) posBase += pages_[i].rows.filter(Boolean).length;
   rows.forEach((row,i)=>{
     const bandTopK = topK + 1 + i*span;
-    const pos = String(posBase + i + 1).padStart(2,"0");
+    const pos = String(p.posStart + i + 1).padStart(2,"0");
     page.appendChild(band("s-cell", {leftMM:DS.colX(1),          k:bandTopK, span}, pos));
     page.appendChild(band("s-cell", {leftMM:DS.colX(C.leistung), k:bandTopK, span}, row.leistung || ""));
     page.appendChild(band("s-cell", {leftMM:DS.colX(C.art),      k:bandTopK, span}, row.art || ""));
     page.appendChild(band("s-cell", {leftMM:DS.colX(C.menge),    k:bandTopK, span}, row.menge || ""));
     page.appendChild(band("s-cell", {rightMM:DS.table.satzRightX(), leftMM:DS.colX(9), k:bandTopK, span}, eur(row.satz)));
-    page.appendChild(band("s-cell", {right:true,                 k:bandTopK, span}, eur(row.gesamt)));
+    page.appendChild(band("s-cell", {right:true,                 k:bandTopK, span}, eur(rowGesamt(row))));
     rule(page, bandTopK + span, DS.colX(1), DS.rightEdge);
   });
-  return topK + 1 + rows.length*span;
 }
 function renderTotals(page, k){
   const L8 = DS.colX(DS.total.labelCol);
@@ -457,14 +486,13 @@ function renderTotals(page, k){
   page.appendChild(band("s-cell",  {leftMM:L8, k:k+2, span:1}, "Gesamt brutto"));
   page.appendChild(band("s-cell",  {right:true, k:k+2, span:1}, eur(totalBrutto())));
   rule(page, k+3, L8, DS.rightEdge);
-  return k + 4;
 }
-function renderBriefBottom(page, k, L){
-  L.schlussLines.forEach((ln,i)=> page.appendChild(band("s-body", {leftMM:DS.colX(1), k:k+i}, ln)));
-  let kk = k + L.schlussLines.length + 2;
-  page.appendChild(band("s-body", {leftMM:DS.colX(1), k:kk}, model.brief.gruss || ""));
-  page.appendChild(band("s-body", {leftMM:DS.colX(1), k:kk+1}, model.brief.absender || ""));
-  return kk + 1;
+function renderSchlussText(page, k, lines){
+  lines.forEach((ln,i)=> page.appendChild(band("s-body", {leftMM:DS.colX(1), k:k+i}, ln)));
+}
+function renderGruss(page, k){
+  page.appendChild(band("s-body", {leftMM:DS.colX(1), k}, model.brief.gruss || ""));
+  page.appendChild(band("s-body", {leftMM:DS.colX(1), k:k+1}, model.brief.absender || ""));
 }
 function renderBank(page, k){
   const x1 = DS.colX(1), x2 = DS.bank.x1();
@@ -483,7 +511,6 @@ function renderFooter(page, idx, count){
   page.appendChild(band("s-footer", {right:true, k:DS.footer.k2}, `${idx}/${count}`));
 }
 
-let pages_ = [];
 let showGrid = false;
 function renderGrid(page){
   const ov = document.createElement("div"); ov.className = "grid-ov";
@@ -517,19 +544,19 @@ function snapLines(){
 
 function render(){
   stage.innerHTML = "";
-  pages_ = paginate();
-  pages_.forEach((p,i)=>{
+  const pages = paginate();
+  const L = pages.L;
+  pages.forEach((p,i)=>{
     const page = document.createElement("div"); page.className = "doc-page";
     if(showGrid) renderGrid(page);
     renderHeader(page);
-    if(p.first){ renderEmpfaenger(page, p.layout); renderBriefTop(page, p.layout); }
-    const afterTableK = renderTable(page, p, p.layout);
-    if(p.last){
-      const afterTotalsK = renderTotals(page, afterTableK);
-      const afterBottomK = renderBriefBottom(page, afterTotalsK + DS.gapBlock, p.layout);
-      renderBank(page, afterBottomK + DS.gapBlock);
-    }
-    renderFooter(page, i+1, pages_.length);
+    if(p.first){ renderEmpfaenger(page, L); renderBriefTop(page, L); }
+    if(p.topK != null) renderTable(page, p);
+    if(p.totalsK != null) renderTotals(page, p.totalsK);
+    if(p.schlussK != null) renderSchlussText(page, p.schlussK, p.schlussLines);
+    if(p.grussK != null) renderGruss(page, p.grussK);
+    if(p.bankK != null) renderBank(page, p.bankK);
+    renderFooter(page, i+1, pages.length);
     stage.appendChild(page);
   });
   fitZoom(false);
@@ -598,11 +625,11 @@ function exportPDF(){
   };
 
   const pages = paginate();
+  const L = pages.L;
   const C = DS.table.cols, span = DS.table.rowSpan;
 
   pages.forEach((p, pi) => {
     if(pi > 0) doc.addPage();
-    const L = p.layout;
 
     put("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1}, "AN(N) ARCHITECTURE");
     put("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, "SOLUTION");
@@ -617,50 +644,50 @@ function exportPDF(){
       L.einlLines.forEach((ln,i)=> put("s-body", {leftMM:DS.colX(1), k:L.einlK+i}, ln));
     }
 
-    const topK = p.first ? L.tableFirstK : (DS.table.topRuleK_cont || 12);
-    hline(topK, DS.colX(1), DS.rightEdge);
-    put("s-thead", {leftMM:DS.colX(1),          k:topK}, "POS.");
-    put("s-thead", {leftMM:DS.colX(C.leistung), k:topK}, "LEISTUNG");
-    put("s-thead", {leftMM:DS.colX(C.art),      k:topK}, "ABRECHNUNGSART");
-    put("s-thead", {leftMM:DS.colX(C.menge),    k:topK}, "MENGE");
-    put("s-thead", {rightX:DS.table.satzRightX(), alignRight:true, k:topK}, "SATZ NETTO");
-    put("s-thead", {right:true,                 k:topK}, "GESAMT NETTO");
-    hline(topK + 1, DS.colX(1), DS.rightEdge);
+    if(p.topK != null){
+      const topK = p.topK;
+      hline(topK, DS.colX(1), DS.rightEdge);
+      put("s-thead", {leftMM:DS.colX(1),          k:topK}, "POS.");
+      put("s-thead", {leftMM:DS.colX(C.leistung), k:topK}, "LEISTUNG");
+      put("s-thead", {leftMM:DS.colX(C.art),      k:topK}, "ABRECHNUNGSART");
+      put("s-thead", {leftMM:DS.colX(C.menge),    k:topK}, "MENGE");
+      put("s-thead", {rightX:DS.table.satzRightX(), alignRight:true, k:topK}, "SATZ NETTO");
+      put("s-thead", {right:true,                 k:topK}, "GESAMT NETTO");
+      hline(topK + 1, DS.colX(1), DS.rightEdge);
 
-    const rows = p.rows.filter(Boolean);
-    let posBase = 0;
-    for(let i=0;i<pi;i++) posBase += pages[i].rows.filter(Boolean).length;
-    rows.forEach((row, i) => {
-      const bt = topK + 1 + i*span;
-      const pos = String(posBase + i + 1).padStart(2,"0");
-      put("s-cell", {leftMM:DS.colX(1),          k:bt, span}, pos);
-      put("s-cell", {leftMM:DS.colX(C.leistung), k:bt, span}, row.leistung || "");
-      put("s-cell", {leftMM:DS.colX(C.art),      k:bt, span}, row.art || "");
-      put("s-cell", {leftMM:DS.colX(C.menge),    k:bt, span}, row.menge || "");
-      put("s-cell", {rightX:DS.table.satzRightX(), alignRight:true, k:bt, span}, eur(row.satz));
-      put("s-cell", {right:true,                 k:bt, span}, eur(row.gesamt));
-      hline(bt + span, DS.colX(1), DS.rightEdge);
-    });
+      const rows = p.rows.filter(Boolean);
+      rows.forEach((row, i) => {
+        const bt = topK + 1 + i*span;
+        const pos = String(p.posStart + i + 1).padStart(2,"0");
+        put("s-cell", {leftMM:DS.colX(1),          k:bt, span}, pos);
+        put("s-cell", {leftMM:DS.colX(C.leistung), k:bt, span}, row.leistung || "");
+        put("s-cell", {leftMM:DS.colX(C.art),      k:bt, span}, row.art || "");
+        put("s-cell", {leftMM:DS.colX(C.menge),    k:bt, span}, row.menge || "");
+        put("s-cell", {rightX:DS.table.satzRightX(), alignRight:true, k:bt, span}, eur(row.satz));
+        put("s-cell", {right:true,                 k:bt, span}, eur(rowGesamt(row)));
+        hline(bt + span, DS.colX(1), DS.rightEdge);
+      });
+    }
 
-    let afterTableK = topK + 1 + rows.length*span;
-
-    if(p.last){
-      const L8 = DS.colX(DS.total.labelCol);
-      put("s-total", {leftMM:L8, k:afterTableK, span:1}, "Gesamt netto");
-      put("s-total", {right:true, k:afterTableK, span:1}, eur(totalNetto()));
-      put("s-cell",  {leftMM:L8, k:afterTableK+1, span:1}, "MwSt. " + (model.mwstProzent||0).toLocaleString("de-DE") + "%");
-      put("s-cell",  {right:true, k:afterTableK+1, span:1}, eur(totalMwst()));
-      put("s-cell",  {leftMM:L8, k:afterTableK+2, span:1}, "Gesamt brutto");
-      put("s-cell",  {right:true, k:afterTableK+2, span:1}, eur(totalBrutto()));
-      hline(afterTableK+3, L8, DS.rightEdge);
-
-      let k2 = afterTableK + 4 + DS.gapBlock;
-      L.schlussLines.forEach((ln,i)=> put("s-body", {leftMM:DS.colX(1), k:k2+i}, ln));
-      let kk = k2 + L.schlussLines.length + 2;
-      put("s-body", {leftMM:DS.colX(1), k:kk}, model.brief.gruss || "");
-      put("s-body", {leftMM:DS.colX(1), k:kk+1}, model.brief.absender || "");
-
-      const bk = kk + 1 + DS.gapBlock, x1 = DS.colX(1), x2 = DS.bank.x1();
+    if(p.totalsK != null){
+      const L8 = DS.colX(DS.total.labelCol), tk = p.totalsK;
+      put("s-total", {leftMM:L8, k:tk, span:1}, "Gesamt netto");
+      put("s-total", {right:true, k:tk, span:1}, eur(totalNetto()));
+      put("s-cell",  {leftMM:L8, k:tk+1, span:1}, "MwSt. " + (model.mwstProzent||0).toLocaleString("de-DE") + "%");
+      put("s-cell",  {right:true, k:tk+1, span:1}, eur(totalMwst()));
+      put("s-cell",  {leftMM:L8, k:tk+2, span:1}, "Gesamt brutto");
+      put("s-cell",  {right:true, k:tk+2, span:1}, eur(totalBrutto()));
+      hline(tk+3, L8, DS.rightEdge);
+    }
+    if(p.schlussK != null){
+      p.schlussLines.forEach((ln,i)=> put("s-body", {leftMM:DS.colX(1), k:p.schlussK+i}, ln));
+    }
+    if(p.grussK != null){
+      put("s-body", {leftMM:DS.colX(1), k:p.grussK}, model.brief.gruss || "");
+      put("s-body", {leftMM:DS.colX(1), k:p.grussK+1}, model.brief.absender || "");
+    }
+    if(p.bankK != null){
+      const bk = p.bankK, x1 = DS.colX(1), x2 = DS.bank.x1();
       hline(bk, x1, x2);
       put("s-cell", {leftMM:x1, k:bk+1}, model.bank.name || "");
       put("s-cell", {leftMM:x1, k:bk+2}, "IBAN: " + (model.bank.iban || ""));
@@ -700,7 +727,7 @@ function renderItems(){
     '<div class="i-head">'+
       '<div>Pos.</div>'+
       '<div>Leistung<span class="grip" data-col="c1"></span></div>'+
-      '<div>Abrechnungsart</div><div>Menge</div><div>Satz netto</div><div>Gesamt netto</div><div></div>'+
+      '<div>Abrechnungsart</div><div>Menge</div><div>Satz netto</div><div>Gesamt netto (berechnet)</div><div></div>'+
     '</div>';
   model.items.forEach((r,i)=>{
     const row = document.createElement("div"); row.className="i-row";
@@ -710,7 +737,7 @@ function renderItems(){
       `<input type="text" data-i="${i}" data-k="art" value="${escapeHtml(r.art)}">`+
       `<input type="text" data-i="${i}" data-k="menge" value="${escapeHtml(r.menge)}">`+
       `<input type="number" step="0.01" class="num" data-i="${i}" data-k="satz" value="${r.satz??""}">`+
-      `<input type="number" step="0.01" class="num" data-i="${i}" data-k="gesamt" value="${r.gesamt??""}">`+
+      `<div class="i-gesamt">${eur(rowGesamt(r))}</div>`+
       `<button class="del" data-i="${i}" title="Position löschen">×</button>`;
     itemsBox.appendChild(row);
   });
@@ -727,7 +754,10 @@ function updateTotals(){
 }
 itemsBox.addEventListener("input", e=>{
   const i=+e.target.dataset.i, k=e.target.dataset.k; if(k==null) return;
-  model.items[i][k] = (k==="satz"||k==="gesamt") ? (parseFloat(e.target.value)||0) : e.target.value;
+  model.items[i][k] = (k==="satz") ? (parseFloat(e.target.value)||0) : e.target.value;
+  const row = e.target.closest(".i-row");
+  const g = row && row.querySelector(".i-gesamt");
+  if(g) g.textContent = eur(rowGesamt(model.items[i]));   // Menge/Satz geändert -> Gesamt live nachrechnen
   updateTotals(); render();
 });
 itemsBox.addEventListener("click", e=>{
@@ -755,7 +785,7 @@ itemsBox.addEventListener("click", e=>{
   try{ const w=localStorage.getItem("rn.c1"); if(w) itemsBox.style.setProperty("--c1", w); }catch(_){}
 })();
 
-$("#btn-add").onclick = ()=>{ model.items.push({leistung:"",art:"",menge:"",satz:0,gesamt:0}); renderItems(); render(); };
+$("#btn-add").onclick = ()=>{ model.items.push({leistung:"",art:"",menge:"",satz:0}); renderItems(); render(); };
 
 $("#btn-save").onclick = ()=>{
   const blob = new Blob([JSON.stringify(model,null,2)],{type:"application/json"});
