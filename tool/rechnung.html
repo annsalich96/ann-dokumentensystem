@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rechnung — ann architecture</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="pdf-fonts.js"></script>
+<style>
+/* ============================================================
+   ann architecture — Dokumenten-System · Prototyp
+   Rechnung-Ersteller / Viewer
+
+   Gleiche Engine wie stundennachweis.html (Design-System, PDF-Export,
+   Zoom/Splitter/Druck) — siehe docs/document-design-system/ + DECISIONS.md.
+   Zwei getrennte Typo-Welten:
+   - Editor-UI  -> System-/Helvetica-Schrift, Bildschirmgrößen
+   - Dokument   -> Rota, exakt nach Design-System (mm/pt, 13-pt-Raster)
+   ============================================================ */
+
+@font-face{font-family:"Rota";src:url("fonts/Rota-Light.otf") format("opentype");font-weight:300;font-style:normal;font-display:swap}
+@font-face{font-family:"Rota";src:url("fonts/Rota-Medium.otf") format("opentype");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:"Rota";src:url("fonts/Rota-Bold.otf") format("opentype");font-weight:700;font-style:normal;font-display:swap}
+
+:root{
+  --ink:#0A0A0A;
+  --line:#a7a9ac;
+  --paper:#ffffff;
+  --ui:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;
+  --doc:"Rota","Helvetica Neue",Arial,sans-serif;
+  --ui-bg:#f4f4f2; --ui-border:#dcdcd7; --ui-muted:#6b6b6b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--ui);color:var(--ink);background:#e9e9e6;display:flex;overflow:hidden;font-size:15px}
+
+/* ---- Vorschau (LINKS) ---- */
+#preview{flex:1;height:100%;overflow:auto;background:#e9e9e6;padding:30px;display:flex;flex-direction:column;align-items:center;gap:24px}
+.stage{display:flex;flex-direction:column;align-items:center;gap:24px;transform-origin:top center}
+#toolbar{position:fixed;top:16px;left:24px;display:flex;gap:8px;z-index:20}
+
+/* ---- Splitter ---- */
+#splitter{order:1;flex:0 0 6px;background:var(--ui-border);cursor:col-resize;position:relative;z-index:15}
+#splitter::after{content:"";position:absolute;top:0;bottom:0;left:-6px;right:-6px}
+#splitter:hover,#splitter.drag{background:#b8b8b2}
+body.resizing{cursor:col-resize;user-select:none}
+
+/* ---- Editor (RECHTS) ---- */
+#editor{
+  width:clamp(520px, 50vw, 1040px);min-width:380px;height:100%;overflow:auto;
+  background:var(--paper);border-right:1px solid var(--ui-border);
+  padding:30px 44px 90px 36px;order:2;flex:0 0 auto
+}
+#editor h1{font-size:21px;font-weight:650;margin:0 0 3px;letter-spacing:-.01em}
+#editor .sub{font-size:13px;color:var(--ui-muted);margin:0 0 26px}
+#editor h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ui-muted);
+  margin:30px 0 14px;border-top:1px solid var(--ui-border);padding-top:20px}
+#editor .fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px}
+#editor .fld{display:flex;flex-direction:column;min-width:0}
+#editor .fld.wide{grid-column:1/-1}
+#editor label{font-size:12.5px;color:var(--ui-muted);margin:0 0 5px;font-weight:500}
+#editor input,#editor textarea,#editor select{
+  width:100%;font-family:var(--ui);font-size:15px;padding:10px 12px;
+  border:1px solid var(--ui-border);border-radius:7px;background:#fff;color:var(--ink)
+}
+#editor textarea{resize:vertical;line-height:1.4}
+#editor select:disabled{opacity:.5;background:var(--ui-bg)}
+#editor input:focus,#editor textarea:focus,#editor select:focus{outline:2px solid var(--ink);outline-offset:-1px;border-color:var(--ink)}
+button{font-family:var(--ui);font-size:14px;padding:9px 16px;border:1px solid var(--ink);border-radius:7px;
+  background:var(--ink);color:#fff;cursor:pointer}
+button.ghost{background:#fff;color:var(--ink)}
+button:disabled{opacity:.4;cursor:not-allowed}
+.btnbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+
+/* Positionen — horizontal scrollbar wie die Zeiteinträge im Stundennachweis */
+#items{margin-top:8px;border:1px solid var(--ui-border);border-radius:8px;overflow-x:auto;overflow-y:visible}
+#items .i-head,#items .i-row{display:grid;
+  grid-template-columns:34px var(--c1,220px) 150px 110px 120px 130px 34px;
+  width:max-content;min-width:100%}
+#items .i-head{background:var(--ui-bg);font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ui-muted)}
+#items .i-head>div{padding:9px 10px;position:relative}
+#items .i-head .grip{position:absolute;top:0;bottom:0;right:-1px;width:10px;cursor:col-resize;z-index:2}
+#items .i-head .grip:hover{background:var(--ink);opacity:.2}
+#items .i-row>*{border-top:1px solid var(--ui-border);min-width:0}
+#items .i-pos{display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--ui-muted)}
+#items input{border:0;border-radius:0;font-size:13.5px;padding:9px 10px;width:100%}
+#items input:focus{outline:2px solid var(--ink);outline-offset:-2px}
+#items .num{text-align:right}
+#items .del{border:0;background:#fff;color:#B0291E;font-size:17px;padding:0;cursor:pointer}
+.i-total{display:flex;flex-direction:column;gap:4px;width:max-content;min-width:100%;
+  font-size:13.5px;padding:11px 10px;box-sizing:border-box}
+.i-total>div{display:flex;justify-content:space-between;gap:24px}
+.i-total .b{font-weight:700}
+
+/* ============================================================
+   DOKUMENT: A4 nach Design-System (identisch zum Stundennachweis-Tool)
+   ============================================================ */
+.doc-page{position:relative;width:210mm;height:297mm;background:var(--paper);
+  box-shadow:0 3px 18px rgba(0,0,0,.15);overflow:hidden;color:var(--ink);font-family:var(--doc)}
+:root{--tshift:0.075em;--tshift-caps:0.135em}
+.doc-page .b{position:absolute;white-space:nowrap;overflow:hidden;display:block}
+.doc-page .b>span{position:relative;top:var(--tshift,0em)}
+.doc-page .b.r{text-align:right}
+.doc-page .b.top{overflow:visible;line-height:1!important}
+.doc-page .b.top>span{top:0}
+.doc-page .s-metalabel>span,.doc-page .s-thead>span{top:var(--tshift-caps,0em)}
+.doc-page .line{position:absolute;height:0;border-top:1px solid var(--line)}
+.doc-page .monogram{position:absolute}
+.doc-page .monogram svg{display:block;width:100%;height:100%;fill:var(--ink)}
+
+.doc-page .grid-ov{position:absolute;inset:0;pointer-events:none;z-index:99}
+.doc-page .grid-ov .col{position:absolute;top:0;bottom:0;background:rgba(233,30,180,.06);
+  border-left:1px solid rgba(233,30,180,.5);border-right:1px solid rgba(233,30,180,.5)}
+.doc-page .grid-ov .bl{position:absolute;left:0;right:0;border-top:1px solid rgba(0,150,220,.45)}
+.doc-page .grid-ov .frame{position:absolute;border:1px solid rgba(233,30,180,.7)}
+
+.s-wordmark {font-weight:300;font-size:8pt;letter-spacing:.02em;text-transform:uppercase}
+.s-title    {font-weight:500;font-size:10pt}
+.s-placedate{font-weight:500;font-size:10pt}
+.s-metalabel{font-weight:500;font-size:8pt;text-transform:uppercase;letter-spacing:.02em}
+.s-metaval  {font-weight:500;font-size:10pt}
+.s-body     {font-weight:500;font-size:10pt}
+.s-thead    {font-weight:500;font-size:8pt;text-transform:uppercase;letter-spacing:.02em}
+.s-cell     {font-weight:500;font-size:8pt}
+.s-total    {font-weight:700;font-size:8pt}
+.s-footer   {font-weight:300;font-size:8pt}
+
+@media print{
+  html,body{height:auto!important;min-height:0!important;overflow:visible!important;margin:0!important;padding:0!important;background:#fff}
+  body{display:block!important;font-size:initial}
+  #editor,#toolbar,#splitter{display:none!important}
+  #preview{all:unset;display:block}
+  .stage{display:block!important;zoom:1!important;transform:none!important;margin:0!important;padding:0!important;gap:0!important}
+  .doc-page{
+    position:relative;width:210mm;height:296.6mm;
+    overflow:hidden;box-shadow:none;margin:0;padding:0
+  }
+  .doc-page:not(:last-child){page-break-after:always}
+  .doc-page:last-child{page-break-after:avoid}
+  .doc-page .line{border-top-width:.5pt}
+  .grid-ov{display:none!important}
+  @page{size:A4;margin:0}
+}
+</style>
+</head>
+<body>
+
+<div id="preview"><div class="stage" id="stage"></div></div>
+<div id="splitter" title="Breite ziehen"></div>
+
+<div id="toolbar">
+  <button class="ghost" id="btn-grid">Raster</button>
+  <button class="ghost" id="btn-zoom-out">–</button>
+  <button class="ghost" id="btn-zoom-in">+</button>
+  <button class="ghost" id="btn-zoom-fit">Fit</button>
+</div>
+
+<div id="editor">
+  <h1>Rechnung</h1>
+  <p class="sub">ann architecture · Dokumenten-System · Prototyp</p>
+
+  <h2>Kopf</h2>
+  <div class="fg">
+    <div class="fld wide"><label>Titelzeile</label><input type="text" id="f-title" value="Rechnungsnr.: OFF_GUN_02_260908"></div>
+    <div class="fld"><label>Ort</label><input type="text" id="f-place" value="Berlin"></div>
+    <div class="fld"><label>Datum</label><input type="date" id="f-date"></div>
+  </div>
+
+  <h2>Empfänger</h2>
+  <div class="fg">
+    <div class="fld wide"><label>Name · Firma · Adresse (je Zeile)</label><textarea id="f-empf" rows="4">Robert Bräunlin
+Bräunlin Kolb Architekten GmbH
+Burgfelderstrasse 211
+4055 Basel</textarea></div>
+  </div>
+
+  <h2>Brieftext</h2>
+  <div class="fg">
+    <div class="fld wide"><label>Anrede</label><input type="text" id="f-anrede" value="Sehr geehrter Herr Bräunlin,"></div>
+    <div class="fld wide"><label>Einleitung</label><textarea id="f-einleitung" rows="3">vielen Dank für Ihr Vertrauen und die Möglichkeit, Ihr Projekt „Gundilitor" in Basel gemeinsam mit Ihnen weiterzuentwickeln.</textarea></div>
+    <div class="fld wide"><label>Schlusstext</label><textarea id="f-schluss" rows="3">Gerne unterbreiten wir Ihnen im Folgenden unser Angebot für die weiterführenden Leistungen. Das vorliegende Dokument umfasst Angebotspositionen für die Innenraumplanung im Erdgeschoss, die Gestaltung der Erdgeschossfassaden sowie.</textarea></div>
+    <div class="fld"><label>Grußformel</label><input type="text" id="f-gruss" value="Mit freundlichen Grüßen,"></div>
+    <div class="fld"><label>Absender</label><input type="text" id="f-absender" value="Ann-Kathrin Salich"></div>
+  </div>
+
+  <h2>Positionen</h2>
+  <div id="items"></div>
+  <div class="btnbar"><button class="ghost" id="btn-add">+ Position</button></div>
+
+  <h2>Mehrwertsteuer</h2>
+  <div class="fg">
+    <div class="fld"><label>MwSt. %</label><input type="number" id="f-mwst" value="19" step="0.5" min="0"></div>
+  </div>
+
+  <h2>Bankverbindung</h2>
+  <div class="fg">
+    <div class="fld wide"><label>Name</label><input type="text" id="f-bank-name" value="Ann-Kathrin Salich"></div>
+    <div class="fld"><label>IBAN</label><input type="text" id="f-bank-iban" value="DE66 1001 1001 2590 9000 54"></div>
+    <div class="fld"><label>BIC</label><input type="text" id="f-bank-bic" value="NTSBDEB1XXX"></div>
+  </div>
+
+  <h2>Dokument</h2>
+  <div class="btnbar">
+    <button id="btn-pdf">PDF herunterladen</button>
+    <button class="ghost" id="btn-print">Drucken</button>
+    <button class="ghost" id="btn-save">Speichern (.json)</button>
+    <button class="ghost" id="btn-open">Öffnen</button>
+    <input type="file" id="file-open" accept="application/json" hidden>
+  </div>
+  <p class="sub" style="margin-top:18px">Regeln &amp; Annahmen: <code>docs/</code>. Feedback → verfeinern.</p>
+</div>
+
+<script>
+/* ============================================================
+   1) DESIGN-SYSTEM  (global, identisch zu stundennachweis.html)
+   ============================================================ */
+const PT = p => p*25.4/72;
+const MM_PER_CSSPX = 25.4/96;
+const BL = PT(13);
+const DS = {
+  page:{w:210,h:297}, margin:15, rightEdge:195,
+  cols:12, colW:10.7957, gutter:BL,
+  colX(n){ return 15 + (n-1)*(this.colW+this.gutter); },
+  G(k){ return 15 + k*BL; },
+
+  header:{
+    monogram:{right:195, top:15, w:31.2, h:13.5},
+    wordmarkTop1:14.6, wordmarkTop2:19.2,
+    titleK:5, placedateK:7,
+    ruleK:[5,7,9], ruleX1:122.65, ruleX2:195
+  },
+  gapBlock:3,          /* Abstand zwischen Blöcken (Kopf→Empfänger, →Anrede, Schluss→Bank): 3 BL, Ann 2026-09-11 */
+  table:{
+    rowSpan:2,
+    cols:{ leistung:2, art:6, menge:8 },
+    satzRightX(){ return this.__satzX || (this.__satzX = 15+10*(10.7957+BL)); },  /* colX(11) */
+    minGapBeforeFooter:2
+  },
+  total:{ labelCol:8, rowSpan:1 },
+  bank:{ x1(){ return 15+7*(10.7957+BL); }, /* colX(8) */ },
+  footer:{ k1:57, k2:58, blocks:[1,3,6,8] }
+};
+
+const BUERO = { blocks:[
+  ["Wilmersdorfer Str. 108", "10627 Berlin"],
+  ["info@annarchitecture-studio.com", "annarchitecturesolution.com"],
+  ["Tel.: +49 1702828889", "USt-IdNr.: DE123456789"],
+  ["Ann-Kathrin Salich", "Freischaffende Architektin"]
+]};
+
+const MONOGRAM_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88.33 38.33"><path d="M 0 38.33 L 5.10 38.33 L 24.97 0 L 20.01 0 L 0 38.33 Z"/><path d="M 83.88 0 L 83.88 31.12 L 61.19 0.10 L 61.11 0 L 56.53 0 L 56.53 30.83 L 34.05 0.10 L 33.97 0 L 29.39 0 L 29.39 38.33 L 33.83 38.33 L 33.83 7.20 L 56.76 38.33 L 60.97 38.33 L 60.97 7.21 L 83.72 38.22 L 83.79 38.33 L 88.33 38.33 L 88.33 0 L 83.88 0 Z"/></svg>`;
+
+/* ============================================================
+   2) DOKUMENT-MODELL
+   ============================================================ */
+let model = {
+  type:"rechnung",
+  header:{ title:"Rechnungsnr.: OFF_GUN_02_260908", place:"Berlin", date:isoToday() },
+  empfaenger:"Robert Bräunlin\nBräunlin Kolb Architekten GmbH\nBurgfelderstrasse 211\n4055 Basel",
+  brief:{
+    anrede:"Sehr geehrter Herr Bräunlin,",
+    einleitung:"vielen Dank für Ihr Vertrauen und die Möglichkeit, Ihr Projekt „Gundilitor“ in Basel gemeinsam mit Ihnen weiterzuentwickeln.",
+    schluss:"Gerne unterbreiten wir Ihnen im Folgenden unser Angebot für die weiterführenden Leistungen. Das vorliegende Dokument umfasst Angebotspositionen für die Innenraumplanung im Erdgeschoss, die Gestaltung der Erdgeschossfassaden sowie.",
+    gruss:"Mit freundlichen Grüßen,", absender:"Ann-Kathrin Salich"
+  },
+  items:[
+    { leistung:"Phase 02 — Entwurfsausarbeitung", art:"Zeithonorar", menge:"400 Std.", satz:90, gesamt:6000 },
+    { leistung:"Phase 03 — Spezifikationsplanung", art:"Zeithonorar", menge:"500 Std", satz:90, gesamt:5000 },
+    { leistung:"Phase 01: Konzeptentwicklung", art:"pauschal", menge:"1", satz:5500, gesamt:5500 },
+    { leistung:"Mieterszenarioplanung", art:"pauschal", menge:"2", satz:6250, gesamt:12500 }
+  ],
+  mwstProzent:19,
+  bank:{ name:"Ann-Kathrin Salich", iban:"DE66 1001 1001 2590 9000 54", bic:"NTSBDEB1XXX" }
+};
+function isoToday(){ return new Date().toISOString().slice(0,10); }
+function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
+function eur(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
+function totalNetto(){ return model.items.reduce((s,r)=>s+(Number(r.gesamt)||0),0); }
+function totalMwst(){ return totalNetto() * (Number(model.mwstProzent)||0) / 100; }
+function totalBrutto(){ return totalNetto() + totalMwst(); }
+function textLines(s){ return String(s||"").split("\n").map(x=>x.trim()).filter(Boolean); }
+
+/* ============================================================
+   3) TEXT-UMBRUCH  (Canvas-Messung, eine Quelle für Layout + Vorschau;
+      PDF nutzt jsPDF splitTextToSize mit denselben Maßen — siehe R-012-
+      Prinzip: zwei Renderer, bewusst nicht automatisch synchronisiert)
+   ============================================================ */
+const _wrapCtx = document.createElement("canvas").getContext("2d");
+function wrapLines(text, maxWidthMM, weightCss, sizePt){
+  text = String(text||"").trim();
+  if(!text) return [];
+  const maxPx = maxWidthMM * 96/25.4;
+  _wrapCtx.font = weightCss + " " + (sizePt*96/72) + 'px "Rota","Helvetica Neue",Arial,sans-serif';
+  const out = [];
+  text.split("\n").forEach(para=>{
+    const words = para.trim().split(/\s+/).filter(Boolean);
+    if(!words.length){ out.push(""); return; }
+    let line = "";
+    words.forEach(w=>{
+      const cand = line ? line+" "+w : w;
+      if(_wrapCtx.measureText(cand).width <= maxPx){ line = cand; }
+      else { if(line) out.push(line); line = w; }
+    });
+    if(line) out.push(line);
+  });
+  return out;
+}
+const BODY_WIDTH_MM = DS.rightEdge - DS.colX(1);   /* volle Satzbreite, 180mm */
+
+/* ============================================================
+   4) LAYOUT — Cursor-basiert (fixer Kopf + Empfänger + Brieftext,
+      Tabelle mit Seitenumbruch wie im Stundennachweis, Summenblock +
+      Schlusstext + Bankblock nur auf der letzten Seite)
+   ============================================================ */
+function computeLayout(){
+  const L = {};
+  L.empfLines = textLines(model.empfaenger);
+  let k = DS.header.ruleK[DS.header.ruleK.length-1];      // 9
+  L.empfK = k + DS.gapBlock; k = L.empfK + L.empfLines.length;
+  L.anredeK = k + DS.gapBlock; k = L.anredeK + 1;
+  L.einlLines = wrapLines(model.brief.einleitung, BODY_WIDTH_MM, "500", 10);
+  L.einlK = k + 1; k = L.einlK + L.einlLines.length;
+  L.tableFirstK = k + 2;
+
+  L.schlussLines = wrapLines(model.brief.schluss, BODY_WIDTH_MM, "500", 10);
+  // Platzbedarf NACH der Tabelle (Summenblock + Schlusstext + Gruß + Bankblock), in BL:
+  L.postRows = 3 /* Summenzeilen */ + 1 /* Abschlusslinie zählt als 1 BL Reserve */
+    + DS.gapBlock + L.schlussLines.length
+    + 2 /* Leerzeile + Gruß */ + 1 /* Absendername */
+    + DS.gapBlock + 1 /* obere Bank-Linie */ + 3 /* Name/IBAN/BIC */ + 1 /* untere Linie */;
+  return L;
+}
+
+/* ============================================================
+   5) PAGINATION-ENGINE (Tabelle; Vor-/Nachspann fest auf erster/letzter Seite)
+   ============================================================ */
+function paginate(){
+  const L = computeLayout();
+  const F = DS.footer.k1, GAP = DS.table.minGapBeforeFooter, span = DS.table.rowSpan;
+  const capFor = (topK, reservePost) => {
+    const budget = F - GAP - (reservePost ? L.postRows : 0) - (topK + 1);
+    return Math.max(reservePost ? 0 : 1, Math.floor(budget / span));
+  };
+  let rest = model.items.slice();
+  if(!rest.length) rest = [null];
+  const pages = []; let first = true;
+  while(rest.length){
+    const topK = first ? L.tableFirstK : DS.table.topRuleK_cont || 12;
+    const cap = capFor(topK, false);
+    pages.push({ first, rows: rest.slice(0, cap) });
+    rest = rest.slice(cap);
+    first = false;
+  }
+  const last = pages[pages.length-1];
+  const lastTopK = last.first ? L.tableFirstK : (DS.table.topRuleK_cont || 12);
+  const capWithPost = capFor(lastTopK, true);
+  const lastCount = last.rows.filter(Boolean).length;
+  if(lastCount > capWithPost){
+    const overflow = last.rows.slice(capWithPost);
+    last.rows = last.rows.slice(0, capWithPost);
+    if(last.rows.length === 0) last.rows = [null];
+    pages.push({ first:false, rows: overflow });
+  }
+  pages[pages.length-1].last = true;
+  pages.forEach(p => p.layout = L);
+  return pages;
+}
+
+/* ============================================================
+   6) RENDERER (Bildschirm)
+   ============================================================ */
+const stage = document.getElementById("stage");
+
+function band(cls, o, text){
+  const d = document.createElement("div");
+  d.className = "b " + cls + ((o.right || o.rightMM != null) ? " r" : "");
+  const span = o.span || 1;
+  const h = span*BL;
+  d.style.top = (o.topMM != null ? o.topMM : DS.G(o.k)) + "mm";
+  d.style.height = h + "mm";
+  d.style.lineHeight = h + "mm";
+  if(o.rightMM != null){ d.style.right = (DS.page.w - o.rightMM) + "mm"; d.style.left = (o.leftMM != null ? o.leftMM : DS.colX(1)) + "mm"; }
+  else if(o.right){ d.style.right = (DS.page.w - DS.rightEdge) + "mm"; d.style.left = o.leftMM + "mm"; }
+  else       { d.style.left = o.leftMM + "mm"; d.style.right = (DS.page.w - DS.rightEdge) + "mm"; }
+  const s = document.createElement("span");
+  if(text != null) s.textContent = text;
+  d.appendChild(s);
+  return d;
+}
+function rule(page, k, x1, x2){
+  const d = document.createElement("div"); d.className = "line";
+  d.dataset.topmm = DS.G(k);
+  d.style.top = DS.G(k) + "mm"; d.style.left = x1 + "mm"; d.style.width = (x2 - x1) + "mm";
+  page.appendChild(d);
+}
+
+function renderHeader(page){
+  page.appendChild(band("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1}, "AN(N) ARCHITECTURE"));
+  page.appendChild(band("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, "SOLUTION"));
+  const m = document.createElement("div"); m.className = "monogram";
+  m.style.left = (DS.header.monogram.right - DS.header.monogram.w) + "mm";
+  m.style.top = DS.header.monogram.top + "mm";
+  m.style.width = DS.header.monogram.w + "mm"; m.style.height = DS.header.monogram.h + "mm";
+  m.innerHTML = MONOGRAM_SVG; page.appendChild(m);
+
+  page.appendChild(band("s-title",     {right:true, k:DS.header.titleK,     span:2}, model.header.title || ""));
+  page.appendChild(band("s-placedate", {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`));
+  DS.header.ruleK.forEach(k => rule(page, k, DS.header.ruleX1, DS.header.ruleX2));
+}
+function renderEmpfaenger(page, L){
+  L.empfLines.forEach((ln,i)=> page.appendChild(band("s-body", {leftMM:DS.colX(1), k:L.empfK+i}, ln)));
+}
+function renderBriefTop(page, L){
+  page.appendChild(band("s-body", {leftMM:DS.colX(1), k:L.anredeK}, model.brief.anrede || ""));
+  L.einlLines.forEach((ln,i)=> page.appendChild(band("s-body", {leftMM:DS.colX(1), k:L.einlK+i}, ln)));
+}
+function renderTable(page, p, L){
+  const topK = p.first ? L.tableFirstK : (DS.table.topRuleK_cont || 12);
+  const span = DS.table.rowSpan, C = DS.table.cols;
+  rule(page, topK, DS.colX(1), DS.rightEdge);
+  page.appendChild(band("s-thead", {leftMM:DS.colX(1),         k:topK}, "POS."));
+  page.appendChild(band("s-thead", {leftMM:DS.colX(C.leistung),k:topK}, "LEISTUNG"));
+  page.appendChild(band("s-thead", {leftMM:DS.colX(C.art),     k:topK}, "ABRECHNUNGSART"));
+  page.appendChild(band("s-thead", {leftMM:DS.colX(C.menge),   k:topK}, "MENGE"));
+  page.appendChild(band("s-thead", {rightMM:DS.table.satzRightX(), leftMM:DS.colX(9), k:topK}, "SATZ NETTO"));
+  page.appendChild(band("s-thead", {right:true,                 k:topK}, "GESAMT NETTO"));
+  rule(page, topK + 1, DS.colX(1), DS.rightEdge);
+  const rows = p.rows.filter(Boolean);
+  let posBase = 0;
+  for(let i=0;i<pages_.indexOf(p);i++) posBase += pages_[i].rows.filter(Boolean).length;
+  rows.forEach((row,i)=>{
+    const bandTopK = topK + 1 + i*span;
+    const pos = String(posBase + i + 1).padStart(2,"0");
+    page.appendChild(band("s-cell", {leftMM:DS.colX(1),          k:bandTopK, span}, pos));
+    page.appendChild(band("s-cell", {leftMM:DS.colX(C.leistung), k:bandTopK, span}, row.leistung || ""));
+    page.appendChild(band("s-cell", {leftMM:DS.colX(C.art),      k:bandTopK, span}, row.art || ""));
+    page.appendChild(band("s-cell", {leftMM:DS.colX(C.menge),    k:bandTopK, span}, row.menge || ""));
+    page.appendChild(band("s-cell", {rightMM:DS.table.satzRightX(), leftMM:DS.colX(9), k:bandTopK, span}, eur(row.satz)));
+    page.appendChild(band("s-cell", {right:true,                 k:bandTopK, span}, eur(row.gesamt)));
+    rule(page, bandTopK + span, DS.colX(1), DS.rightEdge);
+  });
+  return topK + 1 + rows.length*span;
+}
+function renderTotals(page, k){
+  const L8 = DS.colX(DS.total.labelCol);
+  page.appendChild(band("s-total", {leftMM:L8, k, span:1}, "Gesamt netto"));
+  page.appendChild(band("s-total", {right:true, k, span:1}, eur(totalNetto())));
+  page.appendChild(band("s-cell",  {leftMM:L8, k:k+1, span:1}, "MwSt. " + (model.mwstProzent||0).toLocaleString("de-DE") + "%"));
+  page.appendChild(band("s-cell",  {right:true, k:k+1, span:1}, eur(totalMwst())));
+  page.appendChild(band("s-cell",  {leftMM:L8, k:k+2, span:1}, "Gesamt brutto"));
+  page.appendChild(band("s-cell",  {right:true, k:k+2, span:1}, eur(totalBrutto())));
+  rule(page, k+3, L8, DS.rightEdge);
+  return k + 4;
+}
+function renderBriefBottom(page, k, L){
+  L.schlussLines.forEach((ln,i)=> page.appendChild(band("s-body", {leftMM:DS.colX(1), k:k+i}, ln)));
+  let kk = k + L.schlussLines.length + 2;
+  page.appendChild(band("s-body", {leftMM:DS.colX(1), k:kk}, model.brief.gruss || ""));
+  page.appendChild(band("s-body", {leftMM:DS.colX(1), k:kk+1}, model.brief.absender || ""));
+  return kk + 1;
+}
+function renderBank(page, k){
+  const x1 = DS.colX(1), x2 = DS.bank.x1();
+  rule(page, k, x1, x2);
+  page.appendChild(band("s-cell", {leftMM:x1, k:k+1}, model.bank.name || ""));
+  page.appendChild(band("s-cell", {leftMM:x1, k:k+2}, "IBAN: " + (model.bank.iban || "")));
+  page.appendChild(band("s-cell", {leftMM:x1, k:k+3}, "BIC: " + (model.bank.bic || "")));
+  rule(page, k+4, x1, x2);
+}
+function renderFooter(page, idx, count){
+  BUERO.blocks.forEach((b,i)=>{
+    page.appendChild(band("s-footer", {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k1}, b[0]));
+    page.appendChild(band("s-footer", {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k2}, b[1]));
+  });
+  page.appendChild(band("s-footer", {right:true, k:DS.footer.k1}, "Page"));
+  page.appendChild(band("s-footer", {right:true, k:DS.footer.k2}, `${idx}/${count}`));
+}
+
+let pages_ = [];
+let showGrid = false;
+function renderGrid(page){
+  const ov = document.createElement("div"); ov.className = "grid-ov";
+  const f = document.createElement("div"); f.className = "frame";
+  f.style.left = DS.margin + "mm"; f.style.top = DS.margin + "mm";
+  f.style.width = (DS.rightEdge - DS.margin) + "mm";
+  f.style.height = (DS.G(61) - DS.margin) + "mm";
+  ov.appendChild(f);
+  for(let n=1;n<=DS.cols;n++){
+    const c = document.createElement("div"); c.className = "col";
+    c.style.left = DS.colX(n) + "mm"; c.style.width = DS.colW + "mm";
+    ov.appendChild(c);
+  }
+  for(let k=0;k<=61;k++){
+    const b = document.createElement("div"); b.className = "bl";
+    b.style.top = DS.G(k) + "mm";
+    ov.appendChild(b);
+  }
+  page.appendChild(ov);
+}
+
+function snapLines(){
+  const dpr = window.devicePixelRatio || 1;
+  const scale = zoom * dpr / MM_PER_CSSPX;
+  document.querySelectorAll(".doc-page .line").forEach(l=>{
+    const mm = parseFloat(l.dataset.topmm);
+    const dev = mm * scale;
+    l.style.top = (Math.round(dev) / scale) + "mm";
+  });
+}
+
+function render(){
+  stage.innerHTML = "";
+  pages_ = paginate();
+  pages_.forEach((p,i)=>{
+    const page = document.createElement("div"); page.className = "doc-page";
+    if(showGrid) renderGrid(page);
+    renderHeader(page);
+    if(p.first){ renderEmpfaenger(page, p.layout); renderBriefTop(page, p.layout); }
+    const afterTableK = renderTable(page, p, p.layout);
+    if(p.last){
+      const afterTotalsK = renderTotals(page, afterTableK);
+      const afterBottomK = renderBriefBottom(page, afterTotalsK + DS.gapBlock, p.layout);
+      renderBank(page, afterBottomK + DS.gapBlock);
+    }
+    renderFooter(page, i+1, pages_.length);
+    stage.appendChild(page);
+  });
+  fitZoom(false);
+  snapLines();
+}
+
+/* ============================================================
+   7) PDF-EXPORT — direkter Download, kein Druckdialog (R-016)
+   ============================================================ */
+const MONOGRAM_PTS = [
+  [[0,38.33],[5.10,38.33],[24.97,0],[20.01,0]],
+  [[83.88,0],[83.88,31.12],[61.19,0.10],[61.11,0],[56.53,0],[56.53,30.83],[34.05,0.10],[33.97,0],
+   [29.39,0],[29.39,38.33],[33.83,38.33],[33.83,7.20],[56.76,38.33],[60.97,38.33],[60.97,7.21],
+   [83.72,38.22],[83.79,38.33],[88.33,38.33],[88.33,0],[83.88,0]]
+];
+const LINE_RGB = [167,169,172];
+const LINE_W_MM = PT(0.5);
+const CAPS_STYLES = { "s-metalabel":1, "s-thead":1 };
+const TSHIFT_EM = 0.075, TSHIFT_CAPS_EM = 0.135;
+
+function pdfFonts(doc){
+  const R = window.ROTA_TTF;
+  doc.addFileToVFS("RotaMed.ttf",   R.medium); doc.addFont("RotaMed.ttf",  "Rota",      "normal");
+  doc.addFileToVFS("RotaBold.ttf",  R.bold);   doc.addFont("RotaBold.ttf", "Rota",      "bold");
+  doc.addFileToVFS("RotaLight.ttf", R.light);  doc.addFont("RotaLight.ttf","RotaLight", "normal");
+}
+const PDF_STYLE = {
+  "s-wordmark" :["RotaLight","normal",8],
+  "s-title"    :["Rota","normal",10], "s-placedate":["Rota","normal",10],
+  "s-metalabel":["Rota","normal",8],  "s-metaval"  :["Rota","normal",10],
+  "s-body"     :["Rota","normal",10],
+  "s-thead"    :["Rota","normal",8],  "s-cell"     :["Rota","normal",8],
+  "s-total"    :["Rota","bold",8],    "s-footer"   :["RotaLight","normal",8]
+};
+
+function exportPDF(){
+  if(!window.jspdf || !window.ROTA_TTF){ alert("PDF-Bibliothek nicht geladen (Internet nötig)."); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:"mm", format:"a4", compress:true });
+  pdfFonts(doc);
+
+  const put = (cls, o, text) => {
+    if(text == null || text === "") return;
+    const [fam, sty, size] = PDF_STYLE[cls];
+    doc.setFont(fam, sty); doc.setFontSize(size); doc.setTextColor(10,10,10);
+    const span = o.span || 1;
+    const topMM = (o.topMM != null ? o.topMM : DS.G(o.k));
+    const shiftEm = CAPS_STYLES[cls] ? TSHIFT_CAPS_EM : TSHIFT_EM;
+    const y = topMM + span*BL/2 + shiftEm * size * (25.4/72);
+    const x = o.right ? DS.rightEdge : (o.rightX != null ? o.rightX : o.leftMM);
+    doc.text(String(text), x, y, { align: o.right || o.alignRight ? "right" : "left", baseline:"middle" });
+  };
+  const hline = (k, x1, x2) => {
+    doc.setDrawColor(...LINE_RGB); doc.setLineWidth(LINE_W_MM);
+    const y = DS.G(k); doc.line(x1, y, x2, y);
+  };
+  const monogram = () => {
+    const g = DS.header.monogram, sx = g.w/88.33, sy = g.h/38.33, ox = g.right - g.w, oy = g.top;
+    doc.setFillColor(10,10,10);
+    MONOGRAM_PTS.forEach(pts=>{
+      const start = [ox + pts[0][0]*sx, oy + pts[0][1]*sy];
+      const deltas = []; let prev = pts[0];
+      for(let i=1;i<pts.length;i++){ deltas.push([(pts[i][0]-prev[0])*sx, (pts[i][1]-prev[1])*sy]); prev = pts[i]; }
+      doc.lines(deltas, start[0], start[1], [1,1], "F", true);
+    });
+  };
+
+  const pages = paginate();
+  const C = DS.table.cols, span = DS.table.rowSpan;
+
+  pages.forEach((p, pi) => {
+    if(pi > 0) doc.addPage();
+    const L = p.layout;
+
+    put("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1}, "AN(N) ARCHITECTURE");
+    put("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, "SOLUTION");
+    monogram();
+    put("s-title",     {right:true, k:DS.header.titleK,     span:2}, model.header.title || "");
+    put("s-placedate", {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`);
+    DS.header.ruleK.forEach(k => hline(k, DS.header.ruleX1, DS.header.ruleX2));
+
+    if(p.first){
+      L.empfLines.forEach((ln,i)=> put("s-body", {leftMM:DS.colX(1), k:L.empfK+i}, ln));
+      put("s-body", {leftMM:DS.colX(1), k:L.anredeK}, model.brief.anrede || "");
+      L.einlLines.forEach((ln,i)=> put("s-body", {leftMM:DS.colX(1), k:L.einlK+i}, ln));
+    }
+
+    const topK = p.first ? L.tableFirstK : (DS.table.topRuleK_cont || 12);
+    hline(topK, DS.colX(1), DS.rightEdge);
+    put("s-thead", {leftMM:DS.colX(1),          k:topK}, "POS.");
+    put("s-thead", {leftMM:DS.colX(C.leistung), k:topK}, "LEISTUNG");
+    put("s-thead", {leftMM:DS.colX(C.art),      k:topK}, "ABRECHNUNGSART");
+    put("s-thead", {leftMM:DS.colX(C.menge),    k:topK}, "MENGE");
+    put("s-thead", {rightX:DS.table.satzRightX(), alignRight:true, k:topK}, "SATZ NETTO");
+    put("s-thead", {right:true,                 k:topK}, "GESAMT NETTO");
+    hline(topK + 1, DS.colX(1), DS.rightEdge);
+
+    const rows = p.rows.filter(Boolean);
+    let posBase = 0;
+    for(let i=0;i<pi;i++) posBase += pages[i].rows.filter(Boolean).length;
+    rows.forEach((row, i) => {
+      const bt = topK + 1 + i*span;
+      const pos = String(posBase + i + 1).padStart(2,"0");
+      put("s-cell", {leftMM:DS.colX(1),          k:bt, span}, pos);
+      put("s-cell", {leftMM:DS.colX(C.leistung), k:bt, span}, row.leistung || "");
+      put("s-cell", {leftMM:DS.colX(C.art),      k:bt, span}, row.art || "");
+      put("s-cell", {leftMM:DS.colX(C.menge),    k:bt, span}, row.menge || "");
+      put("s-cell", {rightX:DS.table.satzRightX(), alignRight:true, k:bt, span}, eur(row.satz));
+      put("s-cell", {right:true,                 k:bt, span}, eur(row.gesamt));
+      hline(bt + span, DS.colX(1), DS.rightEdge);
+    });
+
+    let afterTableK = topK + 1 + rows.length*span;
+
+    if(p.last){
+      const L8 = DS.colX(DS.total.labelCol);
+      put("s-total", {leftMM:L8, k:afterTableK, span:1}, "Gesamt netto");
+      put("s-total", {right:true, k:afterTableK, span:1}, eur(totalNetto()));
+      put("s-cell",  {leftMM:L8, k:afterTableK+1, span:1}, "MwSt. " + (model.mwstProzent||0).toLocaleString("de-DE") + "%");
+      put("s-cell",  {right:true, k:afterTableK+1, span:1}, eur(totalMwst()));
+      put("s-cell",  {leftMM:L8, k:afterTableK+2, span:1}, "Gesamt brutto");
+      put("s-cell",  {right:true, k:afterTableK+2, span:1}, eur(totalBrutto()));
+      hline(afterTableK+3, L8, DS.rightEdge);
+
+      let k2 = afterTableK + 4 + DS.gapBlock;
+      L.schlussLines.forEach((ln,i)=> put("s-body", {leftMM:DS.colX(1), k:k2+i}, ln));
+      let kk = k2 + L.schlussLines.length + 2;
+      put("s-body", {leftMM:DS.colX(1), k:kk}, model.brief.gruss || "");
+      put("s-body", {leftMM:DS.colX(1), k:kk+1}, model.brief.absender || "");
+
+      const bk = kk + 1 + DS.gapBlock, x1 = DS.colX(1), x2 = DS.bank.x1();
+      hline(bk, x1, x2);
+      put("s-cell", {leftMM:x1, k:bk+1}, model.bank.name || "");
+      put("s-cell", {leftMM:x1, k:bk+2}, "IBAN: " + (model.bank.iban || ""));
+      put("s-cell", {leftMM:x1, k:bk+3}, "BIC: " + (model.bank.bic || ""));
+      hline(bk+4, x1, x2);
+    }
+
+    BUERO.blocks.forEach((b, i) => {
+      put("s-footer", {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k1}, b[0]);
+      put("s-footer", {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k2}, b[1]);
+    });
+    put("s-footer", {right:true, k:DS.footer.k1}, "Page");
+    put("s-footer", {right:true, k:DS.footer.k2}, `${pi+1}/${pages.length}`);
+  });
+
+  doc.save((model.header.title || "Rechnung").replace(/[^\w\-]+/g,"_") + ".pdf");
+}
+
+/* ============================================================
+   8) EDITOR
+   ============================================================ */
+const $ = s => document.querySelector(s);
+function setPath(path,v){ const s=path.split("."); let o=model; for(let i=0;i<s.length-1;i++)o=o[s[i]]; o[s[s.length-1]]=v; }
+function bind(id,path){ const el=$(id); el.addEventListener("input",()=>{ setPath(path,el.value); render(); }); }
+bind("#f-title","header.title");
+bind("#f-place","header.place"); bind("#f-date","header.date");
+bind("#f-empf","empfaenger");
+bind("#f-anrede","brief.anrede"); bind("#f-einleitung","brief.einleitung"); bind("#f-schluss","brief.schluss");
+bind("#f-gruss","brief.gruss"); bind("#f-absender","brief.absender");
+bind("#f-bank-name","bank.name"); bind("#f-bank-iban","bank.iban"); bind("#f-bank-bic","bank.bic");
+$("#f-mwst").addEventListener("input", e=>{ model.mwstProzent = parseFloat(e.target.value)||0; render(); });
+
+const itemsBox = $("#items");
+function escapeHtml(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function renderItems(){
+  itemsBox.innerHTML =
+    '<div class="i-head">'+
+      '<div>Pos.</div>'+
+      '<div>Leistung<span class="grip" data-col="c1"></span></div>'+
+      '<div>Abrechnungsart</div><div>Menge</div><div>Satz netto</div><div>Gesamt netto</div><div></div>'+
+    '</div>';
+  model.items.forEach((r,i)=>{
+    const row = document.createElement("div"); row.className="i-row";
+    row.innerHTML =
+      `<div class="i-pos">${String(i+1).padStart(2,"0")}</div>`+
+      `<input type="text" data-i="${i}" data-k="leistung" value="${escapeHtml(r.leistung)}">`+
+      `<input type="text" data-i="${i}" data-k="art" value="${escapeHtml(r.art)}">`+
+      `<input type="text" data-i="${i}" data-k="menge" value="${escapeHtml(r.menge)}">`+
+      `<input type="number" step="0.01" class="num" data-i="${i}" data-k="satz" value="${r.satz??""}">`+
+      `<input type="number" step="0.01" class="num" data-i="${i}" data-k="gesamt" value="${r.gesamt??""}">`+
+      `<button class="del" data-i="${i}" title="Position löschen">×</button>`;
+    itemsBox.appendChild(row);
+  });
+  const tot = document.createElement("div"); tot.className="i-total";
+  tot.innerHTML =
+    `<div><span>Gesamt netto</span><span id="i-total-netto" class="b">${eur(totalNetto())}</span></div>`+
+    `<div><span>MwSt. ${(model.mwstProzent||0).toLocaleString("de-DE")}%</span><span id="i-total-mwst">${eur(totalMwst())}</span></div>`+
+    `<div><span>Gesamt brutto</span><span id="i-total-brutto" class="b">${eur(totalBrutto())}</span></div>`;
+  itemsBox.appendChild(tot);
+}
+function updateTotals(){
+  const g=(id,v)=>{ const el=$(id); if(el) el.textContent=v; };
+  g("#i-total-netto", eur(totalNetto())); g("#i-total-mwst", eur(totalMwst())); g("#i-total-brutto", eur(totalBrutto()));
+}
+itemsBox.addEventListener("input", e=>{
+  const i=+e.target.dataset.i, k=e.target.dataset.k; if(k==null) return;
+  model.items[i][k] = (k==="satz"||k==="gesamt") ? (parseFloat(e.target.value)||0) : e.target.value;
+  updateTotals(); render();
+});
+itemsBox.addEventListener("click", e=>{
+  if(!e.target.classList.contains("del")) return;
+  model.items.splice(+e.target.dataset.i,1); renderItems(); render();
+});
+(function(){
+  let g = null;
+  itemsBox.addEventListener("mousedown", e=>{
+    const grip = e.target.closest(".grip"); if(!grip) return;
+    const head = grip.parentElement;
+    g = { col: grip.dataset.col, x0: e.clientX, w0: head.getBoundingClientRect().width };
+    document.body.classList.add("resizing"); e.preventDefault();
+  });
+  window.addEventListener("mousemove", e=>{
+    if(!g) return;
+    let w = Math.max(120, Math.min(560, g.w0 + (e.clientX - g.x0)));
+    itemsBox.style.setProperty("--"+g.col, w+"px");
+  });
+  window.addEventListener("mouseup", ()=>{
+    if(!g) return;
+    try{ localStorage.setItem("rn."+g.col, itemsBox.style.getPropertyValue("--"+g.col)); }catch(_){}
+    g = null; document.body.classList.remove("resizing");
+  });
+  try{ const w=localStorage.getItem("rn.c1"); if(w) itemsBox.style.setProperty("--c1", w); }catch(_){}
+})();
+
+$("#btn-add").onclick = ()=>{ model.items.push({leistung:"",art:"",menge:"",satz:0,gesamt:0}); renderItems(); render(); };
+
+$("#btn-save").onclick = ()=>{
+  const blob = new Blob([JSON.stringify(model,null,2)],{type:"application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = `${(model.header.title||"rechnung").replace(/[^\w-]+/g,"_")}.json`; a.click();
+};
+$("#btn-open").onclick = ()=> $("#file-open").click();
+$("#file-open").onchange = e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ model=JSON.parse(rd.result); syncForm(); renderItems(); render(); }catch(err){ alert("Datei nicht lesbar: "+err); } };
+  rd.readAsText(f);
+};
+$("#btn-pdf").onclick   = ()=>{ try{ exportPDF(); }catch(err){ alert("PDF-Export fehlgeschlagen: "+err); console.error(err); } };
+$("#btn-print").onclick = ()=> window.print();
+
+function syncForm(){
+  const g=(id,v)=>{ $(id).value = v||""; };
+  g("#f-title",model.header.title); g("#f-place",model.header.place); g("#f-date",model.header.date);
+  g("#f-empf", model.empfaenger);
+  g("#f-anrede", model.brief.anrede); g("#f-einleitung", model.brief.einleitung); g("#f-schluss", model.brief.schluss);
+  g("#f-gruss", model.brief.gruss); g("#f-absender", model.brief.absender);
+  g("#f-mwst", model.mwstProzent);
+  g("#f-bank-name", model.bank.name); g("#f-bank-iban", model.bank.iban); g("#f-bank-bic", model.bank.bic);
+}
+
+/* ---- Zoom ---- */
+let zoom = 1, userZoomed = false;
+const PX_PER_MM = 1/MM_PER_CSSPX;
+function fitToWidth(){
+  const pv = document.getElementById("preview");
+  return (pv.clientWidth - 60) / (210*PX_PER_MM);
+}
+function fitToPage(){
+  const pv = document.getElementById("preview");
+  return Math.min((pv.clientWidth - 60) / (210*PX_PER_MM),
+                  (pv.clientHeight - 60) / (297*PX_PER_MM));
+}
+function clampZoom(z){ return Math.max(fitToPage(), Math.min(3, z)); }
+function applyZoom(){
+  stage.style.transform = "scale(" + zoom + ")";
+  const natH = stage.offsetHeight, natW = stage.offsetWidth;
+  stage.style.marginBottom = Math.max(0, (zoom - 1) * natH) + "px";
+  const overflowX = Math.max(0, (zoom - 1) * natW / 2);
+  stage.style.marginLeft = stage.style.marginRight = overflowX + "px";
+  snapLines();
+}
+function fitZoom(reset){
+  const target = Math.max(0.4, Math.min(1.9, fitToWidth()));
+  if(reset || !userZoomed) zoom = target;
+  zoom = clampZoom(zoom);
+  applyZoom();
+}
+$("#btn-zoom-in").onclick  = ()=>{ userZoomed=true; zoom=clampZoom(zoom+0.15); applyZoom(); };
+$("#btn-zoom-out").onclick = ()=>{ userZoomed=true; zoom=clampZoom(zoom-0.15); applyZoom(); };
+$("#btn-zoom-fit").onclick = ()=>{ userZoomed=false; fitZoom(true); };
+$("#btn-grid").onclick = ()=>{
+  showGrid = !showGrid;
+  $("#btn-grid").style.background = showGrid ? "var(--ink)" : "#fff";
+  $("#btn-grid").style.color = showGrid ? "#fff" : "var(--ink)";
+  render();
+};
+window.addEventListener("resize", ()=> fitZoom(true));
+
+/* ---- Splitter: Editor-Breite ziehen ---- */
+(function(){
+  const editorEl = document.getElementById("editor");
+  const sp = document.getElementById("splitter");
+  let dragging = false;
+  sp.addEventListener("mousedown", e=>{ dragging = true; document.body.classList.add("resizing"); sp.classList.add("drag"); e.preventDefault(); });
+  window.addEventListener("mousemove", e=>{
+    if(!dragging) return;
+    let w = window.innerWidth - e.clientX;
+    w = Math.max(360, Math.min(window.innerWidth * 0.78, w));
+    editorEl.style.width = w + "px";
+    fitZoom(true);
+  });
+  window.addEventListener("mouseup", ()=>{
+    if(!dragging) return;
+    dragging = false; document.body.classList.remove("resizing"); sp.classList.remove("drag");
+    try{ localStorage.setItem("rn.editorW", editorEl.style.width); }catch(_){}
+  });
+  try{ const w = localStorage.getItem("rn.editorW"); if(w) editorEl.style.width = w; }catch(_){}
+})();
+
+/* ---- Start ---- */
+model.header.date = isoToday();
+syncForm(); renderItems(); render(); fitZoom(true);
+if(document.fonts && document.fonts.ready){
+  document.fonts.ready.then(()=>{ render(); });
+}
+</script>
+</body>
+</html>

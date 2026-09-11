@@ -95,22 +95,40 @@ assignPageNumbers()                 // erst jetzt: n von m in jeden Footer
 
 ## Beispiel B — Rechnung
 
-Gleiches Skelett (Header/Footer fest), anderer Body — **im Fluss, nicht unten fixiert**:
+Gebaut in `tool/rechnung.html` (2026-09-11), Vermessung in [[STEP2_RECHNUNG_FINDINGS]],
+Klärungen mit Ann siehe DECISIONS.md. Gleiches Skelett (Header/Footer fest wie Beispiel A),
+anderer Body — **im Fluss, cursorbasiert (`computeLayout()`)**, nicht fest positioniert:
 
-1. `spacer` bis Anrede-Position
-2. `paragraph` Anrede („Sehr geehrte…")
-3. `paragraph` Einleitung
-4. `table-header` **POS · LEISTUNG · ABRECHNUNGSART · MENGE · SATZ NETTO · GESAMT NETTO**
-   (`colX(1)` · `colX(2)` · `colX(6)` · `colX(8)` · rechtsb. `colX(10)`-Block · rechtsb. `colRight(12)`)
-5. `table-row` × n (Beträge rechtsbündig; Fußnoten-Marker `*` / `**` als hochgestellter Zusatz)
-6. `totals-block` (Gesamt netto / MwSt. 19 % / Gesamt brutto) — Label `colX(8)`, Wert rechtsbündig;
-   **zusammenhalten** mit der letzten Tabellenzeile (kein Umbruch dazwischen)
-7. `paragraph` Schlusstext
-8. `paragraph` Grußformel + Name
-9. `spacer`
-10. `block` Bankverbindung (IBAN / BIC), `colX(1)`
+1. Empfänger-Adresse: `colX(1)` (linksbündig, **nicht** `colX(3)` wie der Stundennachweis-
+   Metadatenblock), Start `bl(9) + 3 BL` (letzte Kopf-Linie + Blockabstand), 1 BL je Zeile.
+2. `+ 3 BL` → Anrede (1 Zeile), `colX(1)`.
+3. `+ 1 BL` (Leerzeile nach Anrede) → Einleitung, `colX(1)`, **Wortumbruch** über die volle
+   Satzbreite (180 mm) — gemessen per Canvas, gemeinsame Funktion `wrapLines()` für Vorschau
+   **und** PDF-Wortumbruch (jsPDF), s. R-012-Prinzip (zwei Renderer, keine Auto-Sync).
+4. `+ 2 BL` → `table-header` **POS · LEISTUNG · ABRECHNUNGSART · MENGE · SATZ NETTO ·
+   GESAMT NETTO** (`colX(1)` · `colX(2)` · `colX(6)` · `colX(8)` · rechtsb. `colX(11)` ·
+   rechtsb. `colRight(12)`/195 mm). MENGE **linksbündig** (nicht rechtsbündig — Ann,
+   2026-09-11: „soll so", da Text+Zahl gemischt, z. B. „400 Std.").
+5. `table-row` × n, **2 BL, lückenlos direkt aufeinander** — keine Leerzeile zwischen
+   Positionen (Ann, 2026-09-11: „da hast du einen Fehler entdeckt, keine Zeile Platz
+   dazwischen" — das ursprüngliche Illustrator-Template hatte an zwei Stellen eine leere
+   Zeile, das war kein Gestaltungsmittel, sondern ein Fehler in der Vorlage).
+6. `totals-block` **direkt** im Anschluss an die letzte Tabellenzeile, kein Extra-Abstand
+   (Label `colX(8)`, Wert rechtsbündig 195 mm, 1 BL je Zeile): „Gesamt netto" **fett**,
+   „MwSt. n%" und „Gesamt brutto" **nicht fett** (Ann, 2026-09-11: „ja, das soll so sein" —
+   bewusst nur die Netto-Zwischensumme hervorgehoben). Abschlusslinie `colX(8)`–195 mm.
+   Werte sind **berechnet** (Summe der Positionsbeträge × MwSt.-Satz), nicht aus der Vorlage
+   übernommen — die Beispielwerte dort waren rechnerisch inkonsistent.
+7. `+ 3 BL` → Schlusstext (Wortumbruch wie Einleitung).
+8. `+ 2 BL` → Grußformel, `+ 1 BL` → Absendername.
+9. `+ 3 BL` → Bankverbindungs-Block: Linie `colX(1)`–`colX(8)`, 3 Zeilen (Name/IBAN/BIC),
+   Linie — spiegelt die Breite des Kopf-Titelblocks (dort `colX(8)`–195 mm) auf der linken Seite.
 
-Überlauf: dieselbe Engine, Tabellenkopf wiederholen, `totals-block` nie allein auf neuer Seite.
+Überlauf: nur die Tabelle paginiert (dieselbe `paginate()`-Mechanik wie Beispiel A,
+Tabellenkopf wird wiederholt); Empfänger/Anrede/Einleitung nur auf Seite 1, Summenblock +
+Schlusstext + Bankblock nur auf der letzten Seite — deren Platzbedarf wird vorab berechnet
+(`postRows`) und bei der Zeilenkapazität pro Seite mit reserviert, wie die Summenzeile im
+Stundennachweis (`reserveTotal`-Parameter in `capFor()`).
 
 ## Warum absolute mm statt normalem HTML-Fluss / CSS-Grid
 

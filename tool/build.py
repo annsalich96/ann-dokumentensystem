@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Baut aus stundennachweis.html eine vollständig eigenständige Datei:
-stundennachweis.standalone.html  — Rota-Schriften als Base64 eingebettet,
+Baut aus jedem Dokumenten-Tool (*.html mit einer *.standalone.html-Gegenstelle)
+eine vollständig eigenständige Datei: Rota-Schriften als Base64 eingebettet,
 keine externen Dateien, läuft überall (lokal, privat gehostet, per Doppelklick).
 
     python3 build.py
@@ -9,8 +9,7 @@ keine externen Dateien, läuft überall (lokal, privat gehostet, per Doppelklick
 import base64, pathlib, re, sys
 
 HERE = pathlib.Path(__file__).parent
-SRC = HERE / "stundennachweis.html"
-OUT = HERE / "stundennachweis.standalone.html"
+SOURCES = ["stundennachweis.html", "rechnung.html"]
 FONTS = {
     "Rota-Light.otf": 300,
     "Rota-Medium.otf": 500,
@@ -21,8 +20,12 @@ def data_uri(path: pathlib.Path) -> str:
     b64 = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:font/otf;base64,{b64}"
 
-def main() -> int:
-    html = SRC.read_text(encoding="utf-8")
+def build_one(src_name: str) -> int:
+    src = HERE / src_name
+    if not src.exists():
+        return 0
+    out = HERE / src_name.replace(".html", ".standalone.html")
+    html = src.read_text(encoding="utf-8")
     missing = [f for f in FONTS if not (HERE / "fonts" / f).exists()]
     if missing:
         print("Fehlende Schriften in fonts/:", ", ".join(missing), file=sys.stderr)
@@ -37,15 +40,22 @@ def main() -> int:
             '<script src="pdf-fonts.js"></script>',
             "<script>\n" + pf.read_text(encoding="utf-8") + "\n</script>",
         )
-    # Hinweis in den Titelkommentar
-    html = html.replace(
-        "Stundennachweis-Ersteller / Viewer",
-        "Stundennachweis-Ersteller / Viewer  —  STANDALONE (Schriften eingebettet)",
+    # Hinweis im Titel-Tag
+    html = re.sub(
+        r"<title>([^<]*)</title>",
+        lambda m: f"<title>{m.group(1)} — STANDALONE (Schriften eingebettet)</title>",
+        html, count=1,
     )
-    OUT.write_text(html, encoding="utf-8")
-    kb = OUT.stat().st_size / 1024
-    print(f"geschrieben: {OUT.name}  ({kb:.0f} KB)")
+    out.write_text(html, encoding="utf-8")
+    kb = out.stat().st_size / 1024
+    print(f"geschrieben: {out.name}  ({kb:.0f} KB)")
     return 0
+
+def main() -> int:
+    rc = 0
+    for name in SOURCES:
+        rc = build_one(name) or rc
+    return rc
 
 if __name__ == "__main__":
     raise SystemExit(main())

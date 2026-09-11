@@ -5,6 +5,27 @@ Format: Entscheidung / Grund / Alternativen / Konsequenz.
 
 ---
 
+## DECISION-009 — Rechnung-Vorlage: Klärungen + erster Tool-Bau (Ann, 2026-09-11)
+- **Entscheidung:** Vermessung von `design-sources/rechnung/Template_Rechnung(.pdf|_grid.pdf)`
+  ([[STEP2_RECHNUNG_FINDINGS]]) mit Ann durchgesprochen:
+  1. Fließtext „unser Angebot für die weiterführenden Leistungen" ist **nur Platzhaltertext**,
+     keine Aussage über Rechnung-vs-Angebot.
+  2. Abstand Kopf-Linie → Empfänger-Adresse: **3 BL** (wie beim Stundennachweis-Metadatenblock),
+     nicht das in der Vorlage gemessene 1 BL.
+  3. MENGE-Spalte bleibt **linksbündig** (Text+Zahl gemischt, z. B. „400 Std.").
+  4. Die Lücken zwischen den Tabellenpositionen in der Vorlage sind **kein Gestaltungsmittel,
+     sondern ein Fehler** — Positionen stehen lückenlos direkt aufeinander (wie im Stundennachweis).
+  5. Im Summenblock ist **nur „Gesamt netto" fett**, „Gesamt brutto" bewusst nicht — bestätigt.
+  6. Empfänger- und Positionsdaten sollen künftig aus AppSheet (`Clients`, verknüpft mit
+     `Projects`) geladen werden — Aufgabe an Codex, Anforderung in
+     [[rechnung-datenquellen]] festgehalten.
+- **Konsequenz:** `tool/rechnung.html` als eigenständiges Editor-Tool gebaut (gleiches Muster
+  wie der Stundennachweis in seiner ersten Phase: freie Eingabe, PDF-Export, noch keine
+  Sheet-Anbindung). Summen (Gesamt netto/MwSt./Gesamt brutto) werden im Tool **berechnet**,
+  nicht aus der Vorlage übernommen (die Beispielwerte dort waren rechnerisch inkonsistent).
+  `build.py` baut jetzt beide Tools (`stundennachweis.standalone.html` +
+  `rechnung.standalone.html`).
+
 ## DECISION-008 — KI-Aufbereitung, Abbuchen, Tage-Modus, Projekt-Autofüllung (Ann, 2026-09-10)
 - **Entscheidung:** Vier Erweiterungen des Stundennachweis-Tools, Details in
   [[PLAN_KI-AUFBEREITUNG_UND_ABBUCHUNG]]:

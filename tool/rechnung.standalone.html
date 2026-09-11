@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Stundennachweis — ann architecture — STANDALONE (Schriften eingebettet)</title>
+<title>Rechnung — ann architecture — STANDALONE (Schriften eingebettet)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 window.ROTA_TTF = {
@@ -16,8 +16,10 @@ window.ROTA_TTF = {
 <style>
 /* ============================================================
    ann architecture — Dokumenten-System · Prototyp
-   Stundennachweis-Ersteller / Viewer
+   Rechnung-Ersteller / Viewer
 
+   Gleiche Engine wie stundennachweis.html (Design-System, PDF-Export,
+   Zoom/Splitter/Druck) — siehe docs/document-design-system/ + DECISIONS.md.
    Zwei getrennte Typo-Welten:
    - Editor-UI  -> System-/Helvetica-Schrift, Bildschirmgrößen
    - Dokument   -> Rota, exakt nach Design-System (mm/pt, 13-pt-Raster)
@@ -44,9 +46,9 @@ body{font-family:var(--ui);color:var(--ink);background:#e9e9e6;display:flex;over
 .stage{display:flex;flex-direction:column;align-items:center;gap:24px;transform-origin:top center}
 #toolbar{position:fixed;top:16px;left:24px;display:flex;gap:8px;z-index:20}
 
-/* ---- Splitter (ziehbar, wie beim Bauzeitenplan) ---- */
+/* ---- Splitter ---- */
 #splitter{order:1;flex:0 0 6px;background:var(--ui-border);cursor:col-resize;position:relative;z-index:15}
-#splitter::after{content:"";position:absolute;top:0;bottom:0;left:-6px;right:-6px}   /* größere Trefferfläche */
+#splitter::after{content:"";position:absolute;top:0;bottom:0;left:-6px;right:-6px}
 #splitter:hover,#splitter.drag{background:#b8b8b2}
 body.resizing{cursor:col-resize;user-select:none}
 
@@ -68,51 +70,41 @@ body.resizing{cursor:col-resize;user-select:none}
   width:100%;font-family:var(--ui);font-size:15px;padding:10px 12px;
   border:1px solid var(--ui-border);border-radius:7px;background:#fff;color:var(--ink)
 }
+#editor textarea{resize:vertical;line-height:1.4}
 #editor select:disabled{opacity:.5;background:var(--ui-bg)}
-#editor input:focus,#editor select:focus{outline:2px solid var(--ink);outline-offset:-1px;border-color:var(--ink)}
-#sheet-status.err{color:#B0291E}
-#sheet-status.ok{color:#4A7C59}
+#editor input:focus,#editor textarea:focus,#editor select:focus{outline:2px solid var(--ink);outline-offset:-1px;border-color:var(--ink)}
 button{font-family:var(--ui);font-size:14px;padding:9px 16px;border:1px solid var(--ink);border-radius:7px;
   background:var(--ink);color:#fff;cursor:pointer}
 button.ghost{background:#fff;color:var(--ink)}
 button:disabled{opacity:.4;cursor:not-allowed}
 .btnbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
 
-/* Zeiteinträge — innerhalb der Box horizontal scrollbar */
-#entries{margin-top:8px;border:1px solid var(--ui-border);border-radius:8px;overflow-x:auto;overflow-y:visible}
-#entries .e-head,#entries .e-row{display:grid;
-  grid-template-columns:var(--c1,120px) var(--c2,240px) var(--c3,175px) 82px 34px;
+/* Positionen — horizontal scrollbar wie die Zeiteinträge im Stundennachweis */
+#items{margin-top:8px;border:1px solid var(--ui-border);border-radius:8px;overflow-x:auto;overflow-y:visible}
+#items .i-head,#items .i-row{display:grid;
+  grid-template-columns:34px var(--c1,220px) 150px 110px 120px 130px 34px;
   width:max-content;min-width:100%}
-#entries .e-head{background:var(--ui-bg);font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ui-muted)}
-#entries .e-head>div{padding:9px 10px;position:relative}
-#entries .e-head .grip{position:absolute;top:0;bottom:0;right:-1px;width:10px;cursor:col-resize;z-index:2}
-#entries .e-head .grip:hover{background:var(--ink);opacity:.2}
-#entries .e-row>*{border-top:1px solid var(--ui-border);min-width:0}
-#entries input{border:0;border-radius:0;font-size:13.5px;padding:9px 10px;width:100%}
-#entries input:focus{outline:2px solid var(--ink);outline-offset:-2px}
-#entries .del{border:0;background:#fff;color:#B0291E;font-size:17px;padding:0;cursor:pointer}
-#entries .num{text-align:right}
-#entries .e-taet{display:flex;flex-direction:column;min-width:0}
-#entries .e-taet>input{flex:0 0 auto}
-#entries .e-orig{display:flex;align-items:flex-start;gap:6px;padding:2px 10px 7px;
-  font-size:11px;line-height:1.35;color:var(--ui-muted)}
-#entries .e-orig>span{flex:1;min-width:0}
-#entries .e-orig>.revert{flex:0 0 auto;border:1px solid var(--ui-border);background:#fff;
-  border-radius:4px;cursor:pointer;font-size:11px;line-height:16px;padding:0 5px;color:var(--ui-muted)}
-#entries .e-orig>.revert:hover{color:var(--ink);border-color:var(--ink)}
-#entries .e-over{font-size:11px;color:#B0291E;padding:2px 10px 6px}
-.e-total{display:flex;justify-content:space-between;width:max-content;min-width:100%;
-  font-size:13.5px;font-weight:700;padding:11px 10px;box-sizing:border-box}
+#items .i-head{background:var(--ui-bg);font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ui-muted)}
+#items .i-head>div{padding:9px 10px;position:relative}
+#items .i-head .grip{position:absolute;top:0;bottom:0;right:-1px;width:10px;cursor:col-resize;z-index:2}
+#items .i-head .grip:hover{background:var(--ink);opacity:.2}
+#items .i-row>*{border-top:1px solid var(--ui-border);min-width:0}
+#items .i-pos{display:flex;align-items:center;justify-content:center;font-size:12.5px;color:var(--ui-muted)}
+#items input{border:0;border-radius:0;font-size:13.5px;padding:9px 10px;width:100%}
+#items input:focus{outline:2px solid var(--ink);outline-offset:-2px}
+#items .num{text-align:right}
+#items .del{border:0;background:#fff;color:#B0291E;font-size:17px;padding:0;cursor:pointer}
+.i-total{display:flex;flex-direction:column;gap:4px;width:max-content;min-width:100%;
+  font-size:13.5px;padding:11px 10px;box-sizing:border-box}
+.i-total>div{display:flex;justify-content:space-between;gap:24px}
+.i-total .b{font-weight:700}
 
 /* ============================================================
-   DOKUMENT: A4 nach Design-System
+   DOKUMENT: A4 nach Design-System (identisch zum Stundennachweis-Tool)
    ============================================================ */
 .doc-page{position:relative;width:210mm;height:297mm;background:var(--paper);
   box-shadow:0 3px 18px rgba(0,0,0,.15);overflow:hidden;color:var(--ink);font-family:var(--doc)}
-/* Text vertikal mittig im Band: line-height = Bandhöhe (inline gesetzt).
-   Der optische Ausgleich --tshift/--tshift-caps wird beim Start aus den echten
-   Schriftmetriken berechnet (calibrateText), nicht geraten. */
-:root{--tshift:0.075em;--tshift-caps:0.135em}   /* optischer Ausgleich, Text mittig im Band */
+:root{--tshift:0.075em;--tshift-caps:0.135em}
 .doc-page .b{position:absolute;white-space:nowrap;overflow:hidden;display:block}
 .doc-page .b>span{position:relative;top:var(--tshift,0em)}
 .doc-page .b.r{text-align:right}
@@ -123,7 +115,6 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .doc-page .monogram{position:absolute}
 .doc-page .monogram svg{display:block;width:100%;height:100%;fill:var(--ink)}
 
-/* Raster-Overlay (Diagnose, wie das Illustrator-Underlay). Ändert das Layout NICHT. */
 .doc-page .grid-ov{position:absolute;inset:0;pointer-events:none;z-index:99}
 .doc-page .grid-ov .col{position:absolute;top:0;bottom:0;background:rgba(233,30,180,.06);
   border-left:1px solid rgba(233,30,180,.5);border-right:1px solid rgba(233,30,180,.5)}
@@ -135,6 +126,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .s-placedate{font-weight:500;font-size:10pt}
 .s-metalabel{font-weight:500;font-size:8pt;text-transform:uppercase;letter-spacing:.02em}
 .s-metaval  {font-weight:500;font-size:10pt}
+.s-body     {font-weight:500;font-size:10pt}
 .s-thead    {font-weight:500;font-size:8pt;text-transform:uppercase;letter-spacing:.02em}
 .s-cell     {font-weight:500;font-size:8pt}
 .s-total    {font-weight:700;font-size:8pt}
@@ -147,7 +139,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
   #preview{all:unset;display:block}
   .stage{display:block!important;zoom:1!important;transform:none!important;margin:0!important;padding:0!important;gap:0!important}
   .doc-page{
-    position:relative;width:210mm;height:296.6mm;   /* knapp unter A4 -> kein Überlauf auf eine 2. Seite */
+    position:relative;width:210mm;height:296.6mm;
     overflow:hidden;box-shadow:none;margin:0;padding:0
   }
   .doc-page:not(:last-child){page-break-after:always}
@@ -171,59 +163,48 @@ button:disabled{opacity:.4;cursor:not-allowed}
 </div>
 
 <div id="editor">
-  <h1>Stundennachweis</h1>
+  <h1>Rechnung</h1>
   <p class="sub">ann architecture · Dokumenten-System · Prototyp</p>
 
   <h2>Kopf</h2>
   <div class="fg">
-    <div class="fld wide"><label>Titel</label><input type="text" id="f-title" value="Anlage 01_Stundennachweis"></div>
+    <div class="fld wide"><label>Titelzeile</label><input type="text" id="f-title" value="Rechnungsnr.: OFF_GUN_02_260908"></div>
     <div class="fld"><label>Ort</label><input type="text" id="f-place" value="Berlin"></div>
     <div class="fld"><label>Datum</label><input type="date" id="f-date"></div>
   </div>
 
-  <h2>Auftrag</h2>
+  <h2>Empfänger</h2>
   <div class="fg">
-    <div class="fld"><label>Auftrags-Nr.</label><input type="text" id="f-auftrag-nr" value="OFF_KHP_N_01_260301"></div>
-    <div class="fld wide"><label>Bezeichnung</label><input type="text" id="f-auftrag-bez" value="Nachtrag 01 – Bodenmarkierungsplanung"></div>
+    <div class="fld wide"><label>Name · Firma · Adresse (je Zeile)</label><textarea id="f-empf" rows="4">Robert Bräunlin
+Bräunlin Kolb Architekten GmbH
+Burgfelderstrasse 211
+4055 Basel</textarea></div>
   </div>
 
-  <h2>Projekt</h2>
+  <h2>Brieftext</h2>
   <div class="fg">
-    <div class="fld wide"><label>Projektname</label><input type="text" id="f-proj-name" value="Kant Center – Parkhaus"></div>
-    <div class="fld wide"><label>Projekt-Adresse</label><textarea id="f-proj-adr" rows="2" style="resize:vertical">Krumme Str. 48
-10627 Berlin</textarea></div>
+    <div class="fld wide"><label>Anrede</label><input type="text" id="f-anrede" value="Sehr geehrter Herr Bräunlin,"></div>
+    <div class="fld wide"><label>Einleitung</label><textarea id="f-einleitung" rows="3">vielen Dank für Ihr Vertrauen und die Möglichkeit, Ihr Projekt „Gundilitor" in Basel gemeinsam mit Ihnen weiterzuentwickeln.</textarea></div>
+    <div class="fld wide"><label>Schlusstext</label><textarea id="f-schluss" rows="3">Gerne unterbreiten wir Ihnen im Folgenden unser Angebot für die weiterführenden Leistungen. Das vorliegende Dokument umfasst Angebotspositionen für die Innenraumplanung im Erdgeschoss, die Gestaltung der Erdgeschossfassaden sowie.</textarea></div>
+    <div class="fld"><label>Grußformel</label><input type="text" id="f-gruss" value="Mit freundlichen Grüßen,"></div>
+    <div class="fld"><label>Absender</label><input type="text" id="f-absender" value="Ann-Kathrin Salich"></div>
   </div>
 
-  <h2>Aus Time Tracking laden</h2>
-  <div class="fg">
-    <div class="fld"><label>Projekt</label><select id="f-sel-proj" disabled></select></div>
-    <div class="fld"><label>Phase</label><select id="f-sel-phase" disabled></select></div>
-    <div class="fld"><label>Leistung</label><select id="f-sel-svc" disabled></select></div>
-    <div class="fld"><label>von</label><input type="date" id="f-von"></div>
-    <div class="fld"><label>bis</label><input type="date" id="f-bis"></div>
-  </div>
-  <div class="btnbar">
-    <button class="ghost" id="btn-load" disabled>Einträge laden</button>
-    <button class="ghost" id="btn-demo">Demodaten</button>
-    <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ui-muted)"><input type="checkbox" id="f-only-open" checked style="width:auto"> nur nicht abgerechnete</label>
-  </div>
-  <p class="sub" id="sheet-status" style="margin-top:10px"></p>
+  <h2>Positionen</h2>
+  <div id="items"></div>
+  <div class="btnbar"><button class="ghost" id="btn-add">+ Position</button></div>
 
-  <h2>Zeiteinträge</h2>
-  <div id="entries"></div>
-  <div class="btnbar">
-    <button class="ghost" id="btn-add">+ Zeile</button>
-    <button class="ghost" id="btn-ki">Beschreibungen aufbereiten</button>
-    <button class="ghost" id="btn-ki-reset" hidden>Alle Originaltexte</button>
-  </div>
-  <p class="sub" id="ki-status" style="margin-top:8px"></p>
-
-  <h2>Abrechnung</h2>
+  <h2>Mehrwertsteuer</h2>
   <div class="fg">
-    <div class="fld"><label>Einheit</label><select id="f-einheit"><option value="stunden">Stunden</option><option value="tage">Tage</option></select></div>
-    <div class="fld"><label>Stunden pro Tag</label><input type="number" id="f-stdtag" step="0.5" min="1" value="8"></div>
+    <div class="fld"><label>MwSt. %</label><input type="number" id="f-mwst" value="19" step="0.5" min="0"></div>
   </div>
-  <p class="sub" style="margin-top:8px">Im Tage-Modus zeigt der Nachweis nur die Gesamt-Zeile in Tagen (Summe ÷ Stunden/Tag, kaufmännisch auf 0,25). Die Stunden-Spalte je Zeile entfällt.</p>
+
+  <h2>Bankverbindung</h2>
+  <div class="fg">
+    <div class="fld wide"><label>Name</label><input type="text" id="f-bank-name" value="Ann-Kathrin Salich"></div>
+    <div class="fld"><label>IBAN</label><input type="text" id="f-bank-iban" value="DE66 1001 1001 2590 9000 54"></div>
+    <div class="fld"><label>BIC</label><input type="text" id="f-bank-bic" value="NTSBDEB1XXX"></div>
+  </div>
 
   <h2>Dokument</h2>
   <div class="btnbar">
@@ -233,21 +214,16 @@ button:disabled{opacity:.4;cursor:not-allowed}
     <button class="ghost" id="btn-open">Öffnen</button>
     <input type="file" id="file-open" accept="application/json" hidden>
   </div>
-  <div class="btnbar">
-    <button class="ghost" id="btn-bill">Im Sheet abbuchen</button>
-    <button class="ghost" id="btn-unbill" hidden>Abbuchung rückgängig</button>
-  </div>
-  <p class="sub" id="bill-status" style="margin-top:10px"></p>
   <p class="sub" style="margin-top:18px">Regeln &amp; Annahmen: <code>docs/</code>. Feedback → verfeinern.</p>
 </div>
 
 <script>
 /* ============================================================
-   1) DESIGN-SYSTEM  (globale Regeln, mm / pt / Rasterzeilen)
+   1) DESIGN-SYSTEM  (global, identisch zu stundennachweis.html)
    ============================================================ */
 const PT = p => p*25.4/72;
-const MM_PER_CSSPX = 25.4/96;      // 1 CSS-px = 0.264583 mm
-const BL = PT(13);                 // 1 Rastereinheit = 13 pt = 4.5861 mm
+const MM_PER_CSSPX = 25.4/96;
+const BL = PT(13);
 const DS = {
   page:{w:210,h:297}, margin:15, rightEdge:195,
   cols:12, colW:10.7957, gutter:BL,
@@ -260,42 +236,18 @@ const DS = {
     titleK:5, placedateK:7,
     ruleK:[5,7,9], ruleX1:122.65, ruleX2:195
   },
-  meta:{ labelK:12, gapK:3 },   /* AUFTRAG-/PROJEKT-Block untereinander, 3 Raster Abstand nach oben (Kopf-Linie K9) und unten (Tabelle) */
+  gapBlock:3,          /* Abstand zwischen Blöcken (Kopf→Empfänger, →Anrede, Schluss→Bank): 3 BL, Ann 2026-09-11 */
   table:{
-    topRuleK_first:19, topRuleK_cont:12,
     rowSpan:2,
-    minGapBeforeFooter:2,                     /* mind. 2 Rastereinheiten Abstand Inhaltsende -> Footer */
-    cols:{ datum:1, taetigkeit:3, bearbeiter:8 }
+    cols:{ leistung:2, art:6, menge:8 },
+    satzRightX(){ return this.__satzX || (this.__satzX = 15+10*(10.7957+BL)); },  /* colX(11) */
+    minGapBeforeFooter:2
   },
-  total:{ span:2, labelCol:8 },
-  footer:{ k1:57, k2:58, blocks:[1,3,6,8] }   /* ~15 mm Rand unten wie oben/seitlich */
+  total:{ labelCol:8, rowSpan:1 },
+  bank:{ x1(){ return 15+7*(10.7957+BL); }, /* colX(8) */ },
+  footer:{ k1:57, k2:58, blocks:[1,3,6,8] }
 };
 
-/* TÄTIGKEIT-Spalte im Dokument: Spalte 3 bis vor BEARBEITER, minus 1 Gutter.
-   Text wird in Rota 8 pt gesetzt -> echte Breite messen, nicht nur Zeichen zählen. */
-const TAET_AVAIL_MM = DS.colX(8) - DS.colX(3) - DS.gutter;                 // ~72,3 mm
-const TAET_AVAIL_PX = TAET_AVAIL_MM * 96/25.4;
-const TAET_MAX_CHARS = Math.floor(TAET_AVAIL_MM / 1.30);                   // grober Richtwert für die KI (~55)
-const _taetCtx = document.createElement('canvas').getContext('2d');
-function taetWidthPx(s){
-  _taetCtx.font = (8*96/72) + 'px "Rota","Helvetica Neue",Arial,sans-serif';
-  return _taetCtx.measureText(String(s || '')).width;
-}
-function taetFits(s){ return taetWidthPx(s) <= TAET_AVAIL_PX; }
-function ellipsizeToWidth(s){
-  s = String(s || '').trim();
-  if(taetFits(s)) return s;
-  const words = s.split(/\s+/); let out = '';
-  for(let k=0;k<words.length;k++){
-    const cand = (out ? out + ' ' : '') + words[k];
-    if(!taetFits(cand + '…')) break;
-    out = cand;
-  }
-  if(!out){ out = s; while(out.length > 1 && !taetFits(out + '…')) out = out.slice(0, -1); }
-  return out + '…';
-}
-
-/* Büroprofil — EIN Absender (ANN ARCHITECTURE). Später aus Google-Sheet »Company Info«. */
 const BUERO = { blocks:[
   ["Wilmersdorfer Str. 108", "10627 Berlin"],
   ["info@annarchitecture-studio.com", "annarchitecturesolution.com"],
@@ -309,181 +261,283 @@ const MONOGRAM_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88.33
    2) DOKUMENT-MODELL
    ============================================================ */
 let model = {
-  type:"stundennachweis",
-  header:{ title:"Anlage 01_Stundennachweis", place:"Berlin", date:isoToday() },
-  meta:{
-    auftrag:{ nr:"OFF_KHP_N_01_260301", bez:"Nachtrag 01 – Bodenmarkierungsplanung" },
-    projekt:{ name:"Kant Center – Parkhaus", adresse:"Krumme Str. 48\n10627 Berlin" },
-    zeitraum:{ von:"", bis:"" }
+  type:"rechnung",
+  header:{ title:"Rechnungsnr.: OFF_GUN_02_260908", place:"Berlin", date:isoToday() },
+  empfaenger:"Robert Bräunlin\nBräunlin Kolb Architekten GmbH\nBurgfelderstrasse 211\n4055 Basel",
+  brief:{
+    anrede:"Sehr geehrter Herr Bräunlin,",
+    einleitung:"vielen Dank für Ihr Vertrauen und die Möglichkeit, Ihr Projekt „Gundilitor“ in Basel gemeinsam mit Ihnen weiterzuentwickeln.",
+    schluss:"Gerne unterbreiten wir Ihnen im Folgenden unser Angebot für die weiterführenden Leistungen. Das vorliegende Dokument umfasst Angebotspositionen für die Innenraumplanung im Erdgeschoss, die Gestaltung der Erdgeschossfassaden sowie.",
+    gruss:"Mit freundlichen Grüßen,", absender:"Ann-Kathrin Salich"
   },
-  settings:{ einheit:"stunden", stundenProTag:8 },
   items:[
-    { datum:"", taetigkeit:"Erstellung von Plänen", bearbeiter:"Ann-Kathrin Salich", stunden:0.5 },
-    { datum:"", taetigkeit:"Absprache mit APCOA",   bearbeiter:"Ann-Kathrin Salich", stunden:1.0 }
-  ]
+    { leistung:"Phase 02 — Entwurfsausarbeitung", art:"Zeithonorar", menge:"400 Std.", satz:90, gesamt:6000 },
+    { leistung:"Phase 03 — Spezifikationsplanung", art:"Zeithonorar", menge:"500 Std", satz:90, gesamt:5000 },
+    { leistung:"Phase 01: Konzeptentwicklung", art:"pauschal", menge:"1", satz:5500, gesamt:5500 },
+    { leistung:"Mieterszenarioplanung", art:"pauschal", menge:"2", satz:6250, gesamt:12500 }
+  ],
+  mwstProzent:19,
+  bank:{ name:"Ann-Kathrin Salich", iban:"DE66 1001 1001 2590 9000 54", bic:"NTSBDEB1XXX" }
 };
 function isoToday(){ return new Date().toISOString().slice(0,10); }
 function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
-function hours(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" Std."; }
-function totalHours(){ return model.items.reduce((s,r)=>s+(Number(r.stunden)||0),0); }
-
-/* Einheit Stunden/Tage (nur Darstellung; erfasst wird immer in Stunden) */
-function normalizeModel(){
-  model.settings = Object.assign({ einheit:"stunden", stundenProTag:8 }, model.settings || {});
-  const pj = model.meta && model.meta.projekt;
-  if(pj && pj.adresse == null) pj.adresse = [pj.strasse, pj.ort].filter(Boolean).join("\n");   // alte Modelle: Straße/PLZ -> Adressblock
-}
-function isTage(){ return model.settings && model.settings.einheit === "tage"; }
-function roundQuarter(n){ return Math.round((Number(n)||0)*4)/4; }        /* kaufmännisch auf 0,25 */
-function totalDays(){ const f = (model.settings && +model.settings.stundenProTag) || 8; return roundQuarter(totalHours()/f); }
-function fmtDays(n){ n = Number(n)||0; const s = n.toLocaleString("de-DE",{minimumFractionDigits:0,maximumFractionDigits:2}); return s + (n === 1 ? " Tag" : " Tage"); }
-function totalDocLabel(){ return isTage() ? fmtDays(totalDays()) : hours(totalHours()); }
-function editorTotalLabel(){ return isTage() ? `${fmtDays(totalDays())} (${hours(totalHours())})` : hours(totalHours()); }
+function eur(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
+function totalNetto(){ return model.items.reduce((s,r)=>s+(Number(r.gesamt)||0),0); }
+function totalMwst(){ return totalNetto() * (Number(model.mwstProzent)||0) / 100; }
+function totalBrutto(){ return totalNetto() + totalMwst(); }
+function textLines(s){ return String(s||"").split("\n").map(x=>x.trim()).filter(Boolean); }
 
 /* ============================================================
-   3) PAGINATION-ENGINE
+   3) TEXT-UMBRUCH  (Canvas-Messung, eine Quelle für Layout + Vorschau;
+      PDF nutzt jsPDF splitTextToSize mit denselben Maßen — siehe R-012-
+      Prinzip: zwei Renderer, bewusst nicht automatisch synchronisiert)
+   ============================================================ */
+const _wrapCtx = document.createElement("canvas").getContext("2d");
+function wrapLines(text, maxWidthMM, weightCss, sizePt){
+  text = String(text||"").trim();
+  if(!text) return [];
+  const maxPx = maxWidthMM * 96/25.4;
+  _wrapCtx.font = weightCss + " " + (sizePt*96/72) + 'px "Rota","Helvetica Neue",Arial,sans-serif';
+  const out = [];
+  text.split("\n").forEach(para=>{
+    const words = para.trim().split(/\s+/).filter(Boolean);
+    if(!words.length){ out.push(""); return; }
+    let line = "";
+    words.forEach(w=>{
+      const cand = line ? line+" "+w : w;
+      if(_wrapCtx.measureText(cand).width <= maxPx){ line = cand; }
+      else { if(line) out.push(line); line = w; }
+    });
+    if(line) out.push(line);
+  });
+  return out;
+}
+const BODY_WIDTH_MM = DS.rightEdge - DS.colX(1);   /* volle Satzbreite, 180mm */
+
+/* ============================================================
+   4) LAYOUT — Cursor-basiert (fixer Kopf + Empfänger + Brieftext,
+      Tabelle mit Seitenumbruch wie im Stundennachweis, Summenblock +
+      Schlusstext + Bankblock nur auf der letzten Seite)
+   ============================================================ */
+function computeLayout(){
+  const L = {};
+  L.empfLines = textLines(model.empfaenger);
+  let k = DS.header.ruleK[DS.header.ruleK.length-1];      // 9
+  L.empfK = k + DS.gapBlock; k = L.empfK + L.empfLines.length;
+  L.anredeK = k + DS.gapBlock; k = L.anredeK + 1;
+  L.einlLines = wrapLines(model.brief.einleitung, BODY_WIDTH_MM, "500", 10);
+  L.einlK = k + 1; k = L.einlK + L.einlLines.length;
+  L.tableFirstK = k + 2;
+
+  L.schlussLines = wrapLines(model.brief.schluss, BODY_WIDTH_MM, "500", 10);
+  // Platzbedarf NACH der Tabelle (Summenblock + Schlusstext + Gruß + Bankblock), in BL:
+  L.postRows = 3 /* Summenzeilen */ + 1 /* Abschlusslinie zählt als 1 BL Reserve */
+    + DS.gapBlock + L.schlussLines.length
+    + 2 /* Leerzeile + Gruß */ + 1 /* Absendername */
+    + DS.gapBlock + 1 /* obere Bank-Linie */ + 3 /* Name/IBAN/BIC */ + 1 /* untere Linie */;
+  return L;
+}
+
+/* ============================================================
+   5) PAGINATION-ENGINE (Tabelle; Vor-/Nachspann fest auf erster/letzter Seite)
    ============================================================ */
 function paginate(){
-  const F = DS.footer.k1, GAP = DS.table.minGapBeforeFooter;
-  const span = DS.table.rowSpan, tot = DS.total.span;
-  // Wie viele Zeilen passen ab Tabellenkopf topK, mit min. GAP vor dem Footer
-  // (reserveTotal = Platz für die "Gesamt"-Zeile freihalten -> nur die letzte Seite).
-  const capFor = (topK, reserveTotal) => {
-    const budget = F - GAP - (reserveTotal ? tot : 0) - (topK + 1);
-    return Math.max(reserveTotal ? 0 : 1, Math.floor(budget / span));
+  const L = computeLayout();
+  const F = DS.footer.k1, GAP = DS.table.minGapBeforeFooter, span = DS.table.rowSpan;
+  const capFor = (topK, reservePost) => {
+    const budget = F - GAP - (reservePost ? L.postRows : 0) - (topK + 1);
+    return Math.max(reservePost ? 0 : 1, Math.floor(budget / span));
   };
-
   let rest = model.items.slice();
   if(!rest.length) rest = [null];
-  const pages = [];
-  let first = true;
+  const pages = []; let first = true;
   while(rest.length){
-    const topK = first ? firstTableK() : DS.table.topRuleK_cont;
+    const topK = first ? L.tableFirstK : DS.table.topRuleK_cont || 12;
     const cap = capFor(topK, false);
     pages.push({ first, rows: rest.slice(0, cap) });
     rest = rest.slice(cap);
     first = false;
   }
-  // Letzte Seite: Platz für die Summenzeile sicherstellen
   const last = pages[pages.length-1];
-  const lastTopK = last.first ? firstTableK() : DS.table.topRuleK_cont;
-  const capWithTotal = capFor(lastTopK, true);
+  const lastTopK = last.first ? L.tableFirstK : (DS.table.topRuleK_cont || 12);
+  const capWithPost = capFor(lastTopK, true);
   const lastCount = last.rows.filter(Boolean).length;
-  if(lastCount > capWithTotal){
-    const overflow = last.rows.slice(capWithTotal);
-    last.rows = last.rows.slice(0, capWithTotal);
+  if(lastCount > capWithPost){
+    const overflow = last.rows.slice(capWithPost);
+    last.rows = last.rows.slice(0, capWithPost);
     if(last.rows.length === 0) last.rows = [null];
     pages.push({ first:false, rows: overflow });
   }
   pages[pages.length-1].last = true;
+  pages.forEach(p => p.layout = L);
   return pages;
 }
 
 /* ============================================================
-   4) RENDERER
+   6) RENDERER (Bildschirm)
    ============================================================ */
-const stage = document.getElementById('stage');
+const stage = document.getElementById("stage");
 
 function band(cls, o, text){
-  const d = document.createElement('div');
-  d.className = 'b ' + cls + (o.right ? ' r' : '') + (o.align === 'top' ? ' top' : '');
+  const d = document.createElement("div");
+  d.className = "b " + cls + ((o.right || o.rightMM != null) ? " r" : "");
   const span = o.span || 1;
   const h = span*BL;
-  d.style.top = (o.topMM != null ? o.topMM : DS.G(o.k)) + 'mm';
-  d.style.height = h + 'mm';
-  d.style.lineHeight = h + 'mm';                       // Einzeltext vertikal zentriert
-  if(o.right){ d.style.right = (DS.page.w - DS.rightEdge) + 'mm'; d.style.left = DS.colX(1) + 'mm'; }
-  else       { d.style.left = o.leftMM + 'mm'; d.style.right = (DS.page.w - DS.rightEdge) + 'mm'; }
-  const s = document.createElement('span');
+  d.style.top = (o.topMM != null ? o.topMM : DS.G(o.k)) + "mm";
+  d.style.height = h + "mm";
+  d.style.lineHeight = h + "mm";
+  if(o.rightMM != null){ d.style.right = (DS.page.w - o.rightMM) + "mm"; d.style.left = (o.leftMM != null ? o.leftMM : DS.colX(1)) + "mm"; }
+  else if(o.right){ d.style.right = (DS.page.w - DS.rightEdge) + "mm"; d.style.left = o.leftMM + "mm"; }
+  else       { d.style.left = o.leftMM + "mm"; d.style.right = (DS.page.w - DS.rightEdge) + "mm"; }
+  const s = document.createElement("span");
   if(text != null) s.textContent = text;
   d.appendChild(s);
   return d;
 }
 function rule(page, k, x1, x2){
-  const d = document.createElement('div'); d.className = 'line';
+  const d = document.createElement("div"); d.className = "line";
   d.dataset.topmm = DS.G(k);
-  d.style.top = DS.G(k) + 'mm'; d.style.left = x1 + 'mm'; d.style.width = (x2 - x1) + 'mm';
+  d.style.top = DS.G(k) + "mm"; d.style.left = x1 + "mm"; d.style.width = (x2 - x1) + "mm";
   page.appendChild(d);
 }
 
 function renderHeader(page){
-  page.appendChild(band('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1}, 'AN(N) ARCHITECTURE'));
-  page.appendChild(band('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, 'SOLUTION'));
-  const m = document.createElement('div'); m.className = 'monogram';
-  m.style.left = (DS.header.monogram.right - DS.header.monogram.w) + 'mm';
-  m.style.top = DS.header.monogram.top + 'mm';
-  m.style.width = DS.header.monogram.w + 'mm'; m.style.height = DS.header.monogram.h + 'mm';
+  page.appendChild(band("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1}, "AN(N) ARCHITECTURE"));
+  page.appendChild(band("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, "SOLUTION"));
+  const m = document.createElement("div"); m.className = "monogram";
+  m.style.left = (DS.header.monogram.right - DS.header.monogram.w) + "mm";
+  m.style.top = DS.header.monogram.top + "mm";
+  m.style.width = DS.header.monogram.w + "mm"; m.style.height = DS.header.monogram.h + "mm";
   m.innerHTML = MONOGRAM_SVG; page.appendChild(m);
 
-  page.appendChild(band('s-title',     {right:true, k:DS.header.titleK,     span:2}, model.header.title || ''));
-  page.appendChild(band('s-placedate', {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`));
+  page.appendChild(band("s-title",     {right:true, k:DS.header.titleK,     span:2}, model.header.title || ""));
+  page.appendChild(band("s-placedate", {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`));
   DS.header.ruleK.forEach(k => rule(page, k, DS.header.ruleX1, DS.header.ruleX2));
 }
-
-function addrLines(s){ return String(s || '').split('\n').map(x=>x.trim()).filter(Boolean).slice(0,3); }
-/* AUFTRAG-Block, eine Leerzeile, PROJEKT-Block — alles linksbündig ab Spalte 3. */
-function metaLayout(){
-  const maxK = DS.meta.labelK + 14;   // Sicherheitsnetz gegen Endlos-Umbruch
-  const rows = []; let k = DS.meta.labelK;
-  const add = (cls, text) => { if(text != null && text !== '' && k <= maxK){ rows.push({ cls, k, text }); k++; } };
-  add('s-metalabel', 'AUFTRAG:');
-  add('s-metaval', model.meta.auftrag.nr || '');
-  addrLines(model.meta.auftrag.bez).forEach(ln => add('s-metaval', ln));
-  k++;   // Leerzeile zwischen den Blöcken
-  add('s-metalabel', 'PROJEKT:');
-  add('s-metaval', model.meta.projekt.name || '');
-  addrLines(model.meta.projekt.adresse).forEach(ln => add('s-metaval', ln));
-  return rows;
+function renderEmpfaenger(page, L){
+  L.empfLines.forEach((ln,i)=> page.appendChild(band("s-body", {leftMM:DS.colX(1), k:L.empfK+i}, ln)));
 }
-function metaLastK(){ const r = metaLayout(); return r.length ? r[r.length - 1].k : DS.meta.labelK - 1; }
-/* Tabelle auf Seite 1 beginnt 3 Raster nach dem Metadaten-Block, mindestens aber bei topRuleK_first. */
-function firstTableK(){ return Math.max(DS.table.topRuleK_first, metaLastK() + 1 + DS.meta.gapK); }
-function renderMeta(page){
-  const L = DS.colX(3);
-  metaLayout().forEach(r => page.appendChild(band(r.cls, {leftMM:L, k:r.k}, r.text)));
+function renderBriefTop(page, L){
+  page.appendChild(band("s-body", {leftMM:DS.colX(1), k:L.anredeK}, model.brief.anrede || ""));
+  L.einlLines.forEach((ln,i)=> page.appendChild(band("s-body", {leftMM:DS.colX(1), k:L.einlK+i}, ln)));
 }
-
-function renderTable(page, p){
-  const topK = p.first ? firstTableK() : DS.table.topRuleK_cont;
-  const C = DS.table.cols, span = DS.table.rowSpan;
-  const showHours = !isTage();
+function renderTable(page, p, L){
+  const topK = p.first ? L.tableFirstK : (DS.table.topRuleK_cont || 12);
+  const span = DS.table.rowSpan, C = DS.table.cols;
   rule(page, topK, DS.colX(1), DS.rightEdge);
-  page.appendChild(band('s-thead', {leftMM:DS.colX(C.datum),      k:topK}, 'DATUM'));
-  page.appendChild(band('s-thead', {leftMM:DS.colX(C.taetigkeit), k:topK}, 'TÄTIGKEIT'));
-  page.appendChild(band('s-thead', {leftMM:DS.colX(C.bearbeiter), k:topK}, 'BEARBEITER'));
-  if(showHours) page.appendChild(band('s-thead', {right:true,     k:topK}, 'ZEITAUFWAND'));
+  page.appendChild(band("s-thead", {leftMM:DS.colX(1),         k:topK}, "POS."));
+  page.appendChild(band("s-thead", {leftMM:DS.colX(C.leistung),k:topK}, "LEISTUNG"));
+  page.appendChild(band("s-thead", {leftMM:DS.colX(C.art),     k:topK}, "ABRECHNUNGSART"));
+  page.appendChild(band("s-thead", {leftMM:DS.colX(C.menge),   k:topK}, "MENGE"));
+  page.appendChild(band("s-thead", {rightMM:DS.table.satzRightX(), leftMM:DS.colX(9), k:topK}, "SATZ NETTO"));
+  page.appendChild(band("s-thead", {right:true,                 k:topK}, "GESAMT NETTO"));
   rule(page, topK + 1, DS.colX(1), DS.rightEdge);
   const rows = p.rows.filter(Boolean);
+  let posBase = 0;
+  for(let i=0;i<pages_.indexOf(p);i++) posBase += pages_[i].rows.filter(Boolean).length;
   rows.forEach((row,i)=>{
     const bandTopK = topK + 1 + i*span;
-    page.appendChild(band('s-cell', {leftMM:DS.colX(C.datum),      k:bandTopK, span}, deDate(row.datum) || '—'));
-    page.appendChild(band('s-cell', {leftMM:DS.colX(C.taetigkeit), k:bandTopK, span}, row.taetigkeit || ''));
-    page.appendChild(band('s-cell', {leftMM:DS.colX(C.bearbeiter), k:bandTopK, span}, row.bearbeiter || ''));
-    if(showHours) page.appendChild(band('s-cell', {right:true,     k:bandTopK, span}, hours(row.stunden)));
+    const pos = String(posBase + i + 1).padStart(2,"0");
+    page.appendChild(band("s-cell", {leftMM:DS.colX(1),          k:bandTopK, span}, pos));
+    page.appendChild(band("s-cell", {leftMM:DS.colX(C.leistung), k:bandTopK, span}, row.leistung || ""));
+    page.appendChild(band("s-cell", {leftMM:DS.colX(C.art),      k:bandTopK, span}, row.art || ""));
+    page.appendChild(band("s-cell", {leftMM:DS.colX(C.menge),    k:bandTopK, span}, row.menge || ""));
+    page.appendChild(band("s-cell", {rightMM:DS.table.satzRightX(), leftMM:DS.colX(9), k:bandTopK, span}, eur(row.satz)));
+    page.appendChild(band("s-cell", {right:true,                 k:bandTopK, span}, eur(row.gesamt)));
     rule(page, bandTopK + span, DS.colX(1), DS.rightEdge);
   });
   return topK + 1 + rows.length*span;
 }
-
-function renderTotal(page, k){
-  const span = DS.total.span;
-  page.appendChild(band('s-total', {leftMM:DS.colX(DS.total.labelCol), k, span}, 'Gesamt'));
-  page.appendChild(band('s-total', {right:true,                        k, span}, totalDocLabel()));
-  rule(page, k + span, DS.colX(DS.total.labelCol), DS.rightEdge);   // Linie nur unter dem Summenblock
+function renderTotals(page, k){
+  const L8 = DS.colX(DS.total.labelCol);
+  page.appendChild(band("s-total", {leftMM:L8, k, span:1}, "Gesamt netto"));
+  page.appendChild(band("s-total", {right:true, k, span:1}, eur(totalNetto())));
+  page.appendChild(band("s-cell",  {leftMM:L8, k:k+1, span:1}, "MwSt. " + (model.mwstProzent||0).toLocaleString("de-DE") + "%"));
+  page.appendChild(band("s-cell",  {right:true, k:k+1, span:1}, eur(totalMwst())));
+  page.appendChild(band("s-cell",  {leftMM:L8, k:k+2, span:1}, "Gesamt brutto"));
+  page.appendChild(band("s-cell",  {right:true, k:k+2, span:1}, eur(totalBrutto())));
+  rule(page, k+3, L8, DS.rightEdge);
+  return k + 4;
 }
-
+function renderBriefBottom(page, k, L){
+  L.schlussLines.forEach((ln,i)=> page.appendChild(band("s-body", {leftMM:DS.colX(1), k:k+i}, ln)));
+  let kk = k + L.schlussLines.length + 2;
+  page.appendChild(band("s-body", {leftMM:DS.colX(1), k:kk}, model.brief.gruss || ""));
+  page.appendChild(band("s-body", {leftMM:DS.colX(1), k:kk+1}, model.brief.absender || ""));
+  return kk + 1;
+}
+function renderBank(page, k){
+  const x1 = DS.colX(1), x2 = DS.bank.x1();
+  rule(page, k, x1, x2);
+  page.appendChild(band("s-cell", {leftMM:x1, k:k+1}, model.bank.name || ""));
+  page.appendChild(band("s-cell", {leftMM:x1, k:k+2}, "IBAN: " + (model.bank.iban || "")));
+  page.appendChild(band("s-cell", {leftMM:x1, k:k+3}, "BIC: " + (model.bank.bic || "")));
+  rule(page, k+4, x1, x2);
+}
 function renderFooter(page, idx, count){
   BUERO.blocks.forEach((b,i)=>{
-    page.appendChild(band('s-footer', {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k1}, b[0]));
-    page.appendChild(band('s-footer', {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k2}, b[1]));
+    page.appendChild(band("s-footer", {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k1}, b[0]));
+    page.appendChild(band("s-footer", {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k2}, b[1]));
   });
-  page.appendChild(band('s-footer', {right:true, k:DS.footer.k1}, 'Page'));
-  page.appendChild(band('s-footer', {right:true, k:DS.footer.k2}, `${idx}/${count}`));
+  page.appendChild(band("s-footer", {right:true, k:DS.footer.k1}, "Page"));
+  page.appendChild(band("s-footer", {right:true, k:DS.footer.k2}, `${idx}/${count}`));
+}
+
+let pages_ = [];
+let showGrid = false;
+function renderGrid(page){
+  const ov = document.createElement("div"); ov.className = "grid-ov";
+  const f = document.createElement("div"); f.className = "frame";
+  f.style.left = DS.margin + "mm"; f.style.top = DS.margin + "mm";
+  f.style.width = (DS.rightEdge - DS.margin) + "mm";
+  f.style.height = (DS.G(61) - DS.margin) + "mm";
+  ov.appendChild(f);
+  for(let n=1;n<=DS.cols;n++){
+    const c = document.createElement("div"); c.className = "col";
+    c.style.left = DS.colX(n) + "mm"; c.style.width = DS.colW + "mm";
+    ov.appendChild(c);
+  }
+  for(let k=0;k<=61;k++){
+    const b = document.createElement("div"); b.className = "bl";
+    b.style.top = DS.G(k) + "mm";
+    ov.appendChild(b);
+  }
+  page.appendChild(ov);
+}
+
+function snapLines(){
+  const dpr = window.devicePixelRatio || 1;
+  const scale = zoom * dpr / MM_PER_CSSPX;
+  document.querySelectorAll(".doc-page .line").forEach(l=>{
+    const mm = parseFloat(l.dataset.topmm);
+    const dev = mm * scale;
+    l.style.top = (Math.round(dev) / scale) + "mm";
+  });
+}
+
+function render(){
+  stage.innerHTML = "";
+  pages_ = paginate();
+  pages_.forEach((p,i)=>{
+    const page = document.createElement("div"); page.className = "doc-page";
+    if(showGrid) renderGrid(page);
+    renderHeader(page);
+    if(p.first){ renderEmpfaenger(page, p.layout); renderBriefTop(page, p.layout); }
+    const afterTableK = renderTable(page, p, p.layout);
+    if(p.last){
+      const afterTotalsK = renderTotals(page, afterTableK);
+      const afterBottomK = renderBriefBottom(page, afterTotalsK + DS.gapBlock, p.layout);
+      renderBank(page, afterBottomK + DS.gapBlock);
+    }
+    renderFooter(page, i+1, pages_.length);
+    stage.appendChild(page);
+  });
+  fitZoom(false);
+  snapLines();
 }
 
 /* ============================================================
-   4b) PDF-EXPORT  — echtes Vektor-PDF, Direkt-Download (kein Druckdialog)
-   Zeichnet dasselbe Layout wie der HTML-Renderer direkt in ein jsPDF.
+   7) PDF-EXPORT — direkter Download, kein Druckdialog (R-016)
    ============================================================ */
 const MONOGRAM_PTS = [
   [[0,38.33],[5.10,38.33],[24.97,0],[20.01,0]],
@@ -491,41 +545,42 @@ const MONOGRAM_PTS = [
    [29.39,0],[29.39,38.33],[33.83,38.33],[33.83,7.20],[56.76,38.33],[60.97,38.33],[60.97,7.21],
    [83.72,38.22],[83.79,38.33],[88.33,38.33],[88.33,0],[83.88,0]]
 ];
-const LINE_RGB = [167,169,172];                 // #a7a9ac
-const LINE_W_MM = PT(0.5);                       // 0,5 pt
-const CAPS_STYLES = { 's-metalabel':1, 's-thead':1 };
+const LINE_RGB = [167,169,172];
+const LINE_W_MM = PT(0.5);
+const CAPS_STYLES = { "s-metalabel":1, "s-thead":1 };
+const TSHIFT_EM = 0.075, TSHIFT_CAPS_EM = 0.135;
 
 function pdfFonts(doc){
   const R = window.ROTA_TTF;
-  doc.addFileToVFS('RotaMed.ttf',   R.medium); doc.addFont('RotaMed.ttf',  'Rota',      'normal');
-  doc.addFileToVFS('RotaBold.ttf',  R.bold);   doc.addFont('RotaBold.ttf', 'Rota',      'bold');
-  doc.addFileToVFS('RotaLight.ttf', R.light);  doc.addFont('RotaLight.ttf','RotaLight', 'normal');
+  doc.addFileToVFS("RotaMed.ttf",   R.medium); doc.addFont("RotaMed.ttf",  "Rota",      "normal");
+  doc.addFileToVFS("RotaBold.ttf",  R.bold);   doc.addFont("RotaBold.ttf", "Rota",      "bold");
+  doc.addFileToVFS("RotaLight.ttf", R.light);  doc.addFont("RotaLight.ttf","RotaLight", "normal");
 }
 const PDF_STYLE = {
-  's-wordmark' :['RotaLight','normal',8],
-  's-title'    :['Rota','normal',10], 's-placedate':['Rota','normal',10],
-  's-metalabel':['Rota','normal',8],  's-metaval'  :['Rota','normal',10],
-  's-thead'    :['Rota','normal',8],  's-cell'     :['Rota','normal',8],
-  's-total'    :['Rota','bold',8],    's-footer'   :['RotaLight','normal',8]
+  "s-wordmark" :["RotaLight","normal",8],
+  "s-title"    :["Rota","normal",10], "s-placedate":["Rota","normal",10],
+  "s-metalabel":["Rota","normal",8],  "s-metaval"  :["Rota","normal",10],
+  "s-body"     :["Rota","normal",10],
+  "s-thead"    :["Rota","normal",8],  "s-cell"     :["Rota","normal",8],
+  "s-total"    :["Rota","bold",8],    "s-footer"   :["RotaLight","normal",8]
 };
 
 function exportPDF(){
-  if(!window.jspdf || !window.ROTA_TTF){ alert('PDF-Bibliothek nicht geladen (Internet nötig).'); return; }
-  calibrateText();
+  if(!window.jspdf || !window.ROTA_TTF){ alert("PDF-Bibliothek nicht geladen (Internet nötig)."); return; }
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit:'mm', format:'a4', compress:true });
+  const doc = new jsPDF({ unit:"mm", format:"a4", compress:true });
   pdfFonts(doc);
 
   const put = (cls, o, text) => {
-    if(text == null || text === '') return;
+    if(text == null || text === "") return;
     const [fam, sty, size] = PDF_STYLE[cls];
     doc.setFont(fam, sty); doc.setFontSize(size); doc.setTextColor(10,10,10);
     const span = o.span || 1;
     const topMM = (o.topMM != null ? o.topMM : DS.G(o.k));
     const shiftEm = CAPS_STYLES[cls] ? TSHIFT_CAPS_EM : TSHIFT_EM;
     const y = topMM + span*BL/2 + shiftEm * size * (25.4/72);
-    const x = o.right ? DS.rightEdge : o.leftMM;
-    doc.text(String(text), x, y, { align: o.right ? 'right' : 'left', baseline:'middle' });
+    const x = o.right ? DS.rightEdge : (o.rightX != null ? o.rightX : o.leftMM);
+    doc.text(String(text), x, y, { align: o.right || o.alignRight ? "right" : "left", baseline:"middle" });
   };
   const hline = (k, x1, x2) => {
     doc.setDrawColor(...LINE_RGB); doc.setLineWidth(LINE_W_MM);
@@ -538,7 +593,7 @@ function exportPDF(){
       const start = [ox + pts[0][0]*sx, oy + pts[0][1]*sy];
       const deltas = []; let prev = pts[0];
       for(let i=1;i<pts.length;i++){ deltas.push([(pts[i][0]-prev[0])*sx, (pts[i][1]-prev[1])*sy]); prev = pts[i]; }
-      doc.lines(deltas, start[0], start[1], [1,1], 'F', true);
+      doc.lines(deltas, start[0], start[1], [1,1], "F", true);
     });
   };
 
@@ -547,531 +602,205 @@ function exportPDF(){
 
   pages.forEach((p, pi) => {
     if(pi > 0) doc.addPage();
+    const L = p.layout;
 
-    // Header
-    put('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1}, 'AN(N) ARCHITECTURE');
-    put('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, 'SOLUTION');
+    put("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1}, "AN(N) ARCHITECTURE");
+    put("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, "SOLUTION");
     monogram();
-    put('s-title',     {right:true, k:DS.header.titleK,     span:2}, model.header.title || '');
-    put('s-placedate', {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`);
+    put("s-title",     {right:true, k:DS.header.titleK,     span:2}, model.header.title || "");
+    put("s-placedate", {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`);
     DS.header.ruleK.forEach(k => hline(k, DS.header.ruleX1, DS.header.ruleX2));
 
-    // Metadaten nur Seite 1
     if(p.first){
-      const L = DS.colX(3);
-      metaLayout().forEach(r => put(r.cls, {leftMM:L, k:r.k}, r.text));
+      L.empfLines.forEach((ln,i)=> put("s-body", {leftMM:DS.colX(1), k:L.empfK+i}, ln));
+      put("s-body", {leftMM:DS.colX(1), k:L.anredeK}, model.brief.anrede || "");
+      L.einlLines.forEach((ln,i)=> put("s-body", {leftMM:DS.colX(1), k:L.einlK+i}, ln));
     }
 
-    // Tabelle
-    const showHours = !isTage();
-    const topK = p.first ? firstTableK() : DS.table.topRuleK_cont;
+    const topK = p.first ? L.tableFirstK : (DS.table.topRuleK_cont || 12);
     hline(topK, DS.colX(1), DS.rightEdge);
-    put('s-thead', {leftMM:DS.colX(C.datum),      k:topK}, 'DATUM');
-    put('s-thead', {leftMM:DS.colX(C.taetigkeit), k:topK}, 'TÄTIGKEIT');
-    put('s-thead', {leftMM:DS.colX(C.bearbeiter), k:topK}, 'BEARBEITER');
-    if(showHours) put('s-thead', {right:true,     k:topK}, 'ZEITAUFWAND');
+    put("s-thead", {leftMM:DS.colX(1),          k:topK}, "POS.");
+    put("s-thead", {leftMM:DS.colX(C.leistung), k:topK}, "LEISTUNG");
+    put("s-thead", {leftMM:DS.colX(C.art),      k:topK}, "ABRECHNUNGSART");
+    put("s-thead", {leftMM:DS.colX(C.menge),    k:topK}, "MENGE");
+    put("s-thead", {rightX:DS.table.satzRightX(), alignRight:true, k:topK}, "SATZ NETTO");
+    put("s-thead", {right:true,                 k:topK}, "GESAMT NETTO");
     hline(topK + 1, DS.colX(1), DS.rightEdge);
+
     const rows = p.rows.filter(Boolean);
+    let posBase = 0;
+    for(let i=0;i<pi;i++) posBase += pages[i].rows.filter(Boolean).length;
     rows.forEach((row, i) => {
       const bt = topK + 1 + i*span;
-      put('s-cell', {leftMM:DS.colX(C.datum),      k:bt, span}, deDate(row.datum) || '—');
-      put('s-cell', {leftMM:DS.colX(C.taetigkeit), k:bt, span}, row.taetigkeit || '');
-      put('s-cell', {leftMM:DS.colX(C.bearbeiter), k:bt, span}, row.bearbeiter || '');
-      if(showHours) put('s-cell', {right:true,     k:bt, span}, hours(row.stunden));
+      const pos = String(posBase + i + 1).padStart(2,"0");
+      put("s-cell", {leftMM:DS.colX(1),          k:bt, span}, pos);
+      put("s-cell", {leftMM:DS.colX(C.leistung), k:bt, span}, row.leistung || "");
+      put("s-cell", {leftMM:DS.colX(C.art),      k:bt, span}, row.art || "");
+      put("s-cell", {leftMM:DS.colX(C.menge),    k:bt, span}, row.menge || "");
+      put("s-cell", {rightX:DS.table.satzRightX(), alignRight:true, k:bt, span}, eur(row.satz));
+      put("s-cell", {right:true,                 k:bt, span}, eur(row.gesamt));
       hline(bt + span, DS.colX(1), DS.rightEdge);
     });
 
+    let afterTableK = topK + 1 + rows.length*span;
+
     if(p.last){
-      const gk = topK + 1 + rows.length*span, gs = DS.total.span;
-      put('s-total', {leftMM:DS.colX(DS.total.labelCol), k:gk, span:gs}, 'Gesamt');
-      put('s-total', {right:true,                        k:gk, span:gs}, totalDocLabel());
-      hline(gk + gs, DS.colX(DS.total.labelCol), DS.rightEdge);
+      const L8 = DS.colX(DS.total.labelCol);
+      put("s-total", {leftMM:L8, k:afterTableK, span:1}, "Gesamt netto");
+      put("s-total", {right:true, k:afterTableK, span:1}, eur(totalNetto()));
+      put("s-cell",  {leftMM:L8, k:afterTableK+1, span:1}, "MwSt. " + (model.mwstProzent||0).toLocaleString("de-DE") + "%");
+      put("s-cell",  {right:true, k:afterTableK+1, span:1}, eur(totalMwst()));
+      put("s-cell",  {leftMM:L8, k:afterTableK+2, span:1}, "Gesamt brutto");
+      put("s-cell",  {right:true, k:afterTableK+2, span:1}, eur(totalBrutto()));
+      hline(afterTableK+3, L8, DS.rightEdge);
+
+      let k2 = afterTableK + 4 + DS.gapBlock;
+      L.schlussLines.forEach((ln,i)=> put("s-body", {leftMM:DS.colX(1), k:k2+i}, ln));
+      let kk = k2 + L.schlussLines.length + 2;
+      put("s-body", {leftMM:DS.colX(1), k:kk}, model.brief.gruss || "");
+      put("s-body", {leftMM:DS.colX(1), k:kk+1}, model.brief.absender || "");
+
+      const bk = kk + 1 + DS.gapBlock, x1 = DS.colX(1), x2 = DS.bank.x1();
+      hline(bk, x1, x2);
+      put("s-cell", {leftMM:x1, k:bk+1}, model.bank.name || "");
+      put("s-cell", {leftMM:x1, k:bk+2}, "IBAN: " + (model.bank.iban || ""));
+      put("s-cell", {leftMM:x1, k:bk+3}, "BIC: " + (model.bank.bic || ""));
+      hline(bk+4, x1, x2);
     }
 
-    // Footer
     BUERO.blocks.forEach((b, i) => {
-      put('s-footer', {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k1}, b[0]);
-      put('s-footer', {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k2}, b[1]);
+      put("s-footer", {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k1}, b[0]);
+      put("s-footer", {leftMM:DS.colX(DS.footer.blocks[i]), k:DS.footer.k2}, b[1]);
     });
-    put('s-footer', {right:true, k:DS.footer.k1}, 'Page');
-    put('s-footer', {right:true, k:DS.footer.k2}, `${pi+1}/${pages.length}`);
+    put("s-footer", {right:true, k:DS.footer.k1}, "Page");
+    put("s-footer", {right:true, k:DS.footer.k2}, `${pi+1}/${pages.length}`);
   });
 
-  doc.save((model.header.title || 'Stundennachweis').replace(/[^\w\-]+/g,'_') + '.pdf');
-}
-
-/* Raster-Overlay */
-let showGrid = false;
-function renderGrid(page){
-  const ov = document.createElement('div'); ov.className = 'grid-ov';
-  const f = document.createElement('div'); f.className = 'frame';
-  f.style.left = DS.margin + 'mm'; f.style.top = DS.margin + 'mm';
-  f.style.width = (DS.rightEdge - DS.margin) + 'mm';
-  f.style.height = (DS.G(61) - DS.margin) + 'mm';
-  ov.appendChild(f);
-  for(let n=1;n<=DS.cols;n++){
-    const c = document.createElement('div'); c.className = 'col';
-    c.style.left = DS.colX(n) + 'mm'; c.style.width = DS.colW + 'mm';
-    ov.appendChild(c);
-  }
-  for(let k=0;k<=61;k++){
-    const b = document.createElement('div'); b.className = 'bl';
-    b.style.top = DS.G(k) + 'mm';
-    ov.appendChild(b);
-  }
-  page.appendChild(ov);
-}
-
-/* Optischer vertikaler Textausgleich (em). Fest gewählt, damit Bildschirm und
-   PDF identisch sitzen. Werte korrespondieren mit --tshift / --tshift-caps im CSS. */
-const TSHIFT_EM = 0.075, TSHIFT_CAPS_EM = 0.135;
-function calibrateText(){ /* aktuell fest, siehe TSHIFT_EM */ }
-
-/* Linien exakt auf die Gerätepixel-Kante schieben -> alle gleich dick, kein Flimmern.
-   Läuft nach jedem render() und bei jeder Zoomänderung. */
-function snapLines(){
-  const dpr = window.devicePixelRatio || 1;
-  const scale = zoom * dpr / MM_PER_CSSPX;          // Geräte-px pro mm
-  document.querySelectorAll('.doc-page .line').forEach(l=>{
-    const mm = parseFloat(l.dataset.topmm);
-    const dev = mm * scale;
-    l.style.top = (Math.round(dev) / scale) + 'mm'; // auf ganze Geräte-px runden
-  });
-}
-
-function render(){
-  stage.innerHTML = '';
-  const pages = paginate();
-  pages.forEach((p,i)=>{
-    const page = document.createElement('div'); page.className = 'doc-page';
-    if(showGrid) renderGrid(page);
-    renderHeader(page);
-    if(p.first) renderMeta(page);
-    const lastRowK = renderTable(page, p);
-    if(p.last) renderTotal(page, lastRowK);
-    renderFooter(page, i+1, pages.length);
-    stage.appendChild(page);
-  });
-  fitZoom(false);
-  snapLines();
+  doc.save((model.header.title || "Rechnung").replace(/[^\w\-]+/g,"_") + ".pdf");
 }
 
 /* ============================================================
-   5) EDITOR
+   8) EDITOR
    ============================================================ */
 const $ = s => document.querySelector(s);
-function setPath(path,v){ const s=path.split('.'); let o=model; for(let i=0;i<s.length-1;i++)o=o[s[i]]; o[s[s.length-1]]=v; }
-function bind(id,path){ const el=$(id); el.addEventListener('input',()=>{ setPath(path,el.value); render(); }); }
-/* Titel ist vorerst nur frei editierbar. Wie er sich später automatisch ergibt,
-   hängt an der Gesamt-Datenstruktur/-Benennung (offen: docs regel-register O-003). */
-bind('#f-title','header.title');
-bind('#f-place','header.place'); bind('#f-date','header.date');
-bind('#f-auftrag-nr','meta.auftrag.nr'); bind('#f-auftrag-bez','meta.auftrag.bez');
-bind('#f-proj-name','meta.projekt.name'); bind('#f-proj-adr','meta.projekt.adresse');
-bind('#f-von','meta.zeitraum.von'); bind('#f-bis','meta.zeitraum.bis');
+function setPath(path,v){ const s=path.split("."); let o=model; for(let i=0;i<s.length-1;i++)o=o[s[i]]; o[s[s.length-1]]=v; }
+function bind(id,path){ const el=$(id); el.addEventListener("input",()=>{ setPath(path,el.value); render(); }); }
+bind("#f-title","header.title");
+bind("#f-place","header.place"); bind("#f-date","header.date");
+bind("#f-empf","empfaenger");
+bind("#f-anrede","brief.anrede"); bind("#f-einleitung","brief.einleitung"); bind("#f-schluss","brief.schluss");
+bind("#f-gruss","brief.gruss"); bind("#f-absender","brief.absender");
+bind("#f-bank-name","bank.name"); bind("#f-bank-iban","bank.iban"); bind("#f-bank-bic","bank.bic");
+$("#f-mwst").addEventListener("input", e=>{ model.mwstProzent = parseFloat(e.target.value)||0; render(); });
 
-$('#f-einheit').addEventListener('change', e=>{ model.settings.einheit = e.target.value; renderEntries(); render(); });
-$('#f-stdtag').addEventListener('input', e=>{ model.settings.stundenProTag = parseFloat(e.target.value)||8; updateTotal(); render(); });
-
-const entriesBox = $('#entries');
-function escapeHtml(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function renderEntries(){
-  entriesBox.innerHTML =
-    '<div class="e-head">'+
-      '<div>Datum<span class="grip" data-col="c1"></span></div>'+
-      '<div>Tätigkeit<span class="grip" data-col="c2"></span></div>'+
-      '<div>Bearbeiter</div>'+
-      '<div>Std.</div><div></div>'+
+const itemsBox = $("#items");
+function escapeHtml(s){ return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function renderItems(){
+  itemsBox.innerHTML =
+    '<div class="i-head">'+
+      '<div>Pos.</div>'+
+      '<div>Leistung<span class="grip" data-col="c1"></span></div>'+
+      '<div>Abrechnungsart</div><div>Menge</div><div>Satz netto</div><div>Gesamt netto</div><div></div>'+
     '</div>';
   model.items.forEach((r,i)=>{
-    const row = document.createElement('div'); row.className='e-row';
-    const hasOrig = r.taetigkeitOriginal != null && r.taetigkeitOriginal !== r.taetigkeit;
-    const over = (r.taetigkeit || '').length > TAET_MAX_CHARS;
+    const row = document.createElement("div"); row.className="i-row";
     row.innerHTML =
-      `<input type="date" data-i="${i}" data-k="datum" value="${r.datum||''}">`+
-      `<div class="e-taet">`+
-        `<input type="text" data-i="${i}" data-k="taetigkeit" value="${escapeHtml(r.taetigkeit)}">`+
-        (hasOrig ? `<div class="e-orig"><span>${escapeHtml(r.taetigkeitOriginal)}</span><button class="revert" data-i="${i}" title="Originaltext übernehmen">↺</button></div>` : ``)+
-        (over ? `<div class="e-over">${(r.taetigkeit||'').length}/${TAET_MAX_CHARS} Zeichen – zu lang für die Zeile</div>` : ``)+
-      `</div>`+
-      `<input type="text" data-i="${i}" data-k="bearbeiter" value="${escapeHtml(r.bearbeiter)}">`+
-      `<input type="number" step="0.25" class="num" data-i="${i}" data-k="stunden" value="${r.stunden??''}">`+
-      `<button class="del" data-i="${i}" title="Zeile löschen">×</button>`;
-    entriesBox.appendChild(row);
+      `<div class="i-pos">${String(i+1).padStart(2,"0")}</div>`+
+      `<input type="text" data-i="${i}" data-k="leistung" value="${escapeHtml(r.leistung)}">`+
+      `<input type="text" data-i="${i}" data-k="art" value="${escapeHtml(r.art)}">`+
+      `<input type="text" data-i="${i}" data-k="menge" value="${escapeHtml(r.menge)}">`+
+      `<input type="number" step="0.01" class="num" data-i="${i}" data-k="satz" value="${r.satz??""}">`+
+      `<input type="number" step="0.01" class="num" data-i="${i}" data-k="gesamt" value="${r.gesamt??""}">`+
+      `<button class="del" data-i="${i}" title="Position löschen">×</button>`;
+    itemsBox.appendChild(row);
   });
-  const tot = document.createElement('div'); tot.className='e-total';
-  tot.innerHTML = `<span>Gesamt</span><span id="e-total-val">${editorTotalLabel()}</span>`;
-  entriesBox.appendChild(tot);
+  const tot = document.createElement("div"); tot.className="i-total";
+  tot.innerHTML =
+    `<div><span>Gesamt netto</span><span id="i-total-netto" class="b">${eur(totalNetto())}</span></div>`+
+    `<div><span>MwSt. ${(model.mwstProzent||0).toLocaleString("de-DE")}%</span><span id="i-total-mwst">${eur(totalMwst())}</span></div>`+
+    `<div><span>Gesamt brutto</span><span id="i-total-brutto" class="b">${eur(totalBrutto())}</span></div>`;
+  itemsBox.appendChild(tot);
 }
-function updateTotal(){ const el = $('#e-total-val'); if(el) el.textContent = editorTotalLabel(); }
-
-/* Tippen: nur Modell + Vorschau + Summe aktualisieren — NICHT die Eingabefelder neu bauen
-   (sonst verliert das Feld den Fokus mitten im Satz). */
-entriesBox.addEventListener('input', e=>{
+function updateTotals(){
+  const g=(id,v)=>{ const el=$(id); if(el) el.textContent=v; };
+  g("#i-total-netto", eur(totalNetto())); g("#i-total-mwst", eur(totalMwst())); g("#i-total-brutto", eur(totalBrutto()));
+}
+itemsBox.addEventListener("input", e=>{
   const i=+e.target.dataset.i, k=e.target.dataset.k; if(k==null) return;
-  model.items[i][k] = k==='stunden' ? parseFloat(e.target.value)||0 : e.target.value;
-  if(k==='taetigkeit'){
-    const cell = e.target.closest('.e-taet'); let ov = cell && cell.querySelector('.e-over');
-    const len = e.target.value.length;
-    if(len > TAET_MAX_CHARS){
-      if(!ov){ ov = document.createElement('div'); ov.className = 'e-over'; cell.appendChild(ov); }
-      ov.textContent = len + '/' + TAET_MAX_CHARS + ' Zeichen – zu lang für die Zeile';
-    } else if(ov){ ov.remove(); }
-  }
-  updateTotal(); render();
+  model.items[i][k] = (k==="satz"||k==="gesamt") ? (parseFloat(e.target.value)||0) : e.target.value;
+  updateTotals(); render();
 });
-entriesBox.addEventListener('click', e=>{
-  if(e.target.classList.contains('del')){
-    model.items.splice(+e.target.dataset.i,1); renderEntries(); render(); return;
-  }
-  if(e.target.classList.contains('revert')){
-    const it = model.items[+e.target.dataset.i];
-    if(it && it.taetigkeitOriginal != null){ it.taetigkeit = it.taetigkeitOriginal; renderEntries(); render(); }
-  }
+itemsBox.addEventListener("click", e=>{
+  if(!e.target.classList.contains("del")) return;
+  model.items.splice(+e.target.dataset.i,1); renderItems(); render();
 });
-/* Spaltenbreiten der Eingabetabelle ziehen (Datum / Tätigkeit) */
 (function(){
   let g = null;
-  entriesBox.addEventListener('mousedown', e=>{
-    const grip = e.target.closest('.grip'); if(!grip) return;
+  itemsBox.addEventListener("mousedown", e=>{
+    const grip = e.target.closest(".grip"); if(!grip) return;
     const head = grip.parentElement;
     g = { col: grip.dataset.col, x0: e.clientX, w0: head.getBoundingClientRect().width };
-    document.body.classList.add('resizing'); e.preventDefault();
+    document.body.classList.add("resizing"); e.preventDefault();
   });
-  window.addEventListener('mousemove', e=>{
+  window.addEventListener("mousemove", e=>{
     if(!g) return;
-    let w = Math.max(70, Math.min(560, g.w0 + (e.clientX - g.x0)));
-    entriesBox.style.setProperty('--'+g.col, w+'px');
+    let w = Math.max(120, Math.min(560, g.w0 + (e.clientX - g.x0)));
+    itemsBox.style.setProperty("--"+g.col, w+"px");
   });
-  window.addEventListener('mouseup', ()=>{
+  window.addEventListener("mouseup", ()=>{
     if(!g) return;
-    try{ localStorage.setItem('sn.'+g.col, entriesBox.style.getPropertyValue('--'+g.col)); }catch(_){}
-    g = null; document.body.classList.remove('resizing');
+    try{ localStorage.setItem("rn."+g.col, itemsBox.style.getPropertyValue("--"+g.col)); }catch(_){}
+    g = null; document.body.classList.remove("resizing");
   });
-  try{ ['c1','c2'].forEach(c=>{ const w=localStorage.getItem('sn.'+c); if(w) entriesBox.style.setProperty('--'+c, w); }); }catch(_){}
+  try{ const w=localStorage.getItem("rn.c1"); if(w) itemsBox.style.setProperty("--c1", w); }catch(_){}
 })();
 
-$('#btn-add').onclick = ()=>{ model.items.push({datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0}); renderEntries(); render(); };
-$('#btn-demo').onclick = ()=>{
-  const acts=["Erstellung von Plänen","Absprache mit APCOA","Baustellenbegehung","Abstimmung Fachplaner","Ausschreibungstext","Mengenermittlung"];
-  model.items = Array.from({length:14},(_,k)=>({
-    datum:`2026-08-${String(3+k).padStart(2,'0')}`, taetigkeit:acts[k%6],
-    bearbeiter:"Ann-Kathrin Salich", stunden:[0.5,1,2,1.5,3,0.75][k%6]
-  }));
-  renderEntries(); render();
+$("#btn-add").onclick = ()=>{ model.items.push({leistung:"",art:"",menge:"",satz:0,gesamt:0}); renderItems(); render(); };
+
+$("#btn-save").onclick = ()=>{
+  const blob = new Blob([JSON.stringify(model,null,2)],{type:"application/json"});
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = `${(model.header.title||"rechnung").replace(/[^\w-]+/g,"_")}.json`; a.click();
 };
-
-/* ============================================================
-   5b) TIME TRACKING — Verbindung zum Google-Sheet (Apps Script, nur lesen)
-   ============================================================ */
-(function(){
-  const loadBtn = $('#btn-load');
-  const selP = $('#f-sel-proj'), selPh = $('#f-sel-phase'), selS = $('#f-sel-svc');
-  const statusEl = $('#sheet-status');
-  let tree = null;   // { projects:[{id,name,phases:[{id,name,services:[{id,name}]}]}] }
-
-  // Web-App-URL ist fest im Tool hinterlegt (kein Editor-Feld). Zugriff ist über die
-  // Bereitstellung „Jeder in der Organisation" auf angemeldete @annarchitecture-studio.com-
-  // Konten beschränkt. Bleibt bei „Bereitstellung verwalten → Bearbeiten → Version Neu"
-  // gleich; nur eine komplett neue Bereitstellung erzeugt eine neue URL.
-  const SHEET_URL = 'https://script.google.com/a/macros/annarchitecture-studio.com/s/AKfycbyXg2mbuOKDwvgVkO70eoCUjQZaVgGfOTgnKMlIeJTzzozP_RoLuSvf0Is2pS-WUfjqpw/exec';
-  // Schlüssel für Schreibzugriffe (Abbuchen). Muss identisch als Script-Property
-  // WRITE_SECRET im Apps-Script hinterlegt sein.
-  const WRITE_SECRET = 'sn-wr-7Kx2Qm9pLeviaTr4Zb';
-
-  const say = (msg, cls) => { statusEl.textContent = msg || ''; statusEl.className = 'sub ' + (cls||''); };
-
-  // JSONP statt fetch: umgeht CORS komplett. Setzt voraus, dass die Web-App als
-  // „Zugriff: Jeder (in der Organisation)" bereitgestellt ist.
-  function jsonp(base, action, params, timeoutMs){
-    return new Promise((resolve, reject)=>{
-      const cb = 'sn_cb_' + Date.now() + '_' + Math.floor(Math.random()*1e6);
-      const q = new URLSearchParams({ action, callback:cb, ...(params||{}) });
-      const s = document.createElement('script');
-      const t = setTimeout(()=>{ done(); reject(new Error('Zeitüberschreitung – Bereitstellung / Zugriff „Jeder" prüfen.')); }, timeoutMs || 20000);
-      function done(){ clearTimeout(t); try{ delete window[cb]; }catch(_){ window[cb] = undefined; } s.remove(); }
-      window[cb] = (resp)=>{ done(); (resp && resp.ok) ? resolve(resp.data) : reject(new Error(resp && resp.error || 'Fehler im Skript.')); };
-      s.onerror = ()=>{ done(); reject(new Error('Skript nicht erreichbar. Ist es als Web-App mit Zugriff „Jeder" bereitgestellt?')); };
-      s.src = base + (base.indexOf('?')>-1 ? '&' : '?') + q.toString();
-      document.head.appendChild(s);
-    });
-  }
-  async function api(action, params, timeoutMs){
-    const base = SHEET_URL;
-    for(let attempt=0; attempt<2; attempt++){                 // Cold-Start: 1x wiederholen
-      try{ return await jsonp(base, action, params, timeoutMs); }
-      catch(e){ if(attempt === 0){ await new Promise(r=>setTimeout(r,1500)); continue; } throw e; }
-    }
-  }
-
-  function fillSelect(el, items, placeholder){
-    el.innerHTML = '<option value="">' + placeholder + '</option>' +
-      items.map(it => `<option value="${escapeHtml(it.id)}">${escapeHtml(it.name)}</option>`).join('');
-    el.disabled = items.length === 0;
-  }
-  function curProject(){ return tree ? tree.projects.find(p => p.id === selP.value) : null; }
-  function curPhase(){ const p = curProject(); return p ? p.phases.find(x => x.id === selPh.value) : null; }
-
-  function applyTree(t, note){
-    tree = t;
-    fillSelect(selP, tree.projects, '— Projekt wählen —');
-    selPh.innerHTML = '<option value="">—</option>'; selPh.disabled = true;
-    selS.innerHTML  = '<option value="">—</option>'; selS.disabled  = true;
-    loadBtn.disabled = true;
-    say('Verbunden · ' + tree.projects.length + ' Projekte' + (note || ''), 'ok');
-  }
-  async function connect(){
-    // 1) sofort aus dem lokalen Cache anzeigen (falls vorhanden, < 6 h)
-    let hadCache = false;
-    try{
-      const c = JSON.parse(localStorage.getItem('sn.tree') || 'null');
-      if(c && c.v === 2 && c.url === SHEET_URL && (Date.now() - c.at) < 21600000){ applyTree(c.tree, ' (gecacht)'); hadCache = true; }
-    }catch(_){}
-    if(!hadCache) say('Verbinde mit Time Tracking …');
-    // 2) frisch nachladen
-    try{
-      const t = await api('getFilterTree');
-      try{ localStorage.setItem('sn.tree', JSON.stringify({ v:2, url:SHEET_URL, at:Date.now(), tree:t })); }catch(_){}
-      applyTree(t, ' mit Buchungen.');
-    }catch(e){
-      if(!hadCache){ tree = null; say('Verbindung fehlgeschlagen: ' + e.message, 'err'); }
-    }
-  }
-
-  function applyProjectMeta(m){
-    if(m.name != null){ model.meta.projekt.name = m.name; $('#f-proj-name').value = m.name; }
-    if(m.address != null){ model.meta.projekt.adresse = m.address; $('#f-proj-adr').value = m.address; }
-    render();
-  }
-  selP.onchange = async () => {
-    const p = curProject();
-    fillSelect(selPh, p ? p.phases : [], '— alle Phasen —');
-    selS.innerHTML = '<option value="">— alle Leistungen —</option>'; selS.disabled = true;
-    loadBtn.disabled = !p;
-    if(!p) return;
-    applyProjectMeta({ name: p.name });                  // Name haben wir sofort
-    try{                                                 // Stammdaten (Adresse …) nachladen; still scheitern lassen
-      applyProjectMeta(await api('getProjectMeta', { project: p.id }));
-    }catch(_){ /* Endpunkt evtl. noch nicht bereitgestellt */ }
-  };
-  selPh.onchange = () => {
-    const ph = curPhase();
-    fillSelect(selS, ph ? ph.services : [], '— alle Leistungen —');
-  };
-
-  loadBtn.onclick = async () => {
-    if(!selP.value){ say('Erst ein Projekt wählen.', 'err'); return; }
-    say('Lade Zeiteinträge …'); loadBtn.disabled = true;
-    try{
-      const d = await api('getTimeRecords', {
-        project: selP.value, phase: selPh.value || '', service: selS.value || '',
-        from: $('#f-von').value || '', to: $('#f-bis').value || ''
-      });
-      let rows = d.items || [];
-      const skipped = $('#f-only-open').checked ? rows.filter(it => it.billed).length : 0;
-      if($('#f-only-open').checked) rows = rows.filter(it => !it.billed);
-      model.items = rows.map(it => ({
-        datum: it.datum || '',
-        taetigkeit: it.billingDesc || it.taetigkeit || '',   // schon aufbereiteter Text (falls vorhanden)
-        taetigkeitOriginal: it.taetigkeit || '',             // Roh-Text für Vergleich / KI-Aufbereitung
-        bearbeiter: it.bearbeiter || '', stunden: Number(it.stunden) || 0,
-        recordId: it.recordId || '', billed: !!it.billed
-      }));
-      $('#btn-ki-reset').hidden = true;
-      $('#btn-unbill').hidden = !model.items.some(it => it.billed);   // schon abgerechnete geladen -> Rücknahme anbieten
-      renderEntries(); render();
-      const warn = d.unresolved ? '  ·  ' + d.unresolved + ' ohne Tätigkeitsname' : '';
-      const sk = skipped ? '  ·  ' + skipped + ' bereits abgerechnet ausgeblendet' : '';
-      say(model.items.length + ' Einträge geladen · ' + hours(totalHours()) + warn + sk, d.unresolved ? 'err' : 'ok');
-    }catch(e){
-      say('Laden fehlgeschlagen: ' + e.message, 'err');
-    }finally{ loadBtn.disabled = false; }
-  };
-
-  /* ---- KI: Tätigkeitsbeschreibungen aufbereiten ---- */
-  const kistatus = (m,c)=>{ const el=$('#ki-status'); if(el){ el.textContent=m||''; el.className='sub '+(c||''); } };
-  const kiPhase = () => (selPh && selPh.value && selPh.selectedOptions[0]) ? selPh.selectedOptions[0].textContent : '';
-  async function kiCall(list){                         // list: [{i,text,max?}]
-    const CH = 10, out = [];
-    for(let s=0; s<list.length; s+=CH){
-      const r = await api('cleanDescriptions', {
-        items: JSON.stringify(list.slice(s, s+CH)),
-        project: model.meta.projekt.name || '',
-        phase: kiPhase(),
-        maxChars: String(TAET_MAX_CHARS)
-      }, 45000);
-      (r && r.items || []).forEach(o=> out.push(o));
-    }
-    return out;
-  }
-  function applyKi(res){                               // schreibt {i,text} ins Modell
-    let n = 0;
-    res.forEach(o=>{
-      const it = model.items[o.i];
-      if(!it || o.text == null || !String(o.text).trim()) return;
-      if(it.taetigkeitOriginal == null) it.taetigkeitOriginal = it.taetigkeit;
-      const t = String(o.text).trim();
-      if(t !== it.taetigkeit){ it.taetigkeit = t; n++; }
-    });
-    return n;
-  }
-  /* Solange nachkürzen lassen, bis jede Beschreibung in die Dokumentzeile passt.
-     Danach als letzte Sicherung am Wort abschneiden. */
-  async function kiFitToLine(){
-    for(let round=0; round<3; round++){
-      const over = model.items
-        .map((r,i)=>({ i, text: r.taetigkeit || '' }))
-        .filter(x => x.text.trim() && !taetFits(x.text));
-      if(!over.length) break;
-      const list = over.map(x=>{
-        const ratio = TAET_AVAIL_PX / taetWidthPx(x.text);
-        return { i:x.i, text:x.text, max: Math.max(12, Math.floor(x.text.length * ratio * 0.92)) };
-      });
-      kistatus(list.length + ' Beschreibung(en) noch zu lang – kürzen …');
-      let res; try{ res = await kiCall(list); }catch(_){ break; }
-      applyKi(res); renderEntries(); render();
-    }
-    let hard = 0;
-    model.items.forEach(it=>{
-      if((it.taetigkeit||'').trim() && !taetFits(it.taetigkeit)){ it.taetigkeit = ellipsizeToWidth(it.taetigkeit); hard++; }
-    });
-    if(hard){ renderEntries(); render(); }
-    return hard;
-  }
-  $('#btn-ki').onclick = async ()=>{
-    const list = model.items
-      .map((r,i)=>({ i, text: (r.taetigkeitOriginal != null ? r.taetigkeitOriginal : r.taetigkeit) || '' }))
-      .filter(x => x.text.trim());
-    if(!list.length){ kistatus('Keine Tätigkeitstexte vorhanden.', 'err'); return; }
-    $('#btn-ki').disabled = true;
-    kistatus('KI bereitet ' + list.length + ' Beschreibungen auf …');
-    try{
-      const n = applyKi(await kiCall(list));
-      renderEntries(); render();
-      $('#btn-ki-reset').hidden = n === 0;
-      const hard = await kiFitToLine();
-      kistatus(n + ' von ' + list.length + ' Beschreibungen überarbeitet und auf Zeilenbreite gebracht'
-        + (hard ? ' (' + hard + ' davon am Wort gekürzt).' : '.'), 'ok');
-    }catch(e){
-      kistatus('KI-Aufbereitung fehlgeschlagen: ' + e.message, 'err');
-    }finally{ $('#btn-ki').disabled = false; }
-  };
-  $('#btn-ki-reset').onclick = ()=>{
-    model.items.forEach(it=>{ if(it.taetigkeitOriginal != null) it.taetigkeit = it.taetigkeitOriginal; });
-    renderEntries(); render();
-    $('#btn-ki-reset').hidden = true;
-    kistatus('Originaltexte wiederhergestellt.');
-  };
-
-  /* ---- Abbuchen: die einbezogenen Zeiteinträge im Sheet als abgerechnet markieren ---- */
-  const billstatus = (m,c)=>{ const el=$('#bill-status'); if(el){ el.textContent=m||''; el.className='sub '+(c||''); } };
-  function billDocId(){ return (model.header.title || 'Stundennachweis').trim(); }
-  function billEntries(){
-    const note = isTage() ? ('Nachweis: ' + fmtDays(totalDays())) : '';
-    return model.items
-      .filter(it => it.recordId)
-      .map(it => ({ id: it.recordId, desc: (it.taetigkeit || '').trim(), note }));
-  }
-  async function billApi(action, extra){
-    const CH = 12, ents = billEntries(); let updated = 0, notFound = 0;
-    if(action === 'unmarkBilled'){
-      const r = await api('unmarkBilled', Object.assign({ document: billDocId(), secret: WRITE_SECRET }, extra||{}), 45000);
-      return r || {};
-    }
-    for(let s=0; s<ents.length; s+=CH){
-      const r = await api('markBilled', Object.assign({
-        entries: JSON.stringify(ents.slice(s, s+CH)),
-        document: billDocId(), date: model.header.date || isoToday(), secret: WRITE_SECRET
-      }, extra||{}), 45000);
-      updated += (r && r.updated) || 0; notFound += (r && r.notFound) || 0;
-    }
-    return { updated, notFound };
-  }
-  $('#btn-bill').onclick = async ()=>{
-    const ents = billEntries();
-    if(!ents.length){ billstatus('Keine Einträge mit Sheet-Bezug (aus Time Tracking geladen).', 'err'); return; }
-    $('#btn-bill').disabled = true;
-    billstatus('Prüfe (Testlauf, noch kein Schreiben) …');
-    try{
-      const dry = await billApi('markBilled', { dryRun:'1' });
-      if(!dry.updated){ billstatus('Keiner der ' + ents.length + ' Einträge im Sheet gefunden – nichts abgebucht.', 'err'); return; }
-      if(!confirm(dry.updated + ' Einträge im Google-Sheet als abgerechnet markieren?\n\nDokument: ' + billDocId()
-        + (dry.notFound ? '\n(' + dry.notFound + ' nicht im Sheet gefunden, werden übersprungen)' : ''))){
-        billstatus('Abgebrochen.'); return;
-      }
-      billstatus('Buche ab …');
-      const res = await billApi('markBilled', {});
-      model.items.forEach(it=>{ if(it.recordId) it.billed = true; });
-      $('#btn-unbill').hidden = false;
-      billstatus(res.updated + ' Einträge im Sheet abgebucht (Dokument „' + billDocId() + '").'
-        + (res.notFound ? '  ' + res.notFound + ' nicht gefunden.' : ''), 'ok');
-    }catch(e){
-      billstatus('Abbuchen fehlgeschlagen: ' + e.message, 'err');
-    }finally{ $('#btn-bill').disabled = false; }
-  };
-  $('#btn-unbill').onclick = async ()=>{
-    if(!confirm('Abbuchung für „' + billDocId() + '" im Sheet zurücknehmen?')) return;
-    $('#btn-unbill').disabled = true; billstatus('Nehme Abbuchung zurück …');
-    try{
-      const r = await billApi('unmarkBilled', {});
-      model.items.forEach(it=>{ it.billed = false; });
-      $('#btn-unbill').hidden = true;
-      billstatus((r.cleared || 0) + ' Einträge wieder freigegeben.', 'ok');
-    }catch(e){
-      billstatus('Rücknahme fehlgeschlagen: ' + e.message, 'err');
-    }finally{ $('#btn-unbill').disabled = false; }
-  };
-
-  // Beim Laden automatisch verbinden (URL ist fest hinterlegt) — leise scheitern lassen.
-  connect();
-})();
-
-$('#btn-save').onclick = ()=>{
-  const blob = new Blob([JSON.stringify(model,null,2)],{type:'application/json'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `${(model.header.title||'stundennachweis').replace(/[^\w-]+/g,'_')}.json`; a.click();
-};
-$('#btn-open').onclick = ()=> $('#file-open').click();
-$('#file-open').onchange = e=>{
+$("#btn-open").onclick = ()=> $("#file-open").click();
+$("#file-open").onchange = e=>{
   const f=e.target.files[0]; if(!f) return;
   const rd=new FileReader();
-  rd.onload=()=>{ try{ model=JSON.parse(rd.result); syncForm(); renderEntries(); render(); }catch(err){ alert('Datei nicht lesbar: '+err); } };
+  rd.onload=()=>{ try{ model=JSON.parse(rd.result); syncForm(); renderItems(); render(); }catch(err){ alert("Datei nicht lesbar: "+err); } };
   rd.readAsText(f);
 };
-$('#btn-pdf').onclick   = ()=>{ try{ exportPDF(); }catch(err){ alert('PDF-Export fehlgeschlagen: '+err); console.error(err); } };
-$('#btn-print').onclick = ()=> window.print();
+$("#btn-pdf").onclick   = ()=>{ try{ exportPDF(); }catch(err){ alert("PDF-Export fehlgeschlagen: "+err); console.error(err); } };
+$("#btn-print").onclick = ()=> window.print();
 
 function syncForm(){
-  normalizeModel();
-  const g=(id,v)=>{ $(id).value = v||''; };
-  g('#f-title',model.header.title);
-  g('#f-place',model.header.place); g('#f-date',model.header.date);
-  g('#f-auftrag-nr',model.meta.auftrag.nr); g('#f-auftrag-bez',model.meta.auftrag.bez);
-  g('#f-proj-name',model.meta.projekt.name); g('#f-proj-adr',model.meta.projekt.adresse);
-  g('#f-von',model.meta.zeitraum.von); g('#f-bis',model.meta.zeitraum.bis);
-  $('#f-einheit').value = model.settings.einheit; $('#f-stdtag').value = model.settings.stundenProTag;
+  const g=(id,v)=>{ $(id).value = v||""; };
+  g("#f-title",model.header.title); g("#f-place",model.header.place); g("#f-date",model.header.date);
+  g("#f-empf", model.empfaenger);
+  g("#f-anrede", model.brief.anrede); g("#f-einleitung", model.brief.einleitung); g("#f-schluss", model.brief.schluss);
+  g("#f-gruss", model.brief.gruss); g("#f-absender", model.brief.absender);
+  g("#f-mwst", model.mwstProzent);
+  g("#f-bank-name", model.bank.name); g("#f-bank-iban", model.bank.iban); g("#f-bank-bic", model.bank.bic);
 }
 
 /* ---- Zoom ---- */
 let zoom = 1, userZoomed = false;
 const PX_PER_MM = 1/MM_PER_CSSPX;
 function fitToWidth(){
-  const pv = document.getElementById('preview');
+  const pv = document.getElementById("preview");
   return (pv.clientWidth - 60) / (210*PX_PER_MM);
 }
-function fitToPage(){                     // ganze Seite (Breite UND Höhe) sichtbar
-  const pv = document.getElementById('preview');
+function fitToPage(){
+  const pv = document.getElementById("preview");
   return Math.min((pv.clientWidth - 60) / (210*PX_PER_MM),
                   (pv.clientHeight - 60) / (297*PX_PER_MM));
 }
 function clampZoom(z){ return Math.max(fitToPage(), Math.min(3, z)); }
 function applyZoom(){
-  stage.style.transform = 'scale(' + zoom + ')';
-  // transform ändert die Layoutgröße nicht -> Platz im Scrollcontainer nachbilden
+  stage.style.transform = "scale(" + zoom + ")";
   const natH = stage.offsetHeight, natW = stage.offsetWidth;
-  stage.style.marginBottom = Math.max(0, (zoom - 1) * natH) + 'px';
+  stage.style.marginBottom = Math.max(0, (zoom - 1) * natH) + "px";
   const overflowX = Math.max(0, (zoom - 1) * natW / 2);
-  stage.style.marginLeft = stage.style.marginRight = overflowX + 'px';
+  stage.style.marginLeft = stage.style.marginRight = overflowX + "px";
   snapLines();
 }
 function fitZoom(reset){
@@ -1080,44 +809,43 @@ function fitZoom(reset){
   zoom = clampZoom(zoom);
   applyZoom();
 }
-$('#btn-zoom-in').onclick  = ()=>{ userZoomed=true; zoom=clampZoom(zoom+0.15); applyZoom(); };
-$('#btn-zoom-out').onclick = ()=>{ userZoomed=true; zoom=clampZoom(zoom-0.15); applyZoom(); };
-$('#btn-zoom-fit').onclick = ()=>{ userZoomed=false; fitZoom(true); };
-$('#btn-grid').onclick = ()=>{
+$("#btn-zoom-in").onclick  = ()=>{ userZoomed=true; zoom=clampZoom(zoom+0.15); applyZoom(); };
+$("#btn-zoom-out").onclick = ()=>{ userZoomed=true; zoom=clampZoom(zoom-0.15); applyZoom(); };
+$("#btn-zoom-fit").onclick = ()=>{ userZoomed=false; fitZoom(true); };
+$("#btn-grid").onclick = ()=>{
   showGrid = !showGrid;
-  $('#btn-grid').style.background = showGrid ? 'var(--ink)' : '#fff';
-  $('#btn-grid').style.color = showGrid ? '#fff' : 'var(--ink)';
+  $("#btn-grid").style.background = showGrid ? "var(--ink)" : "#fff";
+  $("#btn-grid").style.color = showGrid ? "#fff" : "var(--ink)";
   render();
 };
-window.addEventListener('resize', ()=> fitZoom(true));
+window.addEventListener("resize", ()=> fitZoom(true));
 
 /* ---- Splitter: Editor-Breite ziehen ---- */
 (function(){
-  const editorEl = document.getElementById('editor');
-  const sp = document.getElementById('splitter');
+  const editorEl = document.getElementById("editor");
+  const sp = document.getElementById("splitter");
   let dragging = false;
-  const padR = ()=> parseFloat(getComputedStyle(document.body).paddingRight) || 0;
-  sp.addEventListener('mousedown', e=>{ dragging = true; document.body.classList.add('resizing'); sp.classList.add('drag'); e.preventDefault(); });
-  window.addEventListener('mousemove', e=>{
+  sp.addEventListener("mousedown", e=>{ dragging = true; document.body.classList.add("resizing"); sp.classList.add("drag"); e.preventDefault(); });
+  window.addEventListener("mousemove", e=>{
     if(!dragging) return;
-    let w = window.innerWidth - padR() - e.clientX;
+    let w = window.innerWidth - e.clientX;
     w = Math.max(360, Math.min(window.innerWidth * 0.78, w));
-    editorEl.style.width = w + 'px';
+    editorEl.style.width = w + "px";
     fitZoom(true);
   });
-  window.addEventListener('mouseup', ()=>{
+  window.addEventListener("mouseup", ()=>{
     if(!dragging) return;
-    dragging = false; document.body.classList.remove('resizing'); sp.classList.remove('drag');
-    try{ localStorage.setItem('sn.editorW', editorEl.style.width); }catch(_){}
+    dragging = false; document.body.classList.remove("resizing"); sp.classList.remove("drag");
+    try{ localStorage.setItem("rn.editorW", editorEl.style.width); }catch(_){}
   });
-  try{ const w = localStorage.getItem('sn.editorW'); if(w) editorEl.style.width = w; }catch(_){}
+  try{ const w = localStorage.getItem("rn.editorW"); if(w) editorEl.style.width = w; }catch(_){}
 })();
 
 /* ---- Start ---- */
 model.header.date = isoToday();
-syncForm(); renderEntries(); calibrateText(); render(); fitZoom(true);
+syncForm(); renderItems(); render(); fitZoom(true);
 if(document.fonts && document.fonts.ready){
-  document.fonts.ready.then(()=>{ calibrateText(); render(); });
+  document.fonts.ready.then(()=>{ render(); });
 }
 </script>
 </body>
