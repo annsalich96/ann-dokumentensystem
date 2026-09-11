@@ -363,15 +363,34 @@ function paginate(){
     cursor = CONT_TOP_K;
   }
 
-  // -- Tabellenzeilen über so viele Seiten wie nötig verteilen --
+  // -- Tabellenzeilen über so viele Seiten wie nötig verteilen. Reicht der Platz auf einer
+  //    Seite nicht für alle restlichen Positionen, bekommt sie eine "Übertrag"-Zeile (mit
+  //    Zwischensumme) statt einfach aufzuhören; die Folgeseite beginnt mit Tabellenkopf +
+  //    derselben Übertrag-Zeile, bevor es weitergeht (Ann, 2026-09-11: klassisches
+  //    Rechnungs-Muster statt die ganze Tabelle auf eine neue Seite zu verschieben). --
   const items = model.items.length ? model.items.slice() : [null];
-  let idx = 0;
+  let idx = 0, runningSum = 0;
   while(idx < items.length){
-    const rowsStartK = cursor + 1;
-    const maxRows = Math.max(1, Math.floor((FOOTER_SAFE_K - rowsStartK) / span));
-    const take = Math.min(items.length - idx, maxRows);
+    const hasCarryIn = idx > 0;
+    const rowsStartK = cursor + 1 + (hasCarryIn ? 1 : 0);
+    const remaining = items.length - idx;
+    const maxNoCarry = Math.max(1, Math.floor((FOOTER_SAFE_K - rowsStartK) / span));
+    let take, hasCarryOut;
+    if(remaining <= maxNoCarry){
+      take = remaining; hasCarryOut = false;
+    } else {
+      const maxWithCarry = Math.max(1, Math.floor((FOOTER_SAFE_K - 1 - rowsStartK) / span));
+      take = Math.min(remaining, maxWithCarry);
+      hasCarryOut = true;
+    }
+    const batch = items.slice(idx, idx + take);
     cur.posStart = idx;
-    cur.rows = items.slice(idx, idx + take);
+    cur.rows = batch;
+    cur.hasCarryIn = hasCarryIn;
+    cur.carryInValue = runningSum;
+    batch.forEach(row => { if(row) runningSum += rowGesamt(row); });
+    cur.hasCarryOut = hasCarryOut;
+    cur.carryOutValue = runningSum;
     idx += take;
     cursor = rowsStartK + take*span;
     if(idx < items.length){
@@ -467,9 +486,11 @@ function renderTable(page, p){
   page.appendChild(band("s-thead", {rightMM:DS.table.satzRightX(), leftMM:DS.colX(9), k:topK}, "SATZ NETTO"));
   page.appendChild(band("s-thead", {right:true,                 k:topK}, "GESAMT NETTO"));
   rule(page, topK + 1, DS.colX(1), DS.rightEdge);
+  let rowsTopK = topK + 1;
+  if(p.hasCarryIn){ renderCarry(page, rowsTopK, p.carryInValue); rowsTopK += 1; }
   const rows = p.rows.filter(Boolean);
   rows.forEach((row,i)=>{
-    const bandTopK = topK + 1 + i*span;
+    const bandTopK = rowsTopK + i*span;
     const pos = String(p.posStart + i + 1).padStart(2,"0");
     page.appendChild(band("s-cell", {leftMM:DS.colX(1),          k:bandTopK, span}, pos));
     page.appendChild(band("s-cell", {leftMM:DS.colX(C.leistung), k:bandTopK, span}, row.leistung || ""));
@@ -479,6 +500,16 @@ function renderTable(page, p){
     page.appendChild(band("s-cell", {right:true,                 k:bandTopK, span}, eur(rowGesamt(row))));
     rule(page, bandTopK + span, DS.colX(1), DS.rightEdge);
   });
+  if(p.hasCarryOut){
+    const afterRowsK = rowsTopK + rows.length*span;
+    renderCarry(page, afterRowsK, p.carryOutValue);
+    rule(page, afterRowsK + 1, DS.colX(DS.total.labelCol), DS.rightEdge);
+  }
+}
+function renderCarry(page, k, value){
+  const L8 = DS.colX(DS.total.labelCol);
+  page.appendChild(band("s-total", {leftMM:L8, k, span:1}, "Übertrag"));
+  page.appendChild(band("s-total", {right:true, k, span:1}, eur(value)));
 }
 function renderTotals(page, k){
   const L8 = DS.colX(DS.total.labelCol);
@@ -660,9 +691,15 @@ function exportPDF(){
       put("s-thead", {right:true,                 k:topK}, "GESAMT NETTO");
       hline(topK + 1, DS.colX(1), DS.rightEdge);
 
+      let rowsTopK = topK + 1;
+      if(p.hasCarryIn){
+        put("s-total", {leftMM:DS.colX(DS.total.labelCol), k:rowsTopK, span:1}, "Übertrag");
+        put("s-total", {right:true, k:rowsTopK, span:1}, eur(p.carryInValue));
+        rowsTopK += 1;
+      }
       const rows = p.rows.filter(Boolean);
       rows.forEach((row, i) => {
-        const bt = topK + 1 + i*span;
+        const bt = rowsTopK + i*span;
         const pos = String(p.posStart + i + 1).padStart(2,"0");
         put("s-cell", {leftMM:DS.colX(1),          k:bt, span}, pos);
         put("s-cell", {leftMM:DS.colX(C.leistung), k:bt, span}, row.leistung || "");
@@ -672,6 +709,12 @@ function exportPDF(){
         put("s-cell", {right:true,                 k:bt, span}, eur(rowGesamt(row)));
         hline(bt + span, DS.colX(1), DS.rightEdge);
       });
+      if(p.hasCarryOut){
+        const afterRowsK = rowsTopK + rows.length*span;
+        put("s-total", {leftMM:DS.colX(DS.total.labelCol), k:afterRowsK, span:1}, "Übertrag");
+        put("s-total", {right:true, k:afterRowsK, span:1}, eur(p.carryOutValue));
+        hline(afterRowsK + 1, DS.colX(DS.total.labelCol), DS.rightEdge);
+      }
     }
 
     if(p.totalsK != null){
