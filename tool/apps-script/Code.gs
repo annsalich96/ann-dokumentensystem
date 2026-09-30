@@ -205,6 +205,20 @@ function cleanDescriptions(p){
   var provider = (props.getProperty('AI_PROVIDER') || 'openai').toLowerCase();
   var maxTok = Math.min(4096, 300 + items.length * 90);
   var maxChars = parseInt(p.maxChars, 10); if(isNaN(maxChars) || maxChars < 10) maxChars = 0;
+  // Stundennachweis ab 2026-09-30: TÄTIGKEIT darf 2 Zeilen haben (lineChars = ~1 Zeile, maxChars = 2 Zeilen).
+  var lineChars = parseInt(p.lineChars, 10); if(isNaN(lineChars) || lineChars < 10) lineChars = 0;
+
+  var laenge;
+  if(maxChars && lineChars){
+    laenge =
+      '- INHALT VOR KÜRZE: Jede konkret genannte Tätigkeit, jeder Beteiligte (Firma/Fachplaner) und jeder Gegenstand bleibt erhalten. Gestrichen werden nur Füllwörter, Doppelungen und Leerformeln (z. B. „etc.“, „telefonische“, zweimal „Absprache mit“ -> einmal „Absprache mit APCOA und DKD“).\n' +
+      '- LÄNGE: Passt das Ergebnis in ' + lineChars + ' Zeichen (1 Zeile), so lassen. Sonst darf es bis ' + maxChars + ' Zeichen (2 Zeilen) lang sein — NICHT Inhalt weglassen, nur um in 1 Zeile zu passen.\n' +
+      '- HARTE OBERGRENZE ' + maxChars + ' Zeichen inklusive Leerzeichen. Reicht das nicht, zusammenfassen (z. B. „Abstimmungen mit APCOA/DKD“) statt Einzelpunkte zu streichen.\n';
+  } else if(maxChars){
+    laenge = '- HARTE LÄNGENGRENZE: jede Beschreibung höchstens ' + maxChars + ' Zeichen inklusive Leerzeichen. Lieber knapper und mit gängigen Abkürzungen (z. B. „Abstimmung“ statt „Abstimmung und Koordination“) als überschreiten; die Kernaussage muss erhalten bleiben.\n';
+  } else {
+    laenge = '- Länge ähnlich wie das Original.\n';
+  }
 
   var sys =
     'Du redigierst Tätigkeitsbeschreibungen für den Stundennachweis eines Architektur- und Innenarchitekturbüros.\n' +
@@ -212,9 +226,8 @@ function cleanDescriptions(p){
     'Regeln:\n' +
     '- Deutsch, Nominalstil, sachlich. Keine Ich-Form, keine Anrede, keine Füllwörter, kein Datum, keine Uhrzeit, keine Personennamen.\n' +
     '- Nichts erfinden. Nur sprachlich glätten und präzisieren; Bedeutung erhalten.\n' +
-    (maxChars ? '- HARTE LÄNGENGRENZE: jede Beschreibung höchstens ' + maxChars + ' Zeichen inklusive Leerzeichen. Lieber knapper und mit gängigen Abkürzungen (z. B. „Abstimmung“ statt „Abstimmung und Koordination“) als überschreiten; die Kernaussage muss erhalten bleiben.\n'
-              : '- Länge ähnlich wie das Original.\n') +
-    '- Hat ein Eintrag ein Feld "max", MUSS der bereinigte Text höchstens so viele Zeichen haben (zur Not weiter verdichten, Nebensächliches weglassen, abkürzen) — die Zahl ist eine harte Obergrenze.\n' +
+    laenge +
+    '- Hat ein Eintrag ein Feld "max", MUSS der bereinigte Text höchstens so viele Zeichen haben (zur Not zusammenfassen und abkürzen) — die Zahl ist eine harte Obergrenze.\n' +
     '- Architektur-/HOAI-Vokabular verwenden, wenn es eindeutig passt (z. B. Ausführungsplanung, Detail, Abstimmung, Koordination, Aufmaß, Bemusterung, Leistungsverzeichnis).\n' +
     '- Einheitliche Terminologie über alle Einträge.\n' +
     '- Leere oder unverständliche Einträge unverändert zurückgeben.\n' +

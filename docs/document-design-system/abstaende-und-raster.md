@@ -60,7 +60,7 @@ ab dem oberen Rand (15 mm). Die Satzhöhe umfasst **61 BL** (15 mm → 294,76 mm
 | Abschnitt (Textende) → nächste Abschnittsüberschrift | 2 BL | ✓ |
 | Body-Zeile → Body-Zeile | 1 BL | ✓ |
 | Aufzählungszeile → Aufzählungszeile | 1 BL | ✓ |
-| Tabellen-Zeile → Tabellen-Zeile (Grundlinienabstand) | 2 BL | ✓ |
+| Tabellen-Zeile → Tabellen-Zeile (Grundlinienabstand) | 2 BL (Stundennachweis: 3 BL bei 2-zeiliger TÄTIGKEIT, 2. Zeile +1 BL, siehe DECISION-010) | ✓ |
 | Footer-Zeile 1 → Footer-Zeile 2 | 1 BL | ✓ |
 
 ## 5. Horizontale Einrückung (offen — Ann-Entscheidung nötig)

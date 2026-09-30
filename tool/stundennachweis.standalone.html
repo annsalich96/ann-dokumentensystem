@@ -295,6 +295,43 @@ function ellipsizeToWidth(s){
   return out + '…';
 }
 
+/* TÄTIGKEIT darf max. 2 Zeilen haben (Ann, 2026-09-30, design-sources/stundennachweis/
+   Stundennachweis_grid.pdf). 1 Zeile -> Tabellenzeile 2 BL, 2 Zeilen -> 3 BL.
+   Umbruch am Wort, gemessen an der echten Breite. Was nicht in 2 Zeilen passt,
+   endet mit „…" am Ende von Zeile 2. */
+const TAET_MAX_LINES = 2;
+function wrapTaet(s){
+  const words = String(s || '').trim().split(/\s+/).filter(Boolean);
+  const lines = []; let cur = '';
+  for(let k=0;k<words.length;k++){
+    const cand = cur ? cur + ' ' + words[k] : words[k];
+    if(!cur || taetFits(cand)){ cur = cand; continue; }
+    lines.push(cur); cur = words[k];
+  }
+  if(cur) lines.push(cur);
+  if(!lines.length) return [''];
+  if(lines.length > TAET_MAX_LINES){
+    const keep = lines.slice(0, TAET_MAX_LINES - 1);
+    keep.push(ellipsizeToWidth(lines.slice(TAET_MAX_LINES - 1).join(' ')));
+    return keep;
+  }
+  return lines.map(l => taetFits(l) ? l : ellipsizeToWidth(l));   // einzelnes Überlängenwort
+}
+function taetFitsLines(s){
+  const words = String(s || '').trim().split(/\s+/).filter(Boolean);
+  let n = 1, cur = '';
+  for(const w of words){
+    const cand = cur ? cur + ' ' + w : w;
+    if(taetFits(cand)){ cur = cand; continue; }
+    if(!cur) return false;                                          // Wort allein zu breit
+    n++; cur = w; if(!taetFits(cur) || n > TAET_MAX_LINES) return false;
+  }
+  return true;
+}
+function ellipsizeToLines(s){ return wrapTaet(s).join(' '); }
+const TAET_OVER_MSG = 'Länger als 2 Zeilen – wird im Dokument mit „…" abgeschnitten';
+function rowSpanOf(row){ return (row && wrapTaet(row.taetigkeit).length > 1) ? 3 : DS.table.rowSpan; }
+
 /* Büroprofil — EIN Absender (ANN ARCHITECTURE). Später aus Google-Sheet »Company Info«. */
 const BUERO = { blocks:[
   ["Wilmersdorfer Str. 108", "10627 Berlin"],
@@ -345,12 +382,14 @@ function editorTotalLabel(){ return isTage() ? `${fmtDays(totalDays())} (${hours
    ============================================================ */
 function paginate(){
   const F = DS.footer.k1, GAP = DS.table.minGapBeforeFooter;
-  const span = DS.table.rowSpan, tot = DS.total.span;
-  // Wie viele Zeilen passen ab Tabellenkopf topK, mit min. GAP vor dem Footer
+  const tot = DS.total.span;
+  // Wie viele Zeilen (ab rows[0]) passen ab Tabellenkopf topK, mit min. GAP vor dem Footer
   // (reserveTotal = Platz für die "Gesamt"-Zeile freihalten -> nur die letzte Seite).
-  const capFor = (topK, reserveTotal) => {
-    const budget = F - GAP - (reserveTotal ? tot : 0) - (topK + 1);
-    return Math.max(reserveTotal ? 0 : 1, Math.floor(budget / span));
+  // Zeilenhöhe je Zeile: 2 BL (1 Textzeile) oder 3 BL (2 Textzeilen) — nie über eine Seite geteilt.
+  const capFor = (topK, reserveTotal, rows) => {
+    let budget = F - GAP - (reserveTotal ? tot : 0) - (topK + 1), n = 0;
+    while(n < rows.length && rows[n] && rowSpanOf(rows[n]) <= budget){ budget -= rowSpanOf(rows[n]); n++; }
+    return Math.max(reserveTotal ? 0 : 1, n);
   };
 
   let rest = model.items.slice();
@@ -359,7 +398,7 @@ function paginate(){
   let first = true;
   while(rest.length){
     const topK = first ? firstTableK() : DS.table.topRuleK_cont;
-    const cap = capFor(topK, false);
+    const cap = capFor(topK, false, rest);
     pages.push({ first, rows: rest.slice(0, cap) });
     rest = rest.slice(cap);
     first = false;
@@ -367,7 +406,7 @@ function paginate(){
   // Letzte Seite: Platz für die Summenzeile sicherstellen
   const last = pages[pages.length-1];
   const lastTopK = last.first ? firstTableK() : DS.table.topRuleK_cont;
-  const capWithTotal = capFor(lastTopK, true);
+  const capWithTotal = capFor(lastTopK, true, last.rows);
   const lastCount = last.rows.filter(Boolean).length;
   if(lastCount > capWithTotal){
     const overflow = last.rows.slice(capWithTotal);
@@ -453,16 +492,18 @@ function renderTable(page, p){
   page.appendChild(band('s-thead', {leftMM:DS.colX(C.bearbeiter), k:topK}, 'BEARBEITER'));
   if(showHours) page.appendChild(band('s-thead', {right:true,     k:topK}, 'ZEITAUFWAND'));
   rule(page, topK + 1, DS.colX(1), DS.rightEdge);
-  const rows = p.rows.filter(Boolean);
-  rows.forEach((row,i)=>{
-    const bandTopK = topK + 1 + i*span;
-    page.appendChild(band('s-cell', {leftMM:DS.colX(C.datum),      k:bandTopK, span}, deDate(row.datum) || '—'));
-    page.appendChild(band('s-cell', {leftMM:DS.colX(C.taetigkeit), k:bandTopK, span}, row.taetigkeit || ''));
-    page.appendChild(band('s-cell', {leftMM:DS.colX(C.bearbeiter), k:bandTopK, span}, row.bearbeiter || ''));
-    if(showHours) page.appendChild(band('s-cell', {right:true,     k:bandTopK, span}, hours(row.stunden)));
-    rule(page, bandTopK + span, DS.colX(1), DS.rightEdge);
+  let k = topK + 1;
+  p.rows.filter(Boolean).forEach(row=>{
+    // Alle Zellen auf Höhe der 1. Textzeile; TÄTIGKEIT-Zeile 2 genau 1 BL tiefer.
+    page.appendChild(band('s-cell', {leftMM:DS.colX(C.datum),      k, span}, deDate(row.datum) || '—'));
+    wrapTaet(row.taetigkeit).forEach((ln, j)=>
+      page.appendChild(band('s-cell', {leftMM:DS.colX(C.taetigkeit), topMM:DS.G(k) + j*BL, span}, ln)));
+    page.appendChild(band('s-cell', {leftMM:DS.colX(C.bearbeiter), k, span}, row.bearbeiter || ''));
+    if(showHours) page.appendChild(band('s-cell', {right:true,     k, span}, hours(row.stunden)));
+    k += rowSpanOf(row);
+    rule(page, k, DS.colX(1), DS.rightEdge);
   });
-  return topK + 1 + rows.length*span;
+  return k;
 }
 
 function renderTotal(page, k){
@@ -571,18 +612,19 @@ function exportPDF(){
     put('s-thead', {leftMM:DS.colX(C.bearbeiter), k:topK}, 'BEARBEITER');
     if(showHours) put('s-thead', {right:true,     k:topK}, 'ZEITAUFWAND');
     hline(topK + 1, DS.colX(1), DS.rightEdge);
-    const rows = p.rows.filter(Boolean);
-    rows.forEach((row, i) => {
-      const bt = topK + 1 + i*span;
+    let bt = topK + 1;
+    p.rows.filter(Boolean).forEach(row => {
       put('s-cell', {leftMM:DS.colX(C.datum),      k:bt, span}, deDate(row.datum) || '—');
-      put('s-cell', {leftMM:DS.colX(C.taetigkeit), k:bt, span}, row.taetigkeit || '');
+      wrapTaet(row.taetigkeit).forEach((ln, j) =>
+        put('s-cell', {leftMM:DS.colX(C.taetigkeit), topMM:DS.G(bt) + j*BL, span}, ln));
       put('s-cell', {leftMM:DS.colX(C.bearbeiter), k:bt, span}, row.bearbeiter || '');
       if(showHours) put('s-cell', {right:true,     k:bt, span}, hours(row.stunden));
-      hline(bt + span, DS.colX(1), DS.rightEdge);
+      bt += rowSpanOf(row);
+      hline(bt, DS.colX(1), DS.rightEdge);
     });
 
     if(p.last){
-      const gk = topK + 1 + rows.length*span, gs = DS.total.span;
+      const gk = bt, gs = DS.total.span;
       put('s-total', {leftMM:DS.colX(DS.total.labelCol), k:gk, span:gs}, 'Gesamt');
       put('s-total', {right:true,                        k:gk, span:gs}, totalDocLabel());
       hline(gk + gs, DS.colX(DS.total.labelCol), DS.rightEdge);
@@ -686,13 +728,13 @@ function renderEntries(){
   model.items.forEach((r,i)=>{
     const row = document.createElement('div'); row.className='e-row';
     const hasOrig = r.taetigkeitOriginal != null && r.taetigkeitOriginal !== r.taetigkeit;
-    const over = (r.taetigkeit || '').length > TAET_MAX_CHARS;
+    const over = !taetFitsLines(r.taetigkeit);
     row.innerHTML =
       `<input type="date" data-i="${i}" data-k="datum" value="${r.datum||''}">`+
       `<div class="e-taet">`+
         `<input type="text" data-i="${i}" data-k="taetigkeit" value="${escapeHtml(r.taetigkeit)}">`+
         (hasOrig ? `<div class="e-orig"><span>${escapeHtml(r.taetigkeitOriginal)}</span><button class="revert" data-i="${i}" title="Originaltext übernehmen">↺</button></div>` : ``)+
-        (over ? `<div class="e-over">${(r.taetigkeit||'').length}/${TAET_MAX_CHARS} Zeichen – zu lang für die Zeile</div>` : ``)+
+        (over ? `<div class="e-over">${TAET_OVER_MSG}</div>` : ``)+
       `</div>`+
       `<input type="text" data-i="${i}" data-k="bearbeiter" value="${escapeHtml(r.bearbeiter)}">`+
       `<input type="number" step="0.25" class="num" data-i="${i}" data-k="stunden" value="${r.stunden??''}">`+
@@ -712,10 +754,9 @@ entriesBox.addEventListener('input', e=>{
   model.items[i][k] = k==='stunden' ? parseFloat(e.target.value)||0 : e.target.value;
   if(k==='taetigkeit'){
     const cell = e.target.closest('.e-taet'); let ov = cell && cell.querySelector('.e-over');
-    const len = e.target.value.length;
-    if(len > TAET_MAX_CHARS){
+    if(!taetFitsLines(e.target.value)){
       if(!ov){ ov = document.createElement('div'); ov.className = 'e-over'; cell.appendChild(ov); }
-      ov.textContent = len + '/' + TAET_MAX_CHARS + ' Zeichen – zu lang für die Zeile';
+      ov.textContent = TAET_OVER_MSG;
     } else if(ov){ ov.remove(); }
   }
   updateTotal(); render();
@@ -898,7 +939,9 @@ $('#btn-demo').onclick = ()=>{
         items: JSON.stringify(list.slice(s, s+CH)),
         project: model.meta.projekt.name || '',
         phase: kiPhase(),
-        maxChars: String(TAET_MAX_CHARS)
+        maxChars: String(TAET_MAX_CHARS * TAET_MAX_LINES),   // Obergrenze = 2 Zeilen
+        lineChars: String(TAET_MAX_CHARS),                   // 1 Zeile — bevorzugt, aber nicht auf Kosten von Inhalt
+        lines: String(TAET_MAX_LINES)
       }, 45000);
       (r && r.items || []).forEach(o=> out.push(o));
     }
@@ -915,25 +958,25 @@ $('#btn-demo').onclick = ()=>{
     });
     return n;
   }
-  /* Solange nachkürzen lassen, bis jede Beschreibung in die Dokumentzeile passt.
-     Danach als letzte Sicherung am Wort abschneiden. */
-  async function kiFitToLine(){
+  /* Solange zusammenfassen lassen, bis jede Beschreibung in max. 2 Dokumentzeilen passt.
+     Danach als letzte Sicherung am Wort abschneiden („…" am Ende von Zeile 2). */
+  async function kiFitToLines(){
     for(let round=0; round<3; round++){
       const over = model.items
         .map((r,i)=>({ i, text: r.taetigkeit || '' }))
-        .filter(x => x.text.trim() && !taetFits(x.text));
+        .filter(x => x.text.trim() && !taetFitsLines(x.text));
       if(!over.length) break;
       const list = over.map(x=>{
-        const ratio = TAET_AVAIL_PX / taetWidthPx(x.text);
-        return { i:x.i, text:x.text, max: Math.max(12, Math.floor(x.text.length * ratio * 0.92)) };
+        const ratio = TAET_MAX_LINES * TAET_AVAIL_PX / taetWidthPx(x.text);
+        return { i:x.i, text:x.text, max: Math.max(12, Math.floor(x.text.length * ratio * 0.88)) };
       });
-      kistatus(list.length + ' Beschreibung(en) noch zu lang – kürzen …');
+      kistatus(list.length + ' Beschreibung(en) länger als 2 Zeilen – zusammenfassen …');
       let res; try{ res = await kiCall(list); }catch(_){ break; }
       applyKi(res); renderEntries(); render();
     }
     let hard = 0;
     model.items.forEach(it=>{
-      if((it.taetigkeit||'').trim() && !taetFits(it.taetigkeit)){ it.taetigkeit = ellipsizeToWidth(it.taetigkeit); hard++; }
+      if((it.taetigkeit||'').trim() && !taetFitsLines(it.taetigkeit)){ it.taetigkeit = ellipsizeToLines(it.taetigkeit); hard++; }
     });
     if(hard){ renderEntries(); render(); }
     return hard;
@@ -949,8 +992,8 @@ $('#btn-demo').onclick = ()=>{
       const n = applyKi(await kiCall(list));
       renderEntries(); render();
       $('#btn-ki-reset').hidden = n === 0;
-      const hard = await kiFitToLine();
-      kistatus(n + ' von ' + list.length + ' Beschreibungen überarbeitet und auf Zeilenbreite gebracht'
+      const hard = await kiFitToLines();
+      kistatus(n + ' von ' + list.length + ' Beschreibungen überarbeitet (max. 2 Zeilen)'
         + (hard ? ' (' + hard + ' davon am Wort gekürzt).' : '.'), 'ok');
     }catch(e){
       kistatus('KI-Aufbereitung fehlgeschlagen: ' + e.message, 'err');

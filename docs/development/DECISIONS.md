@@ -5,6 +5,25 @@ Format: Entscheidung / Grund / Alternativen / Konsequenz.
 
 ---
 
+## DECISION-010 — Stundennachweis: TÄTIGKEIT bis zu 2 Zeilen (Ann, 2026-09-30)
+- **Entscheidung:** Quelle `design-sources/stundennachweis/Stundennachweis_blanko.pdf` +
+  `Stundennachweis_grid.pdf`. Einzige Änderung gegenüber vorher: die TÄTIGKEIT darf
+  zweizeilig sein.
+  - 1 Textzeile → Tabellenzeile **2 BL** (wie bisher).
+  - 2 Textzeilen → Tabellenzeile **3 BL**; Zeile 2 steht **1 BL** unter Zeile 1.
+  - DATUM, BEARBEITER, ZEITAUFWAND stehen auf Höhe der **1.** Textzeile.
+  - Graue Linie unter der letzten Textzeile. Spaltenbreite TÄTIGKEIT unverändert (Spalte 3 bis vor BEARBEITER).
+  - **Max. 2 Zeilen.** Was länger ist, endet mit „…" am Ende von Zeile 2.
+  - Eine 2-zeilige Tabellenzeile wird nie über zwei Seiten geteilt.
+- **KI-Aufbereitung:** Inhalt vor Kürze. Jede konkrete Tätigkeit bzw. jeder Beteiligte bleibt drin,
+  gestrichen werden nur Füllwörter und Doppelungen. Passt der Text in 1 Zeile, bleibt es bei 1 Zeile,
+  sonst sind 2 Zeilen erlaubt. Wird es auch dann zu lang, wird zusammengefasst, „…" ist nur die letzte Sicherung.
+  Ob es 1 oder 2 Zeilen sind, wird an der echten Textbreite gemessen (Rota 8 pt), nicht an Zeichen.
+- **Alternativen:** feste 1-Zeilen-Regel mit KI-Kürzung (bisher, verworfen: kürzt echte Inhalte weg).
+- **Konsequenz:** `tool/stundennachweis.html` (Umbruch, Pagination mit variabler Zeilenhöhe, PDF-Export),
+  `tool/apps-script/Code.gs` (`cleanDescriptions`: neue Parameter `lineChars`/`lines`).
+  Gilt nur für den Stundennachweis, nicht global.
+
 ## DECISION-009 — Rechnung-Vorlage: Klärungen + erster Tool-Bau (Ann, 2026-09-11)
 - **Entscheidung:** Vermessung von `design-sources/rechnung/Template_Rechnung(.pdf|_grid.pdf)`
   ([[STEP2_RECHNUNG_FINDINGS]]) mit Ann durchgesprochen:
