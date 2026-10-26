@@ -69,8 +69,9 @@ Die Kurzvariante (`Angebote_kurz.pdf`) wird vorerst **nicht** gebaut.
 - **Projekt:** Dropdown aus `Projects`. Im Kopf steht die **deutsche Bezeichnung** (z. B. „Kant Haus –
   Eingänge“ statt „KANT HOUSE ENTRANCES“) aus der neuen Spalte `Project Title DE`; Kürzel aus
   `Project Code`. Im Editor eintragbar und nach AppSheet speicherbar.
-- **Empfänger:** Kunde aus `Clients` (Kunde des Projekts oben). Neue Spalten `Contact Salutation`
-  (Herr/Frau), `Contact First Name`, `Contact Last Name`, `Address` — auch direkt in AppSheet
+- **Empfänger:** Kunde aus `Clients` (Kunde des Projekts oben). Ein Kunde = **Firma** (Bezeichnung
+  `Client Name`, neue Spalte `Company Address`) + **eine Ansprechperson** (neue Spalten
+  `Contact Salutation` Herr/Frau, `Contact First Name`, `Contact Last Name`) — auch direkt in AppSheet
   pflegbar (nach „Regenerate Structure“). Empfängerblock und Anrede („Sehr geehrter Herr …“ /
   „Sehr geehrte Frau …“ / ohne Angabe „Sehr geehrte Damen und Herren“) entstehen automatisch.
   Neue Kunden werden im Editor angelegt und landen in `Clients` → AppSheet.
