@@ -5,6 +5,16 @@ Format: Entscheidung / Grund / Alternativen / Konsequenz.
 
 ---
 
+## DECISION-013 — Abstände Kopf/Footer, Summenblock, Stichpunkte (Ann, 2026-10-26)
+- **Entscheidung:**
+  - Unter der letzten Kopf-Linie (K11) **2 BL Abstand**, Inhalt beginnt bei **K13** — Angebot, Rechnung, Stundennachweis.
+  - Alles endet **mindestens 2 BL vor dem Footer** (bestätigt R-014).
+  - Summenblock (Angebot, Rechnung): die Textmitte jeder Zeile sitzt **auf** einer Rasterlinie
+    (halbes Raster tiefer als vorher), die Abschlusslinie entsprechend auf der nächsten ganzen Linie.
+  - Angebot: Zeilen mit „- “ werden Stichpunkte, frei mit Fließtext mischbar; Platzhalter per Knopf einfügen,
+    Stundensätze stehen im Editor direkt im Abschnitt „Vergütung“.
+- **Grund:** Anns Layout-Korrekturen; Summenblock in `Angebote_lang.pdf` / `Template_Rechnung.pdf` nachgemessen.
+
 ## DECISION-012 — Kopf mit drei Zeilen in allen Dokumenten (Ann, 2026-10-26)
 - **Entscheidung:** Der Kopf hat jetzt **drei Titelzeilen und vier Linien** (K5 · K7 · K9 · K11)
   statt zwei Zeilen / drei Linien. Erster Inhalt jeder Seite bleibt bei **K12** (1 BL unter der

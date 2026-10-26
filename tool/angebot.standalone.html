@@ -87,6 +87,13 @@ button.del{background:#fff;color:#B0291E;border-color:#e2c3bf}
 .card.off{opacity:.55}
 .agb-head{display:flex;gap:10px;align-items:center;margin-bottom:10px}
 .agb-head input[type=text]{flex:1}
+.lblrow{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin:0 0 5px}
+.lblrow label{margin:0!important}
+button.mini{font-size:12px;padding:3px 9px;background:#fff;color:var(--ink);border:1px solid var(--ui-border);border-radius:6px}
+button.mini:hover{border-color:var(--ink)}
+.phbar{font-size:12px;color:var(--ui-muted);margin-top:6px;display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.phbar .phprev{flex-basis:100%;color:#2d6a3e;margin-top:2px}
+#editor textarea{overflow:hidden;min-height:44px}
 .sums{font-size:13.5px;margin-top:6px;display:flex;flex-direction:column;gap:3px;max-width:380px}
 .sums>div{display:flex;justify-content:space-between}
 .sums .b{font-weight:700}
@@ -185,7 +192,7 @@ button.del{background:#fff;color:#B0291E;border-color:#e2c3bf}
   <div class="fg">
     <div class="fld wide"><label>Empfänger im Dokument (je Zeile — kommt aus dem Kunden, hier nur Feinschliff)</label><textarea rows="5" data-bind="empfaenger"></textarea></div>
     <div class="fld wide"><label>Anrede (kommt aus dem Kunden)</label><input type="text" data-bind="brief.anrede"></div>
-    <div class="fld wide"><label>Text — Leerzeile = neuer Absatz, einfacher Zeilenumbruch = neue Zeile</label><textarea rows="9" data-bind="brief.text"></textarea></div>
+    <div class="fld wide"><label>Text — Leerzeile = neuer Absatz, einfacher Zeilenumbruch = neue Zeile, „- “ = Stichpunkt</label><textarea rows="9" data-bind="brief.text"></textarea></div>
     <div class="fld wide"><label>Grußformel</label><input type="text" data-bind="brief.gruss"></div>
     <div class="fld"><label>Name</label><input type="text" data-bind="brief.name"></div>
     <div class="fld"><label>Funktion</label><input type="text" data-bind="brief.funktion"></div>
@@ -206,7 +213,7 @@ button.del{background:#fff;color:#B0291E;border-color:#e2c3bf}
     <div class="fld wide"><label>Einleitung</label><textarea rows="2" data-bind="detail.text"></textarea></div>
   </div>
   <p class="hint" style="margin-top:16px">Positionen nach Gruppen. Die Nummer (1.01, 1.02, 2.01 …) entsteht automatisch.
-    Leistungsumfang / Arbeitsergebnis: eine Zeile = ein Aufzählungspunkt. Gesamt = Menge × Satz.</p>
+    Stichpunkte: Zeile mit „- “ beginnen oder markieren und „• Stichpunkte“ klicken; alles andere ist Fließtext. Gesamt = Menge × Satz.</p>
   <div id="groups"></div>
   <div class="btnbar"><button class="ghost" id="btn-group-add">+ Gruppe</button></div>
   <div class="fg" style="margin-top:18px">
@@ -215,9 +222,8 @@ button.del{background:#fff;color:#B0291E;border-color:#e2c3bf}
   <div class="sums" id="sums"></div>
 
   <h2>4 · Bedingungen</h2>
-  <p class="hint">Platzhalter werden automatisch ersetzt: {Angebotsnr} · {Datum} · {Projekt} · {Stundensätze}.
+  <p class="hint">Werte wie Angebotsnr. und Datum fügst du mit den Knöpfen unter jedem Text ein — im Dokument stehen dann automatisch die aktuellen Werte aus „Projekt &amp; Nummer“.
     „Als Vorlage“ speichert den Text für künftige Angebote (in diesem Browser).</p>
-  <div class="fg3" id="saetze" style="margin-bottom:16px"></div>
   <div id="agb-list"></div>
   <div class="fg">
     <div class="fld wide" style="flex-direction:row;gap:10px;align-items:center">
@@ -258,7 +264,7 @@ const DS = {
   },
   footer:{ k1:57, k2:58, blocks:[1,3,6,8] }
 };
-const TOP_K = 12;                  /* erster Inhalt auf jeder Seite (1 BL unter der letzten Kopf-Linie) */
+const TOP_K = 13;                  /* erster Inhalt jeder Seite: 2 BL Abstand unter der letzten Kopf-Linie K11 (Ann, 2026-10-26) */
 const LIMIT_K = DS.footer.k1 - 2;  /* R-014: mind. 2 BL Luft vor dem Footer */
 const X = {
   label: DS.colX(1),               /* „ANGEBOT" */
@@ -319,10 +325,10 @@ function saveAgbVorlage(sec){
 /* ============================================================
    3) DOKUMENT-MODELL
    ============================================================ */
-const BULLETS_1 = "Erstellung schematischer Grundrisse und erforderlicher Ansichten zur Darstellung der vorgesehenen Metallbauarbeiten.\nÜberschlägige Ermittlung der wesentlichen Abmessungen und Mengen als Grundlage für die Kostenschätzung eines Metallbauers.\nZusammenstellung der Planunterlagen und Mengenübersicht für eine Kostenanfrage bei einem Metallbauunternehmen.\nEinholung einer ersten Kosteneinschätzung über ein bekanntes Metallbaugewerk sowie Durchführung der erforderlichen Abstimmungen.";
+const BULLETS_1 = "- Erstellung schematischer Grundrisse und erforderlicher Ansichten zur Darstellung der vorgesehenen Metallbauarbeiten.\n- Überschlägige Ermittlung der wesentlichen Abmessungen und Mengen als Grundlage für die Kostenschätzung eines Metallbauers.\n- Zusammenstellung der Planunterlagen und Mengenübersicht für eine Kostenanfrage bei einem Metallbauunternehmen.\n- Einholung einer ersten Kosteneinschätzung über ein bekanntes Metallbaugewerk sowie Durchführung der erforderlichen Abstimmungen.";
 function defaultModel(){
   return {
-    type:"angebot", version:1,
+    type:"angebot", version:2,
     header:{ projectId:"KANT HOUSE ENTRANCES", projekt:"Kant Haus – Eingänge", code:"KHE", seq:7, nr:"", place:"Berlin", date:isoToday() },
     clientId:"",
     empfaenger:"Rafael Borbalán\nKintyre Project & Construction\nManagement GmbH\nSchillerstr. 27\n60313 Frankfurt am Main",
@@ -340,7 +346,7 @@ function defaultModel(){
     gruppen:[
       { name:"Eingänge", positionen:[
         { titel:"Phase 02: Planungsskizze Eingänge", art:"Zeithonorar", rolle:"Technische Mitarbeitende", menge:48, satz:90,
-          umfang:BULLETS_1, ergebnis:"Schematische Grundrisse und Ansichten mit überschlägigen Vermaßungen." },
+          umfang:BULLETS_1, ergebnis:"- Schematische Grundrisse und Ansichten mit überschlägigen Vermaßungen." },
         { titel:"Phase 02: Vorplanung", art:"Pauschalangebot", rolle:"Pauschalpaket", menge:1, satz:1000, umfang:BULLETS_1, ergebnis:"" },
         { titel:"Phase 02: Signaletikkonzept", art:"Zeithonorar", rolle:"Technische Mitarbeitende", menge:68, satz:90, umfang:BULLETS_1, ergebnis:"" }
       ]},
@@ -371,6 +377,16 @@ function totalNetto(){ return model.gruppen.reduce((s,g)=> s + g.positionen.redu
 function totalMwst(){ return totalNetto() * (Number(model.mwst)||0) / 100; }
 function totalBrutto(){ return totalNetto() + totalMwst(); }
 
+/* Version 1: jede Zeile in Leistungsumfang/Arbeitsergebnis war ein Stichpunkt -> „- " davor */
+function migrate(m){
+  if((m.version || 1) < 2){
+    (m.gruppen||[]).forEach(g => (g.positionen||[]).forEach(p => ["umfang","ergebnis"].forEach(k=>{
+      p[k] = String(p[k]||"").split("\n").map(l => l.trim() && !BULLET_RE.test(l) ? "- " + l.trim() : l).join("\n");
+    })));
+    m.version = 2;
+  }
+  return m;
+}
 /* Platzhalter in allen Fließtexten */
 /* Angebotsnummer: OFF_<Kürzel>_<lfd. Nr. je Projekt, 2-stellig>_<JJMMTT> (Ann, 2026-10-26) */
 function offerNr(){
@@ -422,18 +438,34 @@ const T = (cls, k, o, s) => Object.assign({ t:"text", cls, k, span:1, s }, o);
 const Ln = (k, x1, x2) => ({ t:"line", k, x1, x2 });
 
 /* Fließtext als Zeilen; Blocksatz außer letzter Zeile eines Absatzes und harter Umbrüche.
+   Zeilen, die mit „- " (oder „•") beginnen, werden Stichpunkte: „•" an der Textkante, Text eine
+   Spalte eingerückt (Ann, 2026-10-26: Fließtext und Stichpunkte frei mischen).
    Hurenkinder/Schusterjungen: die ersten zwei und die letzten zwei Zeilen eines Absatzes bleiben zusammen. */
+const BULLET_RE = /^\s*[-•·–]\s+/;
 function textRows(text, o){
-  o = Object.assign({ x:X.text, w:TEXT_W, cls:"s-body", justify:true, gap:0, paraGap:1 }, o||{});
+  o = Object.assign({ x:X.text, w:TEXT_W, bulletR:DS.rightEdge, cls:"s-body", justify:true, gap:0, paraGap:1 }, o||{});
   const rows = [];
   paragraphs(fill(text)).forEach((hardLines, pi)=>{
     const lines = [];
-    hardLines.forEach(h => wrap(h, o.w, "500", 10).forEach((ln, i, arr) => lines.push({ s:ln, last:i===arr.length-1 })));
+    hardLines.forEach(h=>{
+      if(BULLET_RE.test(h)){
+        wrap(h.replace(BULLET_RE, ""), o.bulletR - X.bulletText, "500", 10)
+          .forEach((ln, i) => lines.push({ s:ln, bullet:true, dot:i===0 }));
+      } else {
+        wrap(h, o.w, "500", 10).forEach((ln, i, arr) => lines.push({ s:ln, last:i===arr.length-1 }));
+      }
+    });
     lines.forEach((ln, li)=>{
-      const jw = (o.justify && !ln.last) ? o.w : null;
       rows.push({ h:1, gap: li===0 ? (pi===0 ? o.gap : o.paraGap) : 0,
         keep: (li===0 && lines.length>1) || (li===lines.length-2),
-        draw: k => [T(o.cls, k, { x:o.x, jw }, ln.s)] });
+        draw: k => {
+          if(ln.bullet){
+            const r = [T(o.cls, k, { x:X.bulletText, w:o.bulletR - X.bulletText }, ln.s)];
+            if(ln.dot) r.push(T(o.cls, k, { x:X.bullet }, "•"));
+            return r;
+          }
+          return [T(o.cls, k, { x:o.x, jw:(o.justify && !ln.last) ? o.w : null }, ln.s)];
+        } });
     });
   });
   return rows;
@@ -464,18 +496,23 @@ function partAnschreiben(){
   return rows;
 }
 
-/* ---- Summenblock (Übersicht + Leistungen) ---- */
+/* ---- Summenblock (Übersicht + Leistungen) ----
+   Textmitte jeder Zeile sitzt AUF einer Rasterlinie (Bandanfang bei x,5), mind. 1 BL unter der
+   letzten Tabellenlinie; Abschlusslinie auf der nächsten ganzen Rasterlinie (Ann, 2026-10-26;
+   gemessen in Angebote_lang.pdf und Template_Rechnung.pdf). h = 4,5 BL reicht für beide Fälle. */
 function totalsRow(){
-  /* 0,5 BL unter der letzten Tabellenlinie (Ann: bewusst ein halbes Raster versetzt) */
-  return { h:3, gap:0.5, keep:false, draw:k=>[
-    T("s-cellb", k,   { x:X.sumL }, "Voraussichtlicher Gesamtbetrag netto"),
-    T("s-cellb", k,   { rx:X.gesamtR }, eur(totalNetto())),
-    T("s-cell",  k+1, { x:X.sumL }, "Umsatzsteuer " + num(model.mwst) + "%"),
-    T("s-cell",  k+1, { rx:X.gesamtR }, eur(totalMwst())),
-    T("s-cell",  k+2, { x:X.sumL }, "Voraussichtlicher Gesamtbetrag brutto"),
-    T("s-cell",  k+2, { rx:X.gesamtR }, eur(totalBrutto())),
-    Ln(k+3, X.sumL, X.gesamtR)
-  ]};
+  return { h:4.5, gap:0, keep:false, draw:k0=>{
+    const k = Math.floor(k0 + 0.5) + 0.5;
+    return [
+      T("s-cellb", k,   { x:X.sumL }, "Voraussichtlicher Gesamtbetrag netto"),
+      T("s-cellb", k,   { rx:X.gesamtR }, eur(totalNetto())),
+      T("s-cell",  k+1, { x:X.sumL }, "Umsatzsteuer " + num(model.mwst) + "%"),
+      T("s-cell",  k+1, { rx:X.gesamtR }, eur(totalMwst())),
+      T("s-cell",  k+2, { x:X.sumL }, "Voraussichtlicher Gesamtbetrag brutto"),
+      T("s-cell",  k+2, { rx:X.gesamtR }, eur(totalBrutto())),
+      Ln(k+3.5, X.sumL, X.gesamtR)
+    ];
+  }};
 }
 
 /* ---- Teil 2: Übersicht ---- */
@@ -515,18 +552,6 @@ function partUebersicht(){
 }
 
 /* ---- Teil 3: Leistungen im Detail ---- */
-function bulletRows(text){
-  const rows = [];
-  String(text||"").split("\n").map(s=>s.replace(/^[•·\-–]\s*/, "").trim()).filter(Boolean).forEach(item=>{
-    const lines = wrap(fill(item), X.bulletR - X.bulletText, "500", 10);
-    lines.forEach((ln, li) => rows.push({ h:1, gap:0, keep:false, draw:k=>{
-      const o = [T("s-body", k, { x:X.bulletText, w:X.bulletR - X.bulletText }, ln)];
-      if(li === 0) o.push(T("s-body", k, { x:X.bullet }, "•"));
-      return o;
-    }}));
-  });
-  return rows;
-}
 function partLeistungen(){
   let rows = sectionRows(model.detail.titel, model.detail.text, 0);
   rows.push({ h:1, gap: rows.length ? 1 : 0, keep:true, draw:k=>[
@@ -545,7 +570,7 @@ function partLeistungen(){
       T("s-cellb", k, { span:2, x:X.text }, p.titel || "")
     ]});
     [["Leistungsumfang", p.umfang], ["Arbeitsergebnis", p.ergebnis]].forEach(([titel, text])=>{
-      const b = bulletRows(text);
+      const b = textRows(text, { w:X.bulletR - X.text, bulletR:X.bulletR });
       if(!b.length) return;
       rows.push({ h:1, gap:0, keep:true, draw:k=>[T("s-body", k, { x:X.text }, titel)] });
       rows = rows.concat(b);
@@ -709,6 +734,7 @@ function render(){
   });
   applyZoom();
   updateSums();
+  if(typeof updatePhPreviews === "function") updatePhPreviews();
 }
 
 /* ============================================================
@@ -802,6 +828,7 @@ function syncBound(){
     const v = getPath(el.dataset.bind);
     if(el.type === "checkbox") el.checked = !!v; else el.value = v == null ? "" : v;
   });
+  if(typeof growAll === "function") growAll();
 }
 
 /* Listen (Übersicht-Abschnitte, Gruppen/Positionen, Stundensätze, Bedingungen):
@@ -814,7 +841,7 @@ function onListInput(e){
   if(el.dataset.rerender) renderEditor();
   render();
 }
-["#ub-list","#groups","#saetze","#agb-list"].forEach(s=>{
+["#ub-list","#groups","#agb-list"].forEach(s=>{
   $(s).addEventListener("input", onListInput);
   $(s).addEventListener("change", e => { if(e.target.type === "checkbox" || e.target.tagName === "SELECT") onListInput(e); });
 });
@@ -827,7 +854,7 @@ function renderUebersichtList(){
         <input type="text" data-p="uebersichtAbschnitte.${i}.titel" value="${esc(a.titel)}" placeholder="Überschrift">
         <button class="small del" data-act="ub-del" data-i="${i}">Entfernen</button>
       </div>
-      <div class="fld"><label>Text</label><textarea rows="4" data-p="uebersichtAbschnitte.${i}.text">${esc(a.text)}</textarea></div>
+      <div class="fld"><div class="lblrow"><label>Text</label>${BUL}</div><textarea rows="4" data-p="uebersichtAbschnitte.${i}.text">${esc(a.text)}</textarea>${PH_BAR}</div>
     </div>`).join("");
 }
 function renderGroups(){
@@ -848,8 +875,8 @@ function renderGroups(){
         </div>
         <!-- Reihenfolge wie im Angebot: Leistung · Leistungsumfang · Arbeitsergebnis · Kostenzeile · Abrechnung (Ann, 2026-10-26) -->
         <div class="fg3">
-          <div class="fld" style="grid-column:1/-1"><label>Leistungsumfang (je Zeile ein Punkt)</label><textarea rows="5" data-p="gruppen.${gi}.positionen.${pi}.umfang">${esc(p.umfang)}</textarea></div>
-          <div class="fld" style="grid-column:1/-1"><label>Arbeitsergebnis (je Zeile ein Punkt, leer = entfällt)</label><textarea rows="2" data-p="gruppen.${gi}.positionen.${pi}.ergebnis">${esc(p.ergebnis)}</textarea></div>
+          <div class="fld" style="grid-column:1/-1"><div class="lblrow"><label>Leistungsumfang</label>${BUL}</div><textarea rows="5" data-p="gruppen.${gi}.positionen.${pi}.umfang">${esc(p.umfang)}</textarea></div>
+          <div class="fld" style="grid-column:1/-1"><div class="lblrow"><label>Arbeitsergebnis (leer = entfällt)</label>${BUL}</div><textarea rows="2" data-p="gruppen.${gi}.positionen.${pi}.ergebnis">${esc(p.ergebnis)}</textarea></div>
           <div class="fld" style="grid-column:1/-1"><label>Kostenzeile (z. B. Technische Mitarbeitende / Pauschalpaket)</label><input type="text" data-p="gruppen.${gi}.positionen.${pi}.rolle" value="${esc(p.rolle)}"></div>
           <div class="fld"><label>Abrechnungsart</label>
             <select data-p="gruppen.${gi}.positionen.${pi}.art">
@@ -863,13 +890,14 @@ function renderGroups(){
       <button class="ghost small" data-act="pos-add" data-g="${gi}">+ Position</button>
     </div>`).join("");
 }
-function renderSaetze(){
-  $("#saetze").innerHTML = '<div class="fld" style="grid-column:1/-1"><label>Stundensätze für {Stundensätze}</label></div>' +
+/* Stundensätze stehen direkt im Abschnitt „Vergütung“ unter dessen Text (Ann, 2026-10-26) */
+function saetzeHtml(){
+  return '<div class="fg3" style="margin-top:12px"><div class="fld" style="grid-column:1/-1"><label>Stundensätze (erscheinen im Text an der Stelle {Stundensätze})</label></div>' +
     model.saetze.map((s,i)=>`
-      <div class="fld" style="grid-column:span 2"><input type="text" data-p="saetze.${i}.rolle" value="${esc(s.rolle)}"></div>
-      <div class="fld"><input type="text" inputmode="decimal" data-num data-p="saetze.${i}.satz" value="${esc(numIn(s.satz))}"></div>
-      <div class="fld"><button class="small del" data-act="satz-del" data-i="${i}">×</button></div>`).join("") +
-    '<div class="fld"><button class="ghost small" data-act="satz-add">+ Satz</button></div>';
+      <div class="fld" style="grid-column:span 2"><input type="text" placeholder="Rolle" data-p="saetze.${i}.rolle" value="${esc(s.rolle)}"></div>
+      <div class="fld"><input type="text" inputmode="decimal" placeholder="€ netto / Std." data-num data-p="saetze.${i}.satz" value="${esc(numIn(s.satz))}"></div>
+      <div class="fld"><button class="small del" style="align-self:flex-start;margin-top:6px" data-act="satz-del" data-i="${i}">×</button></div>`).join("") +
+    '<div class="fld"><button class="ghost small" style="align-self:flex-start" data-act="satz-add">+ Satz</button></div></div>';
 }
 function renderAgb(){
   $("#agb-list").innerHTML = model.agb.map((s,i)=>`
@@ -880,10 +908,62 @@ function renderAgb(){
         <button class="small ghost" data-act="agb-reset" data-i="${i}" title="Text der gespeicherten Vorlage laden">Vorlage laden</button>
         <button class="small ghost" data-act="agb-save" data-i="${i}" title="Diesen Text als Vorlage für künftige Angebote speichern">Als Vorlage</button>
       </div>
-      <textarea rows="${Math.min(14, 3 + Math.round((s.text||"").length/120))}" data-p="agb.${i}.text">${esc(s.text)}</textarea>
+      <div class="fld"><div class="lblrow"><label>Text</label>${BUL}</div><textarea rows="3" data-p="agb.${i}.text">${esc(s.text)}</textarea>${PH_BAR}</div>
+      ${s.id === "verguetung" ? saetzeHtml() : ""}
     </div>`).join("");
 }
-function renderEditor(){ renderUebersichtList(); renderGroups(); renderSaetze(); renderAgb(); }
+/* Platzhalter: Knöpfe fügen {Angebotsnr} usw. an der Cursorposition ein; darunter steht,
+   was im Dokument daraus wird (Ann, 2026-10-26: „muss ich einfach auswählen können"). */
+const PH_KEYS = ["Angebotsnr", "Datum", "Projekt", "Stundensätze", "MwSt"];
+const PH_BAR = '<div class="phbar">Einfügen: ' + PH_KEYS.map(k => `<button class="mini" data-act="ph" data-ph="${k}">${k}</button>`).join(" ") + '<div class="phprev"></div></div>';
+function updatePhPreviews(){
+  document.querySelectorAll("#editor .phbar").forEach(bar=>{
+    const ta = bar.parentElement.querySelector("textarea"); if(!ta) return;
+    const used = PH_KEYS.filter(k => new RegExp("\\{\\s*" + k + "\\s*\\}", "i").test(ta.value));
+    bar.querySelector(".phprev").textContent = used.length ? "Im Dokument: " + used.map(k => "{" + k + "} → " + (fill("{" + k + "}") || "(leer)")).join(" · ") : "";
+  });
+}
+function insertPh(ta, key){
+  const a = ta.selectionStart, b = ta.selectionEnd, ins = "{" + key + "}";
+  ta.value = ta.value.slice(0, a) + ins + ta.value.slice(b);
+  ta.focus(); ta.setSelectionRange(a + ins.length, a + ins.length);
+  ta.dispatchEvent(new Event("input", { bubbles:true }));
+}
+const BUL = '<button class="mini" data-act="bul" title="Markierte Zeilen zu Stichpunkten (oder zurück zu Fließtext)">• Stichpunkte</button>';
+function renderEditor(){ renderUebersichtList(); renderGroups(); renderAgb(); growAll(); }
+
+/* Textfelder wachsen mit dem Inhalt — kein Scrollen im Feld (Ann, 2026-10-26) */
+function grow(ta){ ta.style.height = "auto"; ta.style.height = (ta.scrollHeight + 2) + "px"; }
+function growAll(){ document.querySelectorAll("#editor textarea").forEach(grow); }
+document.getElementById("editor").addEventListener("input", e => { if(e.target.tagName === "TEXTAREA") grow(e.target); });
+window.addEventListener("resize", growAll);
+
+/* Stichpunkte: markierte Zeilen mit „- " versehen bzw. wieder entfernen */
+function toggleBullets(ta){
+  const v = ta.value, a = ta.selectionStart, b = ta.selectionEnd;
+  const start = v.lastIndexOf("\n", a - 1) + 1;
+  let end = v.indexOf("\n", Math.max(b - (b > a && v[b-1] === "\n" ? 1 : 0), a)); if(end < 0) end = v.length;
+  const lines = v.slice(start, end).split("\n");
+  const allOn = lines.filter(l => l.trim()).every(l => BULLET_RE.test(l));
+  const out = lines.map(l => !l.trim() ? l : allOn ? l.replace(BULLET_RE, "") : (BULLET_RE.test(l) ? l : "- " + l.trim())).join("\n");
+  ta.value = v.slice(0, start) + out + v.slice(end);
+  ta.focus(); ta.setSelectionRange(start, start + out.length);
+  ta.dispatchEvent(new Event("input", { bubbles:true }));
+}
+/* Enter in einer Stichpunkt-Zeile setzt den nächsten Stichpunkt; Enter auf leerem Stichpunkt beendet die Liste */
+document.getElementById("editor").addEventListener("keydown", e=>{
+  const ta = e.target;
+  if(ta.tagName !== "TEXTAREA" || e.key !== "Enter" || e.shiftKey || ta.selectionStart !== ta.selectionEnd) return;
+  const v = ta.value, pos = ta.selectionStart;
+  const ls = v.lastIndexOf("\n", pos - 1) + 1;
+  const line = v.slice(ls, pos);
+  const m = line.match(/^(\s*[-•]\s+)(.*)$/);
+  if(!m) return;
+  e.preventDefault();
+  if(!m[2].trim()){ ta.value = v.slice(0, ls) + v.slice(pos); ta.setSelectionRange(ls, ls); }
+  else { const ins = "\n" + m[1]; ta.value = v.slice(0, pos) + ins + v.slice(pos); ta.setSelectionRange(pos + ins.length, pos + ins.length); }
+  ta.dispatchEvent(new Event("input", { bubbles:true }));
+});
 
 function updateSums(){
   $("#sums").innerHTML =
@@ -900,6 +980,8 @@ function updateSums(){
 document.getElementById("editor").addEventListener("click", e=>{
   const b = e.target.closest("[data-act]"); if(!b) return;
   const a = b.dataset.act, gi = +b.dataset.g, i = +b.dataset.i;
+  if(a === "bul"){ toggleBullets(b.closest(".fld").querySelector("textarea")); return; }
+  if(a === "ph"){ insertPh(b.closest(".fld").querySelector("textarea"), b.dataset.ph); return; }
   if(a === "ub-del") model.uebersichtAbschnitte.splice(i, 1);
   if(a === "group-del" && confirm("Gruppe mit allen Positionen entfernen?")) model.gruppen.splice(gi, 1);
   if(a === "pos-del") model.gruppen[gi].positionen.splice(i, 1);
@@ -934,7 +1016,7 @@ $("#btn-open").onclick = ()=> $("#file-open").click();
 $("#file-open").onchange = e=>{
   const f = e.target.files[0]; if(!f) return;
   const rd = new FileReader();
-  rd.onload = ()=>{ try{ model = Object.assign(defaultModel(), JSON.parse(rd.result)); syncBound(); renderEditor(); render(); }catch(err){ alert("Datei nicht lesbar: " + err); } };
+  rd.onload = ()=>{ try{ model = migrate(Object.assign(defaultModel(), JSON.parse(rd.result))); syncBound(); renderEditor(); render(); }catch(err){ alert("Datei nicht lesbar: " + err); } };
   rd.readAsText(f);
 };
 $("#btn-pdf").onclick = ()=>{
@@ -1138,6 +1220,7 @@ async function connectAppSheet(){
 setClientForm(BEISPIEL_KUNDE);
 syncBound(); renderEditor(); render();
 connectAppSheet();
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(growAll);
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=> render());
 </script>
 </body>

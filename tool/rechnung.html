@@ -249,7 +249,7 @@ const DS = {
    aktuelle Seite passt -- sonst beginnt eine neue Seite erst dann, nicht vorsorglich früher. */
 const TABLE_ABOVE_GAP = 2;
 const FOOTER_GAP_K = 3;
-const CONT_TOP_K = 12;         /* erster Inhalt jeder Seite: 1 BL unter der letzten Kopf-Linie (K11) */
+const CONT_TOP_K = 13;         /* erster Inhalt jeder Seite: 2 BL Abstand unter der letzten Kopf-Linie K11 (Ann, 2026-10-26) */
 
 const BUERO = { blocks:[
   ["Wilmersdorfer Str. 108", "10627 Berlin"],
@@ -345,7 +345,7 @@ function paginate(){
   const span = DS.table.rowSpan;
 
   let k;
-  L.empfK = CONT_TOP_K; k = L.empfK + L.empfLines.length;   /* Inhalt beginnt immer bei K12 (1 BL unter der letzten Kopf-Linie K11) */
+  L.empfK = CONT_TOP_K; k = L.empfK + L.empfLines.length;   /* Inhalt beginnt immer bei K13 */
   L.anredeK = k + DS.gapBlock; k = L.anredeK + 1;
   L.einlK = k + 1; k = L.einlK + L.einlLines.length;
 
@@ -513,7 +513,10 @@ function renderCarry(page, k, value){
   page.appendChild(band("s-total", {leftMM:L8, k, span:1}, "Übertrag"));
   page.appendChild(band("s-total", {right:true, k, span:1}, eur(value)));
 }
-function renderTotals(page, k){
+/* Summenblock: Textmitte auf der Rasterlinie (Band ab k+0,5), Abschlusslinie auf der nächsten
+   ganzen Rasterlinie k+4 (Ann, 2026-10-26; gemessen in Template_Rechnung.pdf). */
+function renderTotals(page, k0){
+  const k = k0 + 0.5;
   const L8 = DS.colX(DS.total.labelCol);
   page.appendChild(band("s-total", {leftMM:L8, k, span:1}, "Gesamt netto"));
   page.appendChild(band("s-total", {right:true, k, span:1}, eur(totalNetto())));
@@ -521,7 +524,7 @@ function renderTotals(page, k){
   page.appendChild(band("s-cell",  {right:true, k:k+1, span:1}, eur(totalMwst())));
   page.appendChild(band("s-cell",  {leftMM:L8, k:k+2, span:1}, "Gesamt brutto"));
   page.appendChild(band("s-cell",  {right:true, k:k+2, span:1}, eur(totalBrutto())));
-  rule(page, k+3, L8, DS.rightEdge);
+  rule(page, k+3.5, L8, DS.rightEdge);
 }
 function renderSchlussText(page, k, lines){
   lines.forEach((ln,i)=> page.appendChild(band("s-body", {leftMM:DS.colX(1), k:k+i}, ln)));
@@ -721,14 +724,14 @@ function exportPDF(){
     }
 
     if(p.totalsK != null){
-      const L8 = DS.colX(DS.total.labelCol), tk = p.totalsK;
+      const L8 = DS.colX(DS.total.labelCol), tk = p.totalsK + 0.5;   /* wie renderTotals */
       put("s-total", {leftMM:L8, k:tk, span:1}, "Gesamt netto");
       put("s-total", {right:true, k:tk, span:1}, eur(totalNetto()));
       put("s-cell",  {leftMM:L8, k:tk+1, span:1}, "MwSt. " + (model.mwstProzent||0).toLocaleString("de-DE") + "%");
       put("s-cell",  {right:true, k:tk+1, span:1}, eur(totalMwst()));
       put("s-cell",  {leftMM:L8, k:tk+2, span:1}, "Gesamt brutto");
       put("s-cell",  {right:true, k:tk+2, span:1}, eur(totalBrutto()));
-      hline(tk+3, L8, DS.rightEdge);
+      hline(tk+3.5, L8, DS.rightEdge);
     }
     if(p.schlussK != null){
       p.schlussLines.forEach((ln,i)=> put("s-body", {leftMM:DS.colX(1), k:p.schlussK+i}, ln));

@@ -38,7 +38,7 @@ Die Kurzvariante (`Angebote_kurz.pdf`) wird vorerst **nicht** gebaut.
 | Element | Wert |
 | --- | --- |
 | Kopf | Zeilen K5/K7/K9 (je 2 BL), Linien K5/K7/K9/K11 |
-| Erster Inhalt jeder Seite | K12 |
+| Erster Inhalt jeder Seite | K13 (2 BL Abstand unter der Kopf-Linie K11) |
 | Textkante | Spalte 3 (45,8 mm) bis 195 mm, Blocksatz (letzte Absatzzeile linksbündig) |
 | „ANGEBOT“ | Spalte 1, Rota Bold 10 pt, auf Höhe der Anrede |
 | Empfänger → Anrede | 3 BL Leerraum |
@@ -48,9 +48,9 @@ Die Kurzvariante (`Angebote_kurz.pdf`) wird vorerst **nicht** gebaut.
 | Übersichtstabelle | POS. Sp. 3 · LEISTUNG 56,6 mm (gemessen) · ABRECHNUNGSART Sp. 7 · MENGE Sp. 9 · SATZ rechtsbündig an Sp. 11 · GESAMT rechtsbündig 195 mm; Zeilen 2 BL |
 | Gruppenname / Nr. im Detail | Bold 8 pt, rechtsbündig an der Kante von Spalte 2 |
 | Positionstitel | 2-BL-Zeile, Bold 8 pt |
-| Aufzählung | „•“ Sp. 3, Text Sp. 4 bis Ende Sp. 11 |
+| Aufzählung | Zeile beginnt mit „- “ → „•“ Sp. 3, Text Sp. 4 (in Positionen bis Ende Sp. 11); frei mit Fließtext mischbar |
 | Kostenzeile | **0,5 BL** unter der Aufzählung (bewusster Halb-Raster-Versatz, Ann 2026-10-26), Linie oben + unten, 2 BL; folgende Position läuft im halben Raster weiter |
-| Summenblock | **0,5 BL** unter der letzten Tabellenlinie, Label Sp. 8, 3 Zeilen, Linie darunter |
+| Summenblock | Textmitte jeder Zeile **auf** einer Rasterlinie (Band ab x,5), mind. 1 BL unter der letzten Tabellenlinie; Abschlusslinie auf der nächsten ganzen Rasterlinie; Label Sp. 8 |
 | Unterschrift | 4 BL Leerraum, Linie Sp. 3–Sp. 7 und Sp. 8–195 mm |
 | Umbruch | mind. 2 BL vor dem Footer (letzte Inhaltszeile endet ≤ K55) |
 
