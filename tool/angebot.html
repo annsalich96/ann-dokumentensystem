@@ -1094,9 +1094,12 @@ async function api(action, params){
 const curProj = () => ctx && ctx.projects.find(p => p.id === model.header.projectId);
 const curClient = () => ctx && ctx.clients.find(c => c.id === model.clientId);
 
+/* Nur externe = abrechenbare Projekte (AppSheet „Billable" = Y); interne Projekte bekommen
+   nie Angebote/Rechnungen (Ann, 2026-10-26). */
+function offerProjects(){ return ctx.projects.filter(p => p.billable || p.id === model.header.projectId); }
 function fillProjects(){
   const sel = $("#f-proj");
-  sel.innerHTML = '<option value="">— Projekt wählen —</option>' + ctx.projects.map(p =>
+  sel.innerHTML = '<option value="">— Projekt wählen —</option>' + offerProjects().map(p =>
     `<option value="${esc(p.id)}">${esc(p.title || p.name)}${p.code ? " · " + esc(p.code) : ""}</option>`).join("");
   sel.value = model.header.projectId || "";
 }
@@ -1208,7 +1211,7 @@ async function connectAppSheet(){
     ctx = await api("getOfferContext");
     fillProjects(); fillClients();
     if(curClient()) setClientForm(curClient());
-    asSay("verbunden · " + ctx.projects.length + " Projekte · " + ctx.clients.length + " Kunden");
+    asSay("verbunden · " + offerProjects().length + " externe Projekte · " + ctx.clients.length + " Kunden");
   }catch(err){
     asSay("nicht verbunden — Felder von Hand ausfüllen (" + err.message + ")", true);
   }

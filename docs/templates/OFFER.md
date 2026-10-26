@@ -66,7 +66,7 @@ Die Kurzvariante (`Angebote_kurz.pdf`) wird vorerst **nicht** gebaut.
   Laufende Nummer **pro Projekt** (nicht pro Jahr). Vorschlag = höchste Nummer im Register
   `DocSystem_Offers` + 1, überschreibbar. Beim PDF-Export wird das Angebot dort eingetragen.
   Für Projekte mit Altangeboten einmal die nächste Nummer von Hand setzen.
-- **Projekt:** Dropdown aus `Projects`. Im Kopf steht die **deutsche Bezeichnung** (z. B. „Kant Haus –
+- **Projekt:** Dropdown aus `Projects`, **nur externe Projekte** (`Billable` = Y) — interne Projekte bekommen nie Angebote/Rechnungen. Im Kopf steht die **deutsche Bezeichnung** (z. B. „Kant Haus –
   Eingänge“ statt „KANT HOUSE ENTRANCES“) aus der neuen Spalte `Project Title DE`; Kürzel aus
   `Project Code`. Im Editor eintragbar und nach AppSheet speicherbar.
 - **Empfänger:** Kunde aus `Clients` (Kunde des Projekts oben). Ein Kunde = **Firma** (Bezeichnung
