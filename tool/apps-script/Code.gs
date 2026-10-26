@@ -521,7 +521,8 @@ function unmarkBilled(p){
 const OFFER_TAB = 'DocSystem_Offers';
 const OFFER_HEADERS = ['Offer_No', 'Project_ID', 'Seq', 'Offer_Date', 'Client_ID', 'Net', 'Gross', 'Created', 'Updated', 'User'];
 const PROJECT_OFFER_COLS = { code:'Project Code', title:'Project Title DE' };
-const CLIENT_OFFER_COLS = { salutation:'Contact Salutation', first:'Contact First Name', last:'Contact Last Name', address:'Address' };
+/* Kunde = Firma (Client Name + Company Address) mit einer Ansprechperson (Anrede, Vor-/Nachname). */
+const CLIENT_OFFER_COLS = { salutation:'Contact Salutation', first:'Contact First Name', last:'Contact Last Name', address:'Company Address' };
 
 function getOfferContext(){
   ensureOfferColumns_();
@@ -554,13 +555,14 @@ function getOfferContext(){
    AppSheet gepflegt werden können (nach „Regenerate Structure"). Einmal pro 6 h geprüft. */
 function ensureOfferColumns_(){
   const cache = CacheService.getScriptCache();
-  if(cache.get('offerColsOk')) return;
+  if(cache.get('offerColsOk2')) return;
   withLock_(function(){
     ensureCols_(ss_().getSheetByName(CONFIG.TABS.projects), [PROJECT_OFFER_COLS.code, PROJECT_OFFER_COLS.title]);
+    renameHeader_(ss_().getSheetByName(CONFIG.TABS.clients), 'Address', CLIENT_OFFER_COLS.address);   // erste Version hieß nur „Address“
     ensureCols_(ss_().getSheetByName(CONFIG.TABS.clients),
       [CLIENT_OFFER_COLS.salutation, CLIENT_OFFER_COLS.first, CLIENT_OFFER_COLS.last, CLIENT_OFFER_COLS.address]);
   });
-  cache.put('offerColsOk', '1', 21600);
+  cache.put('offerColsOk2', '1', 21600);
 }
 function clientOut_(r){
   return {
@@ -583,6 +585,12 @@ function ensureCols_(sh, names){
     idx[name] = at + 1;
   });
   return { idx: idx, header: header };
+}
+/* Kopfzeile umbenennen (nur wenn alt existiert und neu noch nicht) — Daten bleiben stehen. */
+function renameHeader_(sh, from, to){
+  var header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); });
+  var at = header.indexOf(from);
+  if(at > -1 && header.indexOf(to) === -1) sh.getRange(1, at + 1).setValue(to);
 }
 /* 1-basierte Zeilennummer der Zeile mit key in Spalte keyCol, sonst -1. */
 function findRow_(sh, keyCol, key){

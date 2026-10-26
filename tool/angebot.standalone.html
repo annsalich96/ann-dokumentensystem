@@ -177,12 +177,18 @@ button.mini:hover{border-color:var(--ink)}
   <h2>Empfänger</h2>
   <div class="fg">
     <div class="fld wide"><label>Kunde (aus AppSheet)</label><select id="f-client"><option value="">— Kunde wählen —</option></select></div>
-    <div class="fld wide"><label>Firma / Kundenname</label><input type="text" id="c-name"></div>
+  </div>
+  <p class="hint" style="margin:18px 0 8px;font-weight:600;color:var(--ink)">Firma</p>
+  <div class="fg">
+    <div class="fld wide"><label>Firmenbezeichnung</label><input type="text" id="c-name"></div>
+    <div class="fld wide"><label>Firmenadresse (Straße / PLZ Ort, je Zeile)</label><textarea rows="2" id="c-addr"></textarea></div>
+  </div>
+  <p class="hint" style="margin:18px 0 8px;font-weight:600;color:var(--ink)">Ansprechperson</p>
+  <div class="fg">
     <div class="fld"><label>Anrede</label><select id="c-sal"><option value="">— (Sehr geehrte Damen und Herren)</option><option>Herr</option><option>Frau</option></select></div>
     <div class="fld"></div>
     <div class="fld"><label>Vorname</label><input type="text" id="c-first"></div>
     <div class="fld"><label>Nachname</label><input type="text" id="c-last"></div>
-    <div class="fld wide"><label>Adresse (Straße / PLZ Ort, je Zeile)</label><textarea rows="2" id="c-addr"></textarea></div>
     <div class="fld"><label>E-Mail</label><input type="email" id="c-email"></div>
     <div class="fld"><label>Telefon</label><input type="text" id="c-phone"></div>
     <div class="fld wide"><button class="ghost small" id="btn-client-save" style="align-self:flex-start" disabled>Kunde in AppSheet anlegen</button></div>
@@ -1105,7 +1111,7 @@ function fillClients(){
   const sel = $("#f-client"), pr = curProj();
   const own = pr && pr.clientId ? ctx.clients.filter(c => c.id === pr.clientId) : [];
   const rest = ctx.clients.filter(c => !own.includes(c));
-  const opt = c => `<option value="${esc(c.id)}">${esc(c.name)}${c.last ? " · " + esc(c.first + " " + c.last) : ""}</option>`;
+  const opt = c => `<option value="${esc(c.id)}">${esc(c.name)}${c.last ? " — " + esc([c.salutation, c.first, c.last].filter(Boolean).join(" ")) : ""}</option>`;
   sel.innerHTML = '<option value="">— Kunde wählen —</option>' +
     (own.length ? '<optgroup label="Kunde des Projekts">' + own.map(opt).join("") + '</optgroup>' : "") +
     '<optgroup label="Alle Kunden">' + rest.map(opt).join("") + '</optgroup>' +
