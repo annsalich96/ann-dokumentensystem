@@ -163,6 +163,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 
   <h2>Kopf</h2>
   <div class="fg">
+    <div class="fld wide"><label>Projekt</label><input type="text" id="f-projekt" value=""></div>
     <div class="fld wide"><label>Titelzeile</label><input type="text" id="f-title" value="Rechnungsnr.: OFF_GUN_02_260908"></div>
     <div class="fld"><label>Ort</label><input type="text" id="f-place" value="Berlin"></div>
     <div class="fld"><label>Datum</label><input type="date" id="f-date"></div>
@@ -228,8 +229,8 @@ const DS = {
   header:{
     monogram:{right:195, top:15, w:31.2, h:13.5},
     wordmarkTop1:14.6, wordmarkTop2:19.2,
-    titleK:5, placedateK:7,
-    ruleK:[5,7,9], ruleX1:122.65, ruleX2:195
+    titleK:5, midK:7, placedateK:9,           /* Kopf mit drei Zeilen (Ann, 2026-10-26) */
+    ruleK:[5,7,9,11], ruleX1:122.65, ruleX2:195
   },
   gapBlock:3,          /* Abstand zwischen Blöcken (Kopf→Empfänger, →Anrede, Schluss→Bank): 3 BL, Ann 2026-09-11 */
   table:{
@@ -248,7 +249,7 @@ const DS = {
    aktuelle Seite passt -- sonst beginnt eine neue Seite erst dann, nicht vorsorglich früher. */
 const TABLE_ABOVE_GAP = 2;
 const FOOTER_GAP_K = 3;
-const CONT_TOP_K = 12;         /* Fortsetzungsseite: wie Header + 3 BL (Beispiel A) */
+const CONT_TOP_K = 12;         /* erster Inhalt jeder Seite: 1 BL unter der letzten Kopf-Linie (K11) */
 
 const BUERO = { blocks:[
   ["Wilmersdorfer Str. 108", "10627 Berlin"],
@@ -264,7 +265,7 @@ const MONOGRAM_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88.33
    ============================================================ */
 let model = {
   type:"rechnung",
-  header:{ title:"Rechnungsnr.: OFF_GUN_02_260908", place:"Berlin", date:isoToday() },
+  header:{ projekt:"", title:"Rechnungsnr.: OFF_GUN_02_260908", place:"Berlin", date:isoToday() },
   empfaenger:"Robert Bräunlin\nBräunlin Kolb Architekten GmbH\nBurgfelderstrasse 211\n4055 Basel",
   brief:{
     anrede:"Sehr geehrter Herr Bräunlin,",
@@ -343,8 +344,8 @@ function paginate(){
   const FOOTER_SAFE_K = DS.footer.k1 - FOOTER_GAP_K;
   const span = DS.table.rowSpan;
 
-  let k = DS.header.ruleK[DS.header.ruleK.length-1];       // 9 (letzte Kopf-Linie)
-  L.empfK = k + DS.gapBlock; k = L.empfK + L.empfLines.length;
+  let k;
+  L.empfK = CONT_TOP_K; k = L.empfK + L.empfLines.length;   /* Inhalt beginnt immer bei K12 (1 BL unter der letzten Kopf-Linie K11) */
   L.anredeK = k + DS.gapBlock; k = L.anredeK + 1;
   L.einlK = k + 1; k = L.einlK + L.einlLines.length;
 
@@ -464,7 +465,8 @@ function renderHeader(page){
   m.style.width = DS.header.monogram.w + "mm"; m.style.height = DS.header.monogram.h + "mm";
   m.innerHTML = MONOGRAM_SVG; page.appendChild(m);
 
-  page.appendChild(band("s-title",     {right:true, k:DS.header.titleK,     span:2}, model.header.title || ""));
+  page.appendChild(band("s-title",     {right:true, k:DS.header.titleK,     span:2}, model.header.projekt ? "Projekt: " + model.header.projekt : ""));
+  page.appendChild(band("s-title",     {right:true, k:DS.header.midK,       span:2}, model.header.title || ""));
   page.appendChild(band("s-placedate", {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`));
   DS.header.ruleK.forEach(k => rule(page, k, DS.header.ruleX1, DS.header.ruleX2));
 }
@@ -670,7 +672,8 @@ function exportPDF(){
     put("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1}, "AN(N) ARCHITECTURE");
     put("s-wordmark", {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, "SOLUTION");
     monogram();
-    put("s-title",     {right:true, k:DS.header.titleK,     span:2}, model.header.title || "");
+    put("s-title",     {right:true, k:DS.header.titleK,     span:2}, model.header.projekt ? "Projekt: " + model.header.projekt : "");
+    put("s-title",     {right:true, k:DS.header.midK,       span:2}, model.header.title || "");
     put("s-placedate", {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`);
     DS.header.ruleK.forEach(k => hline(k, DS.header.ruleX1, DS.header.ruleX2));
 
@@ -760,7 +763,7 @@ function exportPDF(){
 const $ = s => document.querySelector(s);
 function setPath(path,v){ const s=path.split("."); let o=model; for(let i=0;i<s.length-1;i++)o=o[s[i]]; o[s[s.length-1]]=v; }
 function bind(id,path){ const el=$(id); el.addEventListener("input",()=>{ setPath(path,el.value); render(); }); }
-bind("#f-title","header.title");
+bind("#f-projekt","header.projekt"); bind("#f-title","header.title");
 bind("#f-place","header.place"); bind("#f-date","header.date");
 bind("#f-empf","empfaenger");
 bind("#f-anrede","brief.anrede"); bind("#f-einleitung","brief.einleitung"); bind("#f-schluss","brief.schluss");
@@ -852,7 +855,7 @@ $("#btn-print").onclick = ()=> window.print();
 
 function syncForm(){
   const g=(id,v)=>{ $(id).value = v||""; };
-  g("#f-title",model.header.title); g("#f-place",model.header.place); g("#f-date",model.header.date);
+  g("#f-projekt",model.header.projekt); g("#f-title",model.header.title); g("#f-place",model.header.place); g("#f-date",model.header.date);
   g("#f-empf", model.empfaenger);
   g("#f-anrede", model.brief.anrede); g("#f-einleitung", model.brief.einleitung); g("#f-schluss", model.brief.schluss);
   g("#f-gruss", model.brief.gruss); g("#f-absender", model.brief.absender);

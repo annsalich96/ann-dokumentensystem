@@ -9,7 +9,7 @@ keine externen Dateien, läuft überall (lokal, privat gehostet, per Doppelklick
 import base64, pathlib, re, sys
 
 HERE = pathlib.Path(__file__).parent
-SOURCES = ["stundennachweis.html", "rechnung.html"]
+SOURCES = ["stundennachweis.html", "rechnung.html", "angebot.html"]
 FONTS = {
     "Rota-Light.otf": 300,
     "Rota-Medium.otf": 500,

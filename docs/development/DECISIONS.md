@@ -5,6 +5,30 @@ Format: Entscheidung / Grund / Alternativen / Konsequenz.
 
 ---
 
+## DECISION-012 — Kopf mit drei Zeilen in allen Dokumenten (Ann, 2026-10-26)
+- **Entscheidung:** Der Kopf hat jetzt **drei Titelzeilen und vier Linien** (K5 · K7 · K9 · K11)
+  statt zwei Zeilen / drei Linien. Erster Inhalt jeder Seite bleibt bei **K12** (1 BL unter der
+  letzten Linie).
+  - Angebot: Projekt · Angebotsnr. · Ort, Datum
+  - Rechnung: Projekt (neues Feld) · Rechnungsnr. · Ort, Datum
+  - Stundennachweis: Titel · Angebotsnr. (automatisch aus Auftrags-Nr.) · Ort, Datum
+- **Grund:** Ann, beim Angebot: „den Header ändere ich … das möchte ich bei allen meinen Dokument-Editoren ändern."
+  Vorlage `design-sources/angebot/Angebote_lang.pdf` (Seiten 1–2).
+- **Konsequenz:** In der Vorlage stehen Kopf und Inhalt auf den Seiten 3–5 1 BL höher —
+  als Zeichenfehler gewertet, alle Seiten nutzen K5–K11.
+
+## DECISION-011 — Angebot: langes Format, Fluss-Layout (Ann, 2026-10-26)
+- **Entscheidung:** `tool/angebot.html`. Feste Teile, jeder beginnt auf neuer Seite:
+  1 Anschreiben · 2 Übersicht (optionale Abschnitte + Angebotsübersicht) · 3 Leistungen im Detail ·
+  4 Bedingungen (abwählbare Abschnitte mit gespeicherten Vorlagen, Überschriften ohne Doppelpunkt) +
+  Unterschrift(en). Spec: `docs/templates/OFFER.md`.
+- **Grund:** Anns Regeln vom 2026-10-26; Kurzformat folgt später.
+- **Technik:** Alles wird in Zeilen ("rows") zerlegt; ein Paginator verteilt sie (Hurenkinder-/
+  Schusterjungen-Schutz über `keep`-Ketten). Bildschirm und PDF zeichnen dieselbe Op-Liste —
+  anders als bei Rechnung/Stundennachweis gibt es keine zweite, getrennt gepflegte Layout-Logik.
+- **Konsequenz:** Werte im Text ({Angebotsnr}, {Datum}, {Stundensätze} …) werden ersetzt; die
+  Anbindung an AppSheet (Projekt, Empfänger, Nummer, Sätze) ist der nächste Schritt.
+
 ## DECISION-010 — Stundennachweis: TÄTIGKEIT bis zu 2 Zeilen (Ann, 2026-09-30)
 - **Entscheidung:** Quelle `design-sources/stundennachweis/Stundennachweis_blanko.pdf` +
   `Stundennachweis_grid.pdf`. Einzige Änderung gegenüber vorher: die TÄTIGKEIT darf

@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Angebot — ann architecture</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="pdf-fonts.js"></script>
+<style>
+/* ============================================================
+   ann architecture — Dokumenten-System · Prototyp
+   Angebot (langes Format)
+
+   Gleiche Grundwerte wie rechnung.html / stundennachweis.html (Grid, Rota 10/8 pt,
+   Linien, Footer). Neu: ein Fluss-Layout. Alle Inhalte werden zu Zeilen
+   ("rows") zerlegt; der Paginator verteilt sie auf Seiten. Bildschirm und PDF
+   zeichnen dieselbe Seitenliste (ein Layout, zwei Renderer).
+   Layout-Quelle: design-sources/angebot/Angebote_lang.pdf · Spec: docs/templates/OFFER.md
+   ============================================================ */
+
+@font-face{font-family:"Rota";src:url("fonts/Rota-Light.otf") format("opentype");font-weight:300;font-style:normal;font-display:swap}
+@font-face{font-family:"Rota";src:url("fonts/Rota-Medium.otf") format("opentype");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:"Rota";src:url("fonts/Rota-Bold.otf") format("opentype");font-weight:700;font-style:normal;font-display:swap}
+
+:root{
+  --ink:#0A0A0A;
+  --line:#a7a9ac;
+  --paper:#ffffff;
+  --ui:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;
+  --doc:"Rota","Helvetica Neue",Arial,sans-serif;
+  --ui-bg:#f4f4f2; --ui-border:#dcdcd7; --ui-muted:#6b6b6b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--ui);color:var(--ink);background:#e9e9e6;display:flex;overflow:hidden;font-size:15px}
+
+#preview{flex:1;height:100%;overflow:auto;background:#e9e9e6;padding:30px;display:flex;flex-direction:column;align-items:center;gap:24px}
+.stage{display:flex;flex-direction:column;align-items:center;gap:24px;transform-origin:top center}
+#toolbar{position:fixed;top:16px;left:24px;display:flex;gap:8px;z-index:20}
+
+#splitter{order:1;flex:0 0 6px;background:var(--ui-border);cursor:col-resize;position:relative;z-index:15}
+#splitter::after{content:"";position:absolute;top:0;bottom:0;left:-6px;right:-6px}
+#splitter:hover,#splitter.drag{background:#b8b8b2}
+body.resizing{cursor:col-resize;user-select:none}
+
+#editor{
+  width:clamp(520px, 50vw, 1040px);min-width:380px;height:100%;overflow:auto;
+  background:var(--paper);border-right:1px solid var(--ui-border);
+  padding:30px 44px 90px 36px;order:2;flex:0 0 auto
+}
+#editor h1{font-size:21px;font-weight:650;margin:0 0 3px;letter-spacing:-.01em}
+#editor .sub{font-size:13px;color:var(--ui-muted);margin:0 0 26px}
+#editor h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ui-muted);
+  margin:30px 0 14px;border-top:1px solid var(--ui-border);padding-top:20px}
+#editor .hint{font-size:12.5px;color:var(--ui-muted);margin:-6px 0 12px;line-height:1.45}
+#editor .fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px}
+#editor .fg3{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:12px 14px}
+#editor .fld{display:flex;flex-direction:column;min-width:0}
+#editor .fld.wide{grid-column:1/-1}
+#editor label{font-size:12.5px;color:var(--ui-muted);margin:0 0 5px;font-weight:500}
+#editor input,#editor textarea,#editor select{
+  width:100%;font-family:var(--ui);font-size:15px;padding:10px 12px;
+  border:1px solid var(--ui-border);border-radius:7px;background:#fff;color:var(--ink)
+}
+#editor input[type=checkbox]{width:auto;margin:0}
+#editor textarea{resize:vertical;line-height:1.4}
+#editor input:focus,#editor textarea:focus,#editor select:focus{outline:2px solid var(--ink);outline-offset:-1px;border-color:var(--ink)}
+button{font-family:var(--ui);font-size:14px;padding:9px 16px;border:1px solid var(--ink);border-radius:7px;
+  background:var(--ink);color:#fff;cursor:pointer}
+button.ghost{background:#fff;color:var(--ink)}
+button.small{font-size:12.5px;padding:5px 10px}
+button.del{background:#fff;color:#B0291E;border-color:#e2c3bf}
+.btnbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+
+.card{border:1px solid var(--ui-border);border-radius:9px;padding:14px 16px;margin:0 0 14px;background:#fff}
+.card.group{background:var(--ui-bg)}
+.card .card-head{display:flex;gap:10px;align-items:flex-end;margin-bottom:12px}
+.card .card-head .fld{flex:1}
+.card .pos-no{font-size:13px;font-weight:700;color:var(--ui-muted);min-width:38px;padding-bottom:11px}
+.card.off{opacity:.55}
+.agb-head{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.agb-head input[type=text]{flex:1}
+.sums{font-size:13.5px;margin-top:6px;display:flex;flex-direction:column;gap:3px;max-width:380px}
+.sums>div{display:flex;justify-content:space-between}
+.sums .b{font-weight:700}
+
+/* ============================================================
+   DOKUMENT: A4 nach Design-System
+   ============================================================ */
+.doc-page{position:relative;width:210mm;height:297mm;background:var(--paper);
+  box-shadow:0 3px 18px rgba(0,0,0,.15);overflow:hidden;color:var(--ink);font-family:var(--doc)}
+:root{--tshift:0.075em;--tshift-caps:0.135em}
+.doc-page .b{position:absolute;white-space:nowrap;overflow:hidden;display:block}
+.doc-page .b>span{position:relative;top:var(--tshift,0em)}
+.doc-page .b.r{text-align:right}
+.doc-page .b.j>span{display:flex;justify-content:space-between}
+.doc-page .s-thead>span{top:var(--tshift-caps,0em)}
+.doc-page .line{position:absolute;height:0;border-top:1px solid var(--line)}
+.doc-page .monogram{position:absolute}
+.doc-page .monogram svg{display:block;width:100%;height:100%;fill:var(--ink)}
+
+.doc-page .grid-ov{position:absolute;inset:0;pointer-events:none;z-index:99}
+.doc-page .grid-ov .col{position:absolute;top:0;bottom:0;background:rgba(233,30,180,.06);
+  border-left:1px solid rgba(233,30,180,.5);border-right:1px solid rgba(233,30,180,.5)}
+.doc-page .grid-ov .bl{position:absolute;left:0;right:0;border-top:1px solid rgba(0,150,220,.45)}
+.doc-page .grid-ov .frame{position:absolute;border:1px solid rgba(233,30,180,.7)}
+
+.s-wordmark{font-weight:300;font-size:8pt;letter-spacing:.02em;text-transform:uppercase}
+.s-title   {font-weight:500;font-size:10pt}
+.s-body    {font-weight:500;font-size:10pt}
+.s-bodyb   {font-weight:700;font-size:10pt}
+.s-head    {font-weight:700;font-size:8pt}
+.s-thead   {font-weight:500;font-size:8pt;text-transform:uppercase;letter-spacing:.02em}
+.s-cell    {font-weight:500;font-size:8pt}
+.s-cellb   {font-weight:700;font-size:8pt}
+.s-footer  {font-weight:300;font-size:8pt}
+
+@media print{
+  html,body{height:auto!important;min-height:0!important;overflow:visible!important;margin:0!important;padding:0!important;background:#fff}
+  body{display:block!important;font-size:initial}
+  #editor,#toolbar,#splitter{display:none!important}
+  #preview{all:unset;display:block}
+  .stage{display:block!important;zoom:1!important;transform:none!important;margin:0!important;padding:0!important;gap:0!important}
+  .doc-page{position:relative;width:210mm;height:296.6mm;overflow:hidden;box-shadow:none;margin:0;padding:0}
+  .doc-page:not(:last-child){page-break-after:always}
+  .doc-page:last-child{page-break-after:avoid}
+  .doc-page .line{border-top-width:.5pt}
+  .grid-ov{display:none!important}
+  @page{size:A4;margin:0}
+}
+</style>
+</head>
+<body>
+
+<div id="preview"><div class="stage" id="stage"></div></div>
+<div id="splitter" title="Breite ziehen"></div>
+
+<div id="toolbar">
+  <button class="ghost" id="btn-grid">Raster</button>
+  <button class="ghost" id="btn-zoom-out">–</button>
+  <button class="ghost" id="btn-zoom-in">+</button>
+  <button class="ghost" id="btn-zoom-fit">Fit</button>
+</div>
+
+<div id="editor">
+  <h1>Angebot</h1>
+  <p class="sub">ann architecture · Dokumenten-System · Prototyp · langes Format</p>
+
+  <h2>Kopf</h2>
+  <div class="fg">
+    <div class="fld wide"><label>Projekt</label><input type="text" data-bind="header.projekt"></div>
+    <div class="fld wide"><label>Angebotsnr.</label><input type="text" data-bind="header.nr"></div>
+    <div class="fld"><label>Ort</label><input type="text" data-bind="header.place"></div>
+    <div class="fld"><label>Datum</label><input type="date" data-bind="header.date"></div>
+  </div>
+
+  <h2>1 · Anschreiben</h2>
+  <div class="fg">
+    <div class="fld wide"><label>Empfänger (je Zeile)</label><textarea rows="5" data-bind="empfaenger"></textarea></div>
+    <div class="fld wide"><label>Anrede</label><input type="text" data-bind="brief.anrede"></div>
+    <div class="fld wide"><label>Text — Leerzeile = neuer Absatz, einfacher Zeilenumbruch = neue Zeile</label><textarea rows="9" data-bind="brief.text"></textarea></div>
+    <div class="fld wide"><label>Grußformel</label><input type="text" data-bind="brief.gruss"></div>
+    <div class="fld"><label>Name</label><input type="text" data-bind="brief.name"></div>
+    <div class="fld"><label>Funktion</label><input type="text" data-bind="brief.funktion"></div>
+  </div>
+
+  <h2>2 · Übersicht</h2>
+  <p class="hint">Optionale Textabschnitte vor der Angebotsübersicht (z. B. Aufgabenstellung, Rahmenbedingungen) — Häkchen = im Angebot.</p>
+  <div id="ub-list"></div>
+  <div class="btnbar"><button class="ghost small" id="btn-ub-add">+ Abschnitt</button></div>
+  <div class="fg" style="margin-top:18px">
+    <div class="fld wide"><label>Überschrift Tabelle</label><input type="text" data-bind="uebersicht.titel"></div>
+    <div class="fld wide"><label>Text über der Tabelle</label><textarea rows="3" data-bind="uebersicht.text"></textarea></div>
+  </div>
+
+  <h2>3 · Leistungen</h2>
+  <div class="fg">
+    <div class="fld wide"><label>Überschrift</label><input type="text" data-bind="detail.titel"></div>
+    <div class="fld wide"><label>Einleitung</label><textarea rows="2" data-bind="detail.text"></textarea></div>
+  </div>
+  <p class="hint" style="margin-top:16px">Positionen nach Gruppen. Die Nummer (1.01, 1.02, 2.01 …) entsteht automatisch.
+    Leistungsumfang / Arbeitsergebnis: eine Zeile = ein Aufzählungspunkt. Gesamt = Menge × Satz.</p>
+  <div id="groups"></div>
+  <div class="btnbar"><button class="ghost" id="btn-group-add">+ Gruppe</button></div>
+  <div class="fg" style="margin-top:18px">
+    <div class="fld"><label>Umsatzsteuer %</label><input type="number" step="0.5" min="0" data-bind="mwst" data-num></div>
+  </div>
+  <div class="sums" id="sums"></div>
+
+  <h2>4 · Bedingungen</h2>
+  <p class="hint">Platzhalter werden automatisch ersetzt: {Angebotsnr} · {Datum} · {Projekt} · {Stundensätze}.
+    „Als Vorlage“ speichert den Text für künftige Angebote (in diesem Browser).</p>
+  <div class="fg3" id="saetze" style="margin-bottom:16px"></div>
+  <div id="agb-list"></div>
+  <div class="fg">
+    <div class="fld wide" style="flex-direction:row;gap:10px;align-items:center">
+      <input type="checkbox" id="f-sig-an" data-bind="unterschriftAN" data-bool>
+      <label for="f-sig-an" style="margin:0">Zweite Unterschriftslinie (Auftragnehmer)</label>
+    </div>
+  </div>
+
+  <h2>Dokument</h2>
+  <div class="btnbar">
+    <button id="btn-pdf">PDF herunterladen</button>
+    <button class="ghost" id="btn-print">Drucken</button>
+    <button class="ghost" id="btn-save">Speichern (.json)</button>
+    <button class="ghost" id="btn-open">Öffnen</button>
+    <input type="file" id="file-open" accept="application/json" hidden>
+  </div>
+  <p class="sub" style="margin-top:18px">Regeln &amp; Annahmen: <code>docs/templates/OFFER.md</code>.</p>
+</div>
+
+<script>
+/* ============================================================
+   1) DESIGN-SYSTEM
+   ============================================================ */
+const PT = p => p*25.4/72;
+const MM_PER_CSSPX = 25.4/96;
+const BL = PT(13);
+const DS = {
+  page:{w:210,h:297}, margin:15, rightEdge:195,
+  cols:12, colW:10.7957, gutter:BL,
+  colX(n){ return 15 + (n-1)*(this.colW+this.gutter); },
+  colR(n){ return this.colX(n) + this.colW; },
+  G(k){ return 15 + k*BL; },
+  header:{
+    monogram:{right:195, top:15, w:31.2, h:13.5},
+    wordmarkTop1:14.6, wordmarkTop2:19.2,
+    rowK:[5,7,9],                 /* drei Titelzeilen: Projekt · Nr. · Ort, Datum */
+    ruleK:[5,7,9,11], ruleX1:122.65, ruleX2:195
+  },
+  footer:{ k1:57, k2:58, blocks:[1,3,6,8] }
+};
+const TOP_K = 12;                  /* erster Inhalt auf jeder Seite (1 BL unter der letzten Kopf-Linie) */
+const LIMIT_K = DS.footer.k1 - 2;  /* R-014: mind. 2 BL Luft vor dem Footer */
+const X = {
+  label: DS.colX(1),               /* „ANGEBOT" */
+  text:  DS.colX(3),               /* Textkante aller Inhalte */
+  groupR: DS.colR(2),              /* Gruppenname/Nr. rechtsbündig in der Randspalte */
+  leistung: DS.colR(3),            /* Übersichtstabelle: LEISTUNG (gemessen 56,6 mm) */
+  art: DS.colX(7), menge: DS.colX(9),
+  satzR: DS.colX(11), gesamtR: DS.rightEdge,
+  sumL: DS.colX(8),
+  bullet: DS.colX(3), bulletText: DS.colX(4), bulletR: DS.colR(11),
+  sig1: [DS.colX(3), DS.colX(8) - BL], sig2: [DS.colX(8), DS.rightEdge]
+};
+const TEXT_W = DS.rightEdge - X.text;
+
+const BUERO = { blocks:[
+  ["Wilmersdorfer Str. 108", "10627 Berlin"],
+  ["info@annarchitecture-studio.com", "annarchitecturesolution.com"],
+  ["Tel.: +49 1702828889", "USt-IdNr.: DE123456789"],
+  ["Ann-Kathrin Salich", "Freischaffende Architektin"]
+]};
+const MONOGRAM_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88.33 38.33"><path d="M 0 38.33 L 5.10 38.33 L 24.97 0 L 20.01 0 L 0 38.33 Z"/><path d="M 83.88 0 L 83.88 31.12 L 61.19 0.10 L 61.11 0 L 56.53 0 L 56.53 30.83 L 34.05 0.10 L 33.97 0 L 29.39 0 L 29.39 38.33 L 33.83 38.33 L 33.83 7.20 L 56.76 38.33 L 60.97 38.33 L 60.97 7.21 L 83.72 38.22 L 83.79 38.33 L 88.33 38.33 L 88.33 0 L 83.88 0 Z"/></svg>`;
+
+/* ============================================================
+   2) VORLAGEN für die Bedingungen (Code-Standard; eigene Vorlagen
+      liegen in localStorage "angebot.agbVorlagen")
+   ============================================================ */
+const AGB_STANDARD = [
+  { id:"anmerkungen", titel:"Anmerkungen", on:true,
+    text:"Die Darstellungsweise obliegt der Auftragnehmerin. Die erstellten Entwürfe, Konzepte und Visualisierungen sind urheberrechtlich geschützte Leistungen der Auftragnehmerin." },
+  { id:"nutzungsrechte", titel:"Nutzungsrechte", on:false,
+    text:"Mit dem vollständigen Eingang der vereinbarten Vergütung einschließlich der gesetzlichen Umsatzsteuer räumt die Auftragnehmerin der Auftraggeberin an den von ihr erstellten finalen Renderings ein einfaches, nicht ausschließliches Nutzungsrecht ein. Das Nutzungsrecht ist ausschließlich auf die projektbezogene Nutzung der finalen Renderings beschränkt. Die Auftraggeberin ist berechtigt, die finalen Renderings in auf das Bau- oder Immobilienprojekt bezogenen Broschüren in gedruckter und digitaler Form zu vervielfältigen, zu verbreiten und öffentlich zugänglich zu machen; auf den eigenen Internetseiten einschließlich projektbezogener Unterseiten und Downloadbereiche öffentlich zugänglich zu machen und hierfür technisch zu vervielfältigen; und auf den eigenen Social-Media-Kanälen einschließlich projektbezogener Accounts öffentlich zugänglich zu machen und hierfür technisch zu vervielfältigen. Bei jeder Veröffentlichung der Renderings durch die Auftraggeberin ist die Auftragnehmerin als das für das dargestellte Designkonzept verantwortliche Planungsbüro zu nennen.\n\n" +
+      "Die Nutzung ist ausschließlich zur Darstellung und Bewerbung des konkreten Projekts gestattet, auf das sich die Renderings beziehen und wofür sie erstellt wurden. Das Nutzungsrecht wird räumlich weltweit und zeitlich für die Dauer des Bestehens der gesetzlichen Schutzrechte eingeräumt, bleibt jedoch inhaltlich auf die vorstehend abschließend bezeichneten Nutzungszwecke und Nutzungsarten beschränkt.\n\n" +
+      "Die Auftraggeberin darf die finalen Renderings ausschließlich an von ihr beauftragte Grafik-, Druck-, Web-, Hosting-, Social-Media- und sonstige technische Dienstleister weitergeben, soweit dies zur Herstellung, technischen Bereitstellung oder Veröffentlichung der projektbezogenen Broschüren, der eigenen Internetseiten (einschließlich projektbezogener Unterseiten und Downloadbereiche) oder der Inhalte auf den eigenen Social-Media-Kanälen (einschließlich projektbezogener Accounts) erforderlich ist. Die eingeschalteten Dienstleister dürfen die Renderings ausschließlich im Auftrag und für Rechnung der Auftraggeberin sowie ausschließlich zu den vorstehend genannten Zwecken verwenden. Die Auftraggeberin hat sicherzustellen, dass die Dienstleister die vereinbarten Nutzungsbeschränkungen einhalten. Eine eigenständige Nutzung, Weitergabe oder Verwertung durch diese Dienstleister ist nicht gestattet. Soweit für die vorstehend gestattete Veröffentlichung auf Social-Media-Plattformen erforderlich, darf die Auftraggeberin den jeweiligen Plattformbetreibern die hierfür erforderlichen technischen Nutzungsrechte einräumen.\n\n" +
+      "Zulässig sind ausschließlich technisch erforderliche Anpassungen an das jeweilige Druck-, Bildschirm- oder Dateiformat, insbesondere Größenanpassungen, Formatumwandlungen, Komprimierungen und Zuschnitte, sofern hierdurch die gestalterische Aussage der Renderings nicht verändert wird. Inhaltliche, gestalterische oder farbliche Veränderungen, die über die technisch erforderliche Anpassung hinausgehen, sind nicht gestattet.\n\n" +
+      "Die Rechtseinräumung umfasst ausschließlich die vorstehend bezeichnete Veröffentlichung und Nutzung der finalen Renderings. Sie umfasst insbesondere nicht das Recht, die in den Renderings dargestellten Entwürfe oder deren wesentliche gestalterische Elemente für die Weiterplanung, Änderung, Vervielfältigung, Nachbildung oder bauliche Umsetzung zu verwenden oder durch Dritte verwenden zu lassen. Durch dieses Angebot wird insbesondere kein Recht zur Ausführung eines in den Renderings dargestellten Bauwerks und kein Nachbaurecht eingeräumt. Die Urheberrechte und sonstigen Rechte der jeweiligen Urheber und Rechteinhaber bleiben unberührt. Die Auftragnehmerin räumt nur die Rechte an den von ihr selbst erstellten beziehungsweise überarbeiteten Bestandteilen der finalen Renderings ein. Rechte Dritter an von der Auftraggeberin oder sonstigen Projektbeteiligten bereitgestellten Logos, Fotografien, Plänen, Marken, Gebäudedarstellungen oder sonstigen Inhalten werden durch die Auftragnehmerin nicht eingeräumt. Für die Einholung und den Umfang der erforderlichen Rechte an solchen Inhalten ist ausschließlich die Auftraggeberin verantwortlich.\n\n" +
+      "Die Auftragnehmerin ist berechtigt, die finalen Renderings sowie die darin dargestellten eigenen Entwürfe und eigenen Leistungen nach einer erstmaligen öffentlichen Veröffentlichung durch die Auftraggeberin oder mit deren vorheriger Zustimmung, spätestens jedoch nach dem […], auf der eigenen Internetseite, in sozialen Medien sowie in eigenen Portfolio- und Präsentationsunterlagen als Referenz für die eigene Tätigkeit zu verwenden. Die Referenznutzung ist auf die Darstellung der eigenen Leistungen der Auftragnehmerin beschränkt. Gesetzliche oder vertragliche Geheimhaltungs- und Vertraulichkeitspflichten gegenüber der Auftraggeberin sowie Rechte Dritter bleiben unberührt." },
+  { id:"verguetung", titel:"Vergütung", on:true,
+    text:"*Der angegebene Stundenumfang ist eine Schätzung. Die Abrechnung erfolgt nach dem tatsächlichen Zeitaufwand. Für Stunden über den geschätzten Umfang hinaus gelten ebenfalls die folgenden Stundensätze zuzüglich {MwSt}% Umsatzsteuer: {Stundensätze}" },
+  { id:"zahlungen", titel:"Zahlungen", on:true,
+    text:"Das Honorar wird innerhalb von 30 Kalendertagen nach Eingang einer prüffähigen Honorarschlussrechnung beim Auftraggeber (AG) fällig. Der Auftragnehmer (AN) ist berechtigt, in angemessenen zeitlichen Abständen, mindestens alle vier Wochen, Abschlagszahlungen für nachgewiesene Leistungen zu verlangen. Abschlagszahlungen sind innerhalb von 14 Kalendertagen nach Rechnungseingang beim Auftraggeber zur Zahlung fällig." },
+  { id:"zeitplan", titel:"Zeitplan", on:true,
+    text:"Bei Beauftragung bis zum 26. Oktober 2026 werden die Planungsleistungen bis zum 6. November 2026 abgeschlossen und die Planunterlagen dem Auftraggeber bereitgestellt sowie zur Angebotseinholung an ein uns bekanntes Metallbauunternehmen übermittelt. Der Termin bezieht sich ausschließlich auf unsere Planungsleistungen und die Übermittlung der Unterlagen. Der Eingang eines Angebots des Metallbauunternehmens wird terminlich nicht zugesichert und liegt außerhalb unseres Einflussbereichs." },
+  { id:"beauftragung", titel:"Beauftragung", on:true,
+    text:"Hiermit beauftrage ich die im Angebot Nr. {Angebotsnr} vom {Datum} beschriebenen Leistungen zu den darin genannten Konditionen. Die Beauftragung umfasst das Angebot einschließlich aller zugehörigen Seiten und Anlagen." }
+];
+function agbVorlagen(){
+  let own = {};
+  try{ own = JSON.parse(localStorage.getItem("angebot.agbVorlagen") || "{}"); }catch(_){}
+  return AGB_STANDARD.map(s => Object.assign({}, s, own[s.id] || {}));
+}
+function saveAgbVorlage(sec){
+  let own = {};
+  try{ own = JSON.parse(localStorage.getItem("angebot.agbVorlagen") || "{}"); }catch(_){}
+  own[sec.id] = { titel:sec.titel, text:sec.text, on:sec.on };
+  try{ localStorage.setItem("angebot.agbVorlagen", JSON.stringify(own)); return true; }catch(_){ return false; }
+}
+
+/* ============================================================
+   3) DOKUMENT-MODELL
+   ============================================================ */
+const BULLETS_1 = "Erstellung schematischer Grundrisse und erforderlicher Ansichten zur Darstellung der vorgesehenen Metallbauarbeiten.\nÜberschlägige Ermittlung der wesentlichen Abmessungen und Mengen als Grundlage für die Kostenschätzung eines Metallbauers.\nZusammenstellung der Planunterlagen und Mengenübersicht für eine Kostenanfrage bei einem Metallbauunternehmen.\nEinholung einer ersten Kosteneinschätzung über ein bekanntes Metallbaugewerk sowie Durchführung der erforderlichen Abstimmungen.";
+function defaultModel(){
+  return {
+    type:"angebot", version:1,
+    header:{ projekt:"Kant Center, Neugestaltung Eingänge", nr:"OFF_KHE_07_261021", place:"Berlin", date:isoToday() },
+    empfaenger:"Rafael Borbalán\nKintyre Project & Construction\nManagement GmbH\nSchillerstr. 27\n60313 Frankfurt am Main",
+    brief:{
+      anrede:"Sehr geehrter Herr Borbalán,",
+      text:"gerne unterbreiten wir Ihnen ein Angebot für die Erstellung einer schematischen Planung als Grundlage einer ersten Kosteneinschätzung für die von uns konzipierte Neugestaltung der Eingänge des Kant Centers an der Wilmersdorfer Straße und der Kantstraße. Grundlage sind die beigefügten Perspektiven.\n\nDen Leistungsumfang und die Abgrenzungen finden Sie auf den folgenden Seiten.\n\nGerne stehe ich Ihnen zur weiteren Erläuterung zur Verfügung.\nIch freue mich darauf, Ihnen bei Ihrem Projekt zur Seite zu stehen.",
+      gruss:"Mit freundlichen Grüßen,", name:"Ann-Kathrin Salich", funktion:"Freischaffende Architektin"
+    },
+    uebersichtAbschnitte:[
+      { titel:"Aufgabenstellung", on:true, text:"Ziel der Leistung ist die Erstellung einer überschlägigen planerischen Grundlage zur Einholung einer ersten Kostenschätzung bei Metallbauunternehmen für die konzipierten Eingänge. Die Unterlagen dienen ausschließlich der Vorabstimmung und überschlägigen Kostenermittlung. Sie stellen keine vollständige Vorplanung, Entwurfs- oder Ausführungsplanung dar und sind nicht zur Fertigung oder Ausführung freigegeben." },
+      { titel:"Rahmenbedingungen", on:true, text:"Nicht enthalten sind ein örtliches Aufmaß, die verbindliche Prüfung der Bestandsgegebenheiten und -maße sowie statische Nachweise oder die detaillierte Planung und Bemessung von Unterkonstruktionen, Befestigungen und Anschlüssen. Eine gegebenenfalls erforderliche weiterführende Planung wird nach Klärung der Ausführung gesondert angeboten und beauftragt." }
+    ],
+    uebersicht:{ titel:"Angebotsübersicht", text:"Hier finden Sie eine zusammengestellte Übersicht der angebotenen Leistungen. Auf den folgenden Seiten finden Sie eine detaillierte Übersicht des Leistungs- und Honorarumfangs." },
+    detail:{ titel:"Leistungs- & Honorarangebot", text:"Die Leistungen werden zum Nachweis (LzN) mit folgendem geschätzten Aufwand angeboten:" },
+    gruppen:[
+      { name:"Eingänge", positionen:[
+        { titel:"Phase 02: Planungsskizze Eingänge", art:"Zeithonorar", rolle:"Technische Mitarbeitende", menge:48, satz:90,
+          umfang:BULLETS_1, ergebnis:"Schematische Grundrisse und Ansichten mit überschlägigen Vermaßungen." },
+        { titel:"Phase 02: Vorplanung", art:"Pauschalangebot", rolle:"Pauschalpaket", menge:1, satz:1000, umfang:BULLETS_1, ergebnis:"" },
+        { titel:"Phase 02: Signaletikkonzept", art:"Zeithonorar", rolle:"Technische Mitarbeitende", menge:68, satz:90, umfang:BULLETS_1, ergebnis:"" }
+      ]},
+      { name:"Renders", positionen:[
+        { titel:"Visualisierung", art:"Zeithonorar", rolle:"Technische Mitarbeitende", menge:48, satz:90, umfang:BULLETS_1, ergebnis:"" }
+      ]}
+    ],
+    mwst:19,
+    saetze:[ { rolle:"Technische Mitarbeitende", satz:90 }, { rolle:"Geschäftsführung", satz:120 } ],
+    agb: agbVorlagen().map(s => ({ id:s.id, titel:s.titel, text:s.text, on:s.on })),
+    unterschriftAN:true
+  };
+}
+let model = defaultModel();
+
+function isoToday(){ return new Date().toISOString().slice(0,10); }
+function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
+function eur(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
+function numIn(n){ return String(Number(n)||0).replace(".", ","); }
+function num(n){ return (Number(n)||0).toLocaleString("de-DE",{maximumFractionDigits:2}); }
+function isZeit(p){ return /zeit|stunde/i.test(p.art || ""); }
+function mengeText(p, stern){ return isZeit(p) ? num(p.menge) + " Std." + (stern ? " *" : "") : num(p.menge); }
+function posGesamt(p){ return (Number(p.menge)||0) * (Number(p.satz)||0); }
+function posNr(gi, pi){ return (gi+1) + "." + String(pi+1).padStart(2,"0"); }
+function totalNetto(){ return model.gruppen.reduce((s,g)=> s + g.positionen.reduce((t,p)=> t + posGesamt(p), 0), 0); }
+function totalMwst(){ return totalNetto() * (Number(model.mwst)||0) / 100; }
+function totalBrutto(){ return totalNetto() + totalMwst(); }
+
+/* Platzhalter in allen Fließtexten */
+function fill(s){
+  const saetze = (model.saetze||[]).filter(x=>x.rolle).map(x => x.rolle + " — " + eur(x.satz)).join(", ");
+  return String(s||"")
+    .replace(/\{\s*Angebotsnr\s*\}/gi, model.header.nr || "")
+    .replace(/\{\s*Datum\s*\}/gi, deDate(model.header.date))
+    .replace(/\{\s*Projekt\s*\}/gi, model.header.projekt || "")
+    .replace(/\{\s*MwSt\s*\}/gi, num(model.mwst))
+    .replace(/\{\s*Stundensätze\s*\}/gi, saetze);
+}
+
+/* ============================================================
+   4) TEXT-UMBRUCH (Canvas-Messung in Rota)
+   ============================================================ */
+const _ctx = document.createElement("canvas").getContext("2d");
+function wrap(text, widthMM, weight, sizePt){
+  const maxPx = widthMM * 96/25.4;
+  _ctx.font = weight + " " + (sizePt*96/72) + 'px "Rota","Helvetica Neue",Arial,sans-serif';
+  const words = String(text||"").trim().split(/\s+/).filter(Boolean);
+  const out = []; let line = "";
+  words.forEach(w=>{
+    const cand = line ? line + " " + w : w;
+    if(_ctx.measureText(cand).width <= maxPx || !line) line = cand;
+    else { out.push(line); line = w; }
+  });
+  if(line) out.push(line);
+  return out;
+}
+/* Absätze: Leerzeile trennt Absätze, einfacher Umbruch = harte neue Zeile */
+function paragraphs(text){
+  return String(text||"").replace(/\r/g,"").split(/\n\s*\n/).map(p => p.split("\n").map(s=>s.trim()).filter(Boolean)).filter(p=>p.length);
+}
+
+/* ============================================================
+   5) ZEILEN (rows) — die Bausteine des Fluss-Layouts
+      row = { h: Höhe in BL, gap: Leerzeilen davor (entfällt am Seitenanfang),
+              keep: muss mit der nächsten Zeile auf derselben Seite stehen,
+              draw(k) -> ops[] }
+      op  = { t:"text", cls, k, span, x | rx, jw?, s }  |  { t:"line", k, x1, x2 }
+   ============================================================ */
+const T = (cls, k, o, s) => Object.assign({ t:"text", cls, k, span:1, s }, o);
+const Ln = (k, x1, x2) => ({ t:"line", k, x1, x2 });
+
+/* Fließtext als Zeilen; Blocksatz außer letzter Zeile eines Absatzes und harter Umbrüche.
+   Hurenkinder/Schusterjungen: die ersten zwei und die letzten zwei Zeilen eines Absatzes bleiben zusammen. */
+function textRows(text, o){
+  o = Object.assign({ x:X.text, w:TEXT_W, cls:"s-body", justify:true, gap:0, paraGap:1 }, o||{});
+  const rows = [];
+  paragraphs(fill(text)).forEach((hardLines, pi)=>{
+    const lines = [];
+    hardLines.forEach(h => wrap(h, o.w, "500", 10).forEach((ln, i, arr) => lines.push({ s:ln, last:i===arr.length-1 })));
+    lines.forEach((ln, li)=>{
+      const jw = (o.justify && !ln.last) ? o.w : null;
+      rows.push({ h:1, gap: li===0 ? (pi===0 ? o.gap : o.paraGap) : 0,
+        keep: (li===0 && lines.length>1) || (li===lines.length-2),
+        draw: k => [T(o.cls, k, { x:o.x, jw }, ln.s)] });
+    });
+  });
+  return rows;
+}
+function headRow(titel, gap){
+  return { h:1, gap, keep:true, draw:k => [T("s-head", k, { x:X.text }, titel)] };
+}
+function sectionRows(titel, text, gap){
+  const body = textRows(text);
+  if(!titel) { if(body[0]) body[0].gap = gap; return body; }
+  return [headRow(titel, gap)].concat(body);
+}
+
+/* ---- Teil 1: Anschreiben ---- */
+function partAnschreiben(){
+  const rows = [];
+  const empf = String(model.empfaenger||"").split("\n").map(s=>s.trim()).filter(Boolean);
+  empf.forEach(ln => rows.push({ h:1, gap:0, keep:true, draw:k=>[T("s-body", k, { x:X.text }, ln)] }));
+  if(rows.length) rows[rows.length-1].keep = false;
+  rows.push({ h:1, gap: empf.length ? 3 : 0, keep:true, draw:k=>[
+    T("s-bodyb", k, { x:X.label }, "ANGEBOT"),
+    T("s-body", k, { x:X.text }, fill(model.brief.anrede))
+  ]});
+  textRows(model.brief.text, { gap:1 }).forEach(r => rows.push(r));
+  rows.push({ h:1, gap:2, keep:true,  draw:k=>[T("s-body", k, { x:X.text }, model.brief.gruss || "")] });
+  rows.push({ h:1, gap:3, keep:true,  draw:k=>[T("s-body", k, { x:X.text }, model.brief.name || "")] });
+  rows.push({ h:1, gap:0, keep:false, draw:k=>[T("s-body", k, { x:X.text }, model.brief.funktion || "")] });
+  return rows;
+}
+
+/* ---- Summenblock (Übersicht + Leistungen) ---- */
+function totalsRow(){
+  return { h:3, gap:0, keep:false, draw:k=>[
+    T("s-cellb", k,   { x:X.sumL }, "Voraussichtlicher Gesamtbetrag netto"),
+    T("s-cellb", k,   { rx:X.gesamtR }, eur(totalNetto())),
+    T("s-cell",  k+1, { x:X.sumL }, "Umsatzsteuer " + num(model.mwst) + "%"),
+    T("s-cell",  k+1, { rx:X.gesamtR }, eur(totalMwst())),
+    T("s-cell",  k+2, { x:X.sumL }, "Voraussichtlicher Gesamtbetrag brutto"),
+    T("s-cell",  k+2, { rx:X.gesamtR }, eur(totalBrutto())),
+    Ln(k+3, X.sumL, X.gesamtR)
+  ]};
+}
+
+/* ---- Teil 2: Übersicht ---- */
+function partUebersicht(){
+  let rows = [];
+  (model.uebersichtAbschnitte||[]).filter(a => a.on !== false).forEach(a => { rows = rows.concat(sectionRows(a.titel, a.text, rows.length ? 2 : 0)); });
+  rows = rows.concat(sectionRows(model.uebersicht.titel, model.uebersicht.text, rows.length ? 2 : 0));
+  const tableX1 = X.text;
+  rows.push({ h:1, gap: rows.length ? 1 : 0, keep:true, draw:k=>[
+    Ln(k, tableX1, X.gesamtR),
+    T("s-thead", k, { x:X.text }, "POS."),
+    T("s-thead", k, { x:X.leistung }, "LEISTUNG"),
+    T("s-thead", k, { x:X.art }, "ABRECHNUNGSART"),
+    T("s-thead", k, { x:X.menge }, "MENGE"),
+    T("s-thead", k, { rx:X.satzR }, "SATZ NETTO"),
+    T("s-thead", k, { rx:X.gesamtR }, "GESAMT NETTO"),
+    Ln(k+1, tableX1, X.gesamtR)
+  ]});
+  model.gruppen.forEach((g, gi) => g.positionen.forEach((p, pi) => {
+    rows.push({ h:2, gap:0, keep:false, draw:k=>{
+      const o = [
+        T("s-cell", k, { span:2, x:X.text }, posNr(gi, pi)),
+        T("s-cell", k, { span:2, x:X.leistung, w:X.art - X.leistung - 2 }, p.titel || ""),
+        T("s-cell", k, { span:2, x:X.art }, p.art || ""),
+        T("s-cell", k, { span:2, x:X.menge }, mengeText(p, false)),
+        T("s-cell", k, { span:2, rx:X.satzR }, eur(p.satz)),
+        T("s-cell", k, { span:2, rx:X.gesamtR }, eur(posGesamt(p))),
+        Ln(k+2, tableX1, X.gesamtR)
+      ];
+      if(pi === 0 && g.name) o.push(T("s-cellb", k, { span:2, rx:X.groupR }, g.name));
+      return o;
+    }});
+  }));
+  rows[rows.length-1].keep = true;   // letzte Zeile bleibt beim Summenblock
+  rows.push(totalsRow());
+  return rows;
+}
+
+/* ---- Teil 3: Leistungen im Detail ---- */
+function bulletRows(text){
+  const rows = [];
+  String(text||"").split("\n").map(s=>s.replace(/^[•·\-–]\s*/, "").trim()).filter(Boolean).forEach(item=>{
+    const lines = wrap(fill(item), X.bulletR - X.bulletText, "500", 10);
+    lines.forEach((ln, li) => rows.push({ h:1, gap:0, keep:false, draw:k=>{
+      const o = [T("s-body", k, { x:X.bulletText, w:X.bulletR - X.bulletText }, ln)];
+      if(li === 0) o.push(T("s-body", k, { x:X.bullet }, "•"));
+      return o;
+    }}));
+  });
+  return rows;
+}
+function partLeistungen(){
+  let rows = sectionRows(model.detail.titel, model.detail.text, 0);
+  rows.push({ h:1, gap: rows.length ? 1 : 0, keep:true, draw:k=>[
+    Ln(k, X.text, X.gesamtR),
+    T("s-thead", k, { x:X.text }, "LEISTUNG"),
+    T("s-thead", k, { x:X.art }, "ABRECHNUNGSART"),
+    T("s-thead", k, { x:X.menge }, "MENGE"),
+    T("s-thead", k, { rx:X.satzR }, "SATZ NETTO"),
+    T("s-thead", k, { rx:X.gesamtR }, "GESAMT NETTO"),
+    Ln(k+1, X.text, X.gesamtR)
+  ]});
+  model.gruppen.forEach((g, gi) => g.positionen.forEach((p, pi) => {
+    const label = (pi === 0 && g.name ? g.name + " " : "") + posNr(gi, pi);
+    rows.push({ h:2, gap:0, keep:true, draw:k=>[
+      T("s-cellb", k, { span:2, rx:X.groupR }, label),
+      T("s-cellb", k, { span:2, x:X.text }, p.titel || "")
+    ]});
+    [["Leistungsumfang", p.umfang], ["Arbeitsergebnis", p.ergebnis]].forEach(([titel, text])=>{
+      const b = bulletRows(text);
+      if(!b.length) return;
+      rows.push({ h:1, gap:0, keep:true, draw:k=>[T("s-body", k, { x:X.text }, titel)] });
+      rows = rows.concat(b);
+    });
+    rows[rows.length-1].keep = true;  // Kostenzeile nie allein oben auf einer neuen Seite
+    rows.push({ h:2, gap:1, keep:false, draw:k=>[
+      Ln(k, X.text, X.gesamtR),
+      T("s-cell", k, { span:2, x:X.text }, p.rolle || ""),
+      T("s-cell", k, { span:2, x:X.art }, p.art || ""),
+      T("s-cell", k, { span:2, x:X.menge }, mengeText(p, true)),
+      T("s-cell", k, { span:2, rx:X.satzR }, eur(p.satz)),
+      T("s-cell", k, { span:2, rx:X.gesamtR }, eur(posGesamt(p))),
+      Ln(k+2, X.text, X.gesamtR)
+    ]});
+  }));
+  rows[rows.length-1].keep = true;
+  rows.push(totalsRow());
+  return rows;
+}
+
+/* ---- Teil 4: Bedingungen + Unterschrift ---- */
+function partBedingungen(){
+  let rows = [];
+  model.agb.filter(s => s.on).forEach(s => { rows = rows.concat(sectionRows(s.titel, s.text, rows.length ? 1 : 0)); });
+  if(rows.length) rows[rows.length-1].keep = true;  // letzte Textzeile bleibt bei der Unterschrift
+  rows.push({ h:2, gap: rows.length ? 4 : 0, keep:false, draw:k=>{
+    const o = [
+      Ln(k, X.sig1[0], X.sig1[1]),
+      T("s-body", k,   { x:X.sig1[0] }, "Ort, Datum, Unterschrift Auftraggeber"),
+      T("s-body", k+1, { x:X.sig1[0] }, "Name & Funktion der unterzeichnenden Person")
+    ];
+    if(model.unterschriftAN) o.push(
+      Ln(k, X.sig2[0], X.sig2[1]),
+      T("s-body", k,   { x:X.sig2[0] }, "Ort, Datum, Unterschrift Auftragnehmer"),
+      T("s-body", k+1, { x:X.sig2[0] }, "Name & Funktion der unterzeichnenden Person"));
+    return o;
+  }});
+  return rows;
+}
+
+/* ============================================================
+   6) PAGINATOR — jeder Teil beginnt auf einer neuen Seite; Zeilen
+      fließen bis LIMIT_K; "keep"-Ketten wandern gemeinsam weiter.
+   ============================================================ */
+function paginate(){
+  const pages = [];
+  [partAnschreiben(), partUebersicht(), partLeistungen(), partBedingungen()].forEach(rows=>{
+    let page = []; pages.push(page);
+    let cursor = TOP_K;
+    let i = 0;
+    while(i < rows.length){
+      let j = i;
+      while(rows[j].keep && j+1 < rows.length) j++;
+      const atTop = cursor === TOP_K;
+      const chainH = (from, to) => { let h = 0; for(let x=from; x<=to; x++) h += (x===from ? 0 : rows[x].gap) + rows[x].h; return h; };
+      let gap = atTop ? 0 : rows[i].gap;
+      if(!atTop && cursor + gap + chainH(i, j) > LIMIT_K){
+        page = []; pages.push(page); cursor = TOP_K; gap = 0;
+      }
+      if(cursor + chainH(i, j) > LIMIT_K) j = i;   // Kette länger als eine Seite: Zeile für Zeile
+      for(let x=i; x<=j; x++){
+        const g = x===i ? gap : rows[x].gap;
+        if(x > i && cursor + g + rows[x].h > LIMIT_K){ page = []; pages.push(page); cursor = TOP_K; }
+        const k = cursor + (cursor===TOP_K && x>i ? 0 : g);
+        rows[x].draw(k).forEach(op => page.push(op));
+        cursor = k + rows[x].h;
+      }
+      i = j + 1;
+    }
+  });
+  return pages;
+}
+
+/* Kopf + Fuß als ops (auf jeder Seite gleich) */
+function chromeOps(idx, count){
+  const o = [];
+  const rows = [
+    model.header.projekt ? "Projekt: " + model.header.projekt : "",
+    model.header.nr ? "Angebotsnr.: " + model.header.nr : "",
+    `${model.header.place || ""}, ${deDate(model.header.date)}`
+  ];
+  DS.header.rowK.forEach((k, i) => o.push(T("s-title", k, { span:2, rx:DS.rightEdge }, rows[i])));
+  DS.header.ruleK.forEach(k => o.push(Ln(k, DS.header.ruleX1, DS.header.ruleX2)));
+  BUERO.blocks.forEach((b,i)=>{
+    o.push(T("s-footer", DS.footer.k1, { x:DS.colX(DS.footer.blocks[i]) }, b[0]));
+    o.push(T("s-footer", DS.footer.k2, { x:DS.colX(DS.footer.blocks[i]) }, b[1]));
+  });
+  o.push(T("s-footer", DS.footer.k1, { rx:DS.rightEdge }, "Page"));
+  o.push(T("s-footer", DS.footer.k2, { rx:DS.rightEdge }, `${idx}/${count}`));
+  return o;
+}
+
+/* ============================================================
+   7) RENDERER Bildschirm
+   ============================================================ */
+const stage = document.getElementById("stage");
+function domText(op){
+  const d = document.createElement("div");
+  d.className = "b " + op.cls + (op.rx != null ? " r" : "") + (op.jw ? " j" : "");
+  const h = (op.span||1) * BL;
+  d.style.top = (op.topMM != null ? op.topMM : DS.G(op.k)) + "mm";
+  d.style.height = h + "mm"; d.style.lineHeight = h + "mm";
+  if(op.rx != null){ d.style.right = (DS.page.w - op.rx) + "mm"; d.style.left = "0mm"; }
+  else {
+    d.style.left = op.x + "mm";
+    const w = op.jw || op.w;
+    d.style.right = (DS.page.w - (w ? op.x + w : DS.rightEdge)) + "mm";
+  }
+  const s = document.createElement("span");
+  if(op.jw){ String(op.s).split(" ").forEach(wd => { const e = document.createElement("span"); e.textContent = wd; s.appendChild(e); }); }
+  else s.textContent = op.s;
+  d.appendChild(s);
+  return d;
+}
+function domLine(op){
+  const d = document.createElement("div"); d.className = "line";
+  d.dataset.topmm = DS.G(op.k);
+  d.style.top = DS.G(op.k) + "mm"; d.style.left = op.x1 + "mm"; d.style.width = (op.x2 - op.x1) + "mm";
+  return d;
+}
+function domChromeStatic(page){
+  page.appendChild(domText(T("s-wordmark", 0, { x:DS.colX(1), topMM:DS.header.wordmarkTop1 }, "AN(N) ARCHITECTURE")));
+  page.appendChild(domText(T("s-wordmark", 0, { x:DS.colX(1), topMM:DS.header.wordmarkTop2 }, "SOLUTION")));
+  const m = document.createElement("div"); m.className = "monogram";
+  const g = DS.header.monogram;
+  m.style.left = (g.right - g.w) + "mm"; m.style.top = g.top + "mm";
+  m.style.width = g.w + "mm"; m.style.height = g.h + "mm";
+  m.innerHTML = MONOGRAM_SVG; page.appendChild(m);
+}
+let showGrid = false;
+function renderGrid(page){
+  const ov = document.createElement("div"); ov.className = "grid-ov";
+  const f = document.createElement("div"); f.className = "frame";
+  f.style.left = DS.margin + "mm"; f.style.top = DS.margin + "mm";
+  f.style.width = (DS.rightEdge - DS.margin) + "mm"; f.style.height = (DS.G(61) - DS.margin) + "mm";
+  ov.appendChild(f);
+  for(let n=1;n<=DS.cols;n++){ const c = document.createElement("div"); c.className = "col"; c.style.left = DS.colX(n) + "mm"; c.style.width = DS.colW + "mm"; ov.appendChild(c); }
+  for(let k=0;k<=61;k++){ const b = document.createElement("div"); b.className = "bl"; b.style.top = DS.G(k) + "mm"; ov.appendChild(b); }
+  page.appendChild(ov);
+}
+function snapLines(){
+  const scale = zoom * (window.devicePixelRatio || 1) / MM_PER_CSSPX;
+  document.querySelectorAll(".doc-page .line").forEach(l=>{
+    l.style.top = (Math.round(parseFloat(l.dataset.topmm) * scale) / scale) + "mm";
+  });
+}
+function render(){
+  stage.innerHTML = "";
+  const pages = paginate();
+  pages.forEach((ops, i)=>{
+    const page = document.createElement("div"); page.className = "doc-page";
+    if(showGrid) renderGrid(page);
+    domChromeStatic(page);
+    ops.concat(chromeOps(i+1, pages.length)).forEach(op => page.appendChild(op.t === "line" ? domLine(op) : domText(op)));
+    stage.appendChild(page);
+  });
+  applyZoom();
+  updateSums();
+}
+
+/* ============================================================
+   8) PDF-EXPORT (jsPDF, direkter Download)
+   ============================================================ */
+const MONOGRAM_PTS = [
+  [[0,38.33],[5.10,38.33],[24.97,0],[20.01,0]],
+  [[83.88,0],[83.88,31.12],[61.19,0.10],[61.11,0],[56.53,0],[56.53,30.83],[34.05,0.10],[33.97,0],
+   [29.39,0],[29.39,38.33],[33.83,38.33],[33.83,7.20],[56.76,38.33],[60.97,38.33],[60.97,7.21],
+   [83.72,38.22],[83.79,38.33],[88.33,38.33],[88.33,0],[83.88,0]]
+];
+const LINE_RGB = [167,169,172];
+const TSHIFT_EM = 0.075, TSHIFT_CAPS_EM = 0.135;
+const PDF_STYLE = {
+  "s-wordmark":["RotaLight","normal",8,true], "s-title":["Rota","normal",10],
+  "s-body":["Rota","normal",10], "s-bodyb":["Rota","bold",10],
+  "s-head":["Rota","bold",8], "s-thead":["Rota","normal",8,true],
+  "s-cell":["Rota","normal",8], "s-cellb":["Rota","bold",8], "s-footer":["RotaLight","normal",8]
+};
+function exportPDF(){
+  if(!window.jspdf || !window.ROTA_TTF){ alert("PDF-Bibliothek nicht geladen (Internet nötig)."); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:"mm", format:"a4", compress:true });
+  const R = window.ROTA_TTF;
+  doc.addFileToVFS("RotaMed.ttf", R.medium);  doc.addFont("RotaMed.ttf", "Rota", "normal");
+  doc.addFileToVFS("RotaBold.ttf", R.bold);   doc.addFont("RotaBold.ttf", "Rota", "bold");
+  doc.addFileToVFS("RotaLight.ttf", R.light); doc.addFont("RotaLight.ttf", "RotaLight", "normal");
+
+  const text = op => {
+    if(op.s == null || op.s === "") return;
+    const [fam, sty, size, caps] = PDF_STYLE[op.cls];
+    doc.setFont(fam, sty); doc.setFontSize(size); doc.setTextColor(10,10,10);
+    const s = caps ? String(op.s).toUpperCase() : String(op.s);
+    const cs = caps ? 0.02 * size * 25.4/72 : 0;
+    doc.setCharSpace(cs);
+    const top = op.topMM != null ? op.topMM : DS.G(op.k);
+    const y = top + (op.span||1)*BL/2 + (caps ? TSHIFT_CAPS_EM : TSHIFT_EM) * size * 25.4/72;
+    if(op.jw){
+      const words = s.split(" ");
+      const sum = words.reduce((a,w)=> a + doc.getTextWidth(w), 0);
+      const gap = words.length > 1 ? (op.jw - sum) / (words.length - 1) : 0;
+      let x = op.x;
+      words.forEach(w => { doc.text(w, x, y, { baseline:"middle" }); x += doc.getTextWidth(w) + gap; });
+    } else if(op.rx != null){
+      doc.text(s, op.rx, y, { align:"right", baseline:"middle" });
+    } else {
+      doc.text(s, op.x, y, { baseline:"middle" });
+    }
+    doc.setCharSpace(0);
+  };
+  const line = op => { doc.setDrawColor(...LINE_RGB); doc.setLineWidth(PT(0.5)); const y = DS.G(op.k); doc.line(op.x1, y, op.x2, y); };
+  const monogram = () => {
+    const g = DS.header.monogram, sx = g.w/88.33, sy = g.h/38.33, ox = g.right - g.w, oy = g.top;
+    doc.setFillColor(10,10,10);
+    MONOGRAM_PTS.forEach(pts=>{
+      const deltas = []; let prev = pts[0];
+      for(let i=1;i<pts.length;i++){ deltas.push([(pts[i][0]-prev[0])*sx, (pts[i][1]-prev[1])*sy]); prev = pts[i]; }
+      doc.lines(deltas, ox + pts[0][0]*sx, oy + pts[0][1]*sy, [1,1], "F", true);
+    });
+  };
+
+  const pages = paginate();
+  pages.forEach((ops, i)=>{
+    if(i > 0) doc.addPage();
+    text(T("s-wordmark", 0, { x:DS.colX(1), topMM:DS.header.wordmarkTop1 }, "AN(N) ARCHITECTURE"));
+    text(T("s-wordmark", 0, { x:DS.colX(1), topMM:DS.header.wordmarkTop2 }, "SOLUTION"));
+    monogram();
+    ops.concat(chromeOps(i+1, pages.length)).forEach(op => op.t === "line" ? line(op) : text(op));
+  });
+  doc.save((model.header.nr || "Angebot").replace(/[^\w\-]+/g,"_") + ".pdf");
+}
+
+/* ============================================================
+   9) EDITOR
+   ============================================================ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function getPath(path){ return path.split(".").reduce((o,k)=> o==null ? o : o[k], model); }
+function setPath(path, v){ const s = path.split("."); let o = model; for(let i=0;i<s.length-1;i++) o = o[s[i]]; o[s[s.length-1]] = v; }
+
+/* data-bind="pfad" — Felder mit festem Pfad (Kopf, Brief …) */
+document.querySelectorAll("[data-bind]").forEach(el=>{
+  const ev = el.type === "checkbox" ? "change" : "input";
+  el.addEventListener(ev, ()=>{
+    const v = el.type === "checkbox" ? el.checked : (el.hasAttribute("data-num") ? (parseFloat(el.value)||0) : el.value);
+    setPath(el.dataset.bind, v); render();
+  });
+});
+function syncBound(){
+  document.querySelectorAll("[data-bind]").forEach(el=>{
+    const v = getPath(el.dataset.bind);
+    if(el.type === "checkbox") el.checked = !!v; else el.value = v == null ? "" : v;
+  });
+}
+
+/* Listen (Übersicht-Abschnitte, Gruppen/Positionen, Stundensätze, Bedingungen):
+   Eingaben tragen data-p="pfad.mit.indizes" und schreiben direkt ins Modell. */
+function onListInput(e){
+  const el = e.target; const p = el.dataset.p; if(!p) return;
+  let v = el.type === "checkbox" ? el.checked : el.value;
+  if(el.hasAttribute("data-num")) v = parseFloat(String(v).replace(",", ".")) || 0;
+  setPath(p, v);
+  if(el.dataset.rerender) renderEditor();
+  render();
+}
+["#ub-list","#groups","#saetze","#agb-list"].forEach(s=>{
+  $(s).addEventListener("input", onListInput);
+  $(s).addEventListener("change", e => { if(e.target.type === "checkbox" || e.target.tagName === "SELECT") onListInput(e); });
+});
+
+function renderUebersichtList(){
+  $("#ub-list").innerHTML = (model.uebersichtAbschnitte||[]).map((a,i)=>`
+    <div class="card${a.on === false ? " off" : ""}">
+      <div class="agb-head">
+        <input type="checkbox" data-p="uebersichtAbschnitte.${i}.on" data-rerender="1" ${a.on === false ? "" : "checked"} title="Abschnitt im Angebot">
+        <input type="text" data-p="uebersichtAbschnitte.${i}.titel" value="${esc(a.titel)}" placeholder="Überschrift">
+        <button class="small del" data-act="ub-del" data-i="${i}">Entfernen</button>
+      </div>
+      <div class="fld"><label>Text</label><textarea rows="4" data-p="uebersichtAbschnitte.${i}.text">${esc(a.text)}</textarea></div>
+    </div>`).join("");
+}
+function renderGroups(){
+  $("#groups").innerHTML = model.gruppen.map((g, gi)=>`
+    <div class="card group">
+      <div class="card-head">
+        <div class="pos-no">${gi+1}</div>
+        <div class="fld"><label>Gruppe</label><input type="text" data-p="gruppen.${gi}.name" value="${esc(g.name)}"></div>
+        <button class="small del" data-act="group-del" data-g="${gi}">Gruppe entfernen</button>
+      </div>
+      ${g.positionen.map((p, pi)=>`
+      <div class="card">
+        <div class="card-head">
+          <div class="pos-no">${posNr(gi, pi)}</div>
+          <div class="fld"><label>Leistung</label><input type="text" data-p="gruppen.${gi}.positionen.${pi}.titel" value="${esc(p.titel)}"></div>
+          <button class="small ghost" data-act="pos-up" data-g="${gi}" data-i="${pi}" title="nach oben">↑</button>
+          <button class="small del" data-act="pos-del" data-g="${gi}" data-i="${pi}">×</button>
+        </div>
+        <div class="fg3">
+          <div class="fld"><label>Abrechnungsart</label>
+            <select data-p="gruppen.${gi}.positionen.${pi}.art">
+              ${["Zeithonorar","Pauschalangebot"].map(o=>`<option${o===p.art?" selected":""}>${o}</option>`).join("")}
+            </select></div>
+          <div class="fld"><label>${isZeit(p) ? "Stunden" : "Menge"}</label><input type="text" inputmode="decimal" data-num data-p="gruppen.${gi}.positionen.${pi}.menge" value="${esc(numIn(p.menge))}"></div>
+          <div class="fld"><label>Satz netto €</label><input type="text" inputmode="decimal" data-num data-p="gruppen.${gi}.positionen.${pi}.satz" value="${esc(numIn(p.satz))}"></div>
+          <div class="fld"><label>Gesamt</label><input type="text" disabled value="${esc(eur(posGesamt(p)))}"></div>
+          <div class="fld" style="grid-column:1/-1"><label>Kostenzeile (z. B. Technische Mitarbeitende / Pauschalpaket)</label><input type="text" data-p="gruppen.${gi}.positionen.${pi}.rolle" value="${esc(p.rolle)}"></div>
+          <div class="fld" style="grid-column:1/-1"><label>Leistungsumfang (je Zeile ein Punkt)</label><textarea rows="5" data-p="gruppen.${gi}.positionen.${pi}.umfang">${esc(p.umfang)}</textarea></div>
+          <div class="fld" style="grid-column:1/-1"><label>Arbeitsergebnis (je Zeile ein Punkt, leer = entfällt)</label><textarea rows="2" data-p="gruppen.${gi}.positionen.${pi}.ergebnis">${esc(p.ergebnis)}</textarea></div>
+        </div>
+      </div>`).join("")}
+      <button class="ghost small" data-act="pos-add" data-g="${gi}">+ Position</button>
+    </div>`).join("");
+}
+function renderSaetze(){
+  $("#saetze").innerHTML = '<div class="fld" style="grid-column:1/-1"><label>Stundensätze für {Stundensätze}</label></div>' +
+    model.saetze.map((s,i)=>`
+      <div class="fld" style="grid-column:span 2"><input type="text" data-p="saetze.${i}.rolle" value="${esc(s.rolle)}"></div>
+      <div class="fld"><input type="text" inputmode="decimal" data-num data-p="saetze.${i}.satz" value="${esc(numIn(s.satz))}"></div>
+      <div class="fld"><button class="small del" data-act="satz-del" data-i="${i}">×</button></div>`).join("") +
+    '<div class="fld"><button class="ghost small" data-act="satz-add">+ Satz</button></div>';
+}
+function renderAgb(){
+  $("#agb-list").innerHTML = model.agb.map((s,i)=>`
+    <div class="card${s.on ? "" : " off"}">
+      <div class="agb-head">
+        <input type="checkbox" data-p="agb.${i}.on" data-rerender="1" ${s.on ? "checked" : ""} title="Abschnitt im Angebot">
+        <input type="text" data-p="agb.${i}.titel" value="${esc(s.titel)}">
+        <button class="small ghost" data-act="agb-reset" data-i="${i}" title="Text der gespeicherten Vorlage laden">Vorlage laden</button>
+        <button class="small ghost" data-act="agb-save" data-i="${i}" title="Diesen Text als Vorlage für künftige Angebote speichern">Als Vorlage</button>
+      </div>
+      <textarea rows="${Math.min(14, 3 + Math.round((s.text||"").length/120))}" data-p="agb.${i}.text">${esc(s.text)}</textarea>
+    </div>`).join("");
+}
+function renderEditor(){ renderUebersichtList(); renderGroups(); renderSaetze(); renderAgb(); }
+
+function updateSums(){
+  $("#sums").innerHTML =
+    `<div><span>Gesamt netto</span><span class="b">${eur(totalNetto())}</span></div>` +
+    `<div><span>Umsatzsteuer ${num(model.mwst)}%</span><span>${eur(totalMwst())}</span></div>` +
+    `<div><span>Gesamt brutto</span><span>${eur(totalBrutto())}</span></div>`;
+  model.gruppen.forEach((g,gi)=> g.positionen.forEach((p,pi)=>{
+    const el = document.querySelector(`[data-p="gruppen.${gi}.positionen.${pi}.satz"]`);
+    const ges = el && el.closest(".fg3").querySelector("input[disabled]");
+    if(ges) ges.value = eur(posGesamt(p));
+  }));
+}
+
+document.getElementById("editor").addEventListener("click", e=>{
+  const b = e.target.closest("[data-act]"); if(!b) return;
+  const a = b.dataset.act, gi = +b.dataset.g, i = +b.dataset.i;
+  if(a === "ub-del") model.uebersichtAbschnitte.splice(i, 1);
+  if(a === "group-del" && confirm("Gruppe mit allen Positionen entfernen?")) model.gruppen.splice(gi, 1);
+  if(a === "pos-del") model.gruppen[gi].positionen.splice(i, 1);
+  if(a === "pos-up" && i > 0){ const ps = model.gruppen[gi].positionen; [ps[i-1], ps[i]] = [ps[i], ps[i-1]]; }
+  if(a === "pos-add") model.gruppen[gi].positionen.push({ titel:"", art:"Zeithonorar", rolle:"Technische Mitarbeitende", menge:0, satz:90, umfang:"", ergebnis:"" });
+  if(a === "satz-del") model.saetze.splice(i, 1);
+  if(a === "satz-add") model.saetze.push({ rolle:"", satz:0 });
+  if(a === "agb-reset"){
+    const v = agbVorlagen().find(x => x.id === model.agb[i].id);
+    if(v && confirm("Text durch die gespeicherte Vorlage ersetzen?")){ model.agb[i].titel = v.titel; model.agb[i].text = v.text; }
+  }
+  if(a === "agb-save"){ alert(saveAgbVorlage(model.agb[i]) ? "Als Vorlage gespeichert." : "Speichern nicht möglich."); return; }
+  renderEditor(); render();
+});
+/* Abrechnungsart umstellen: Beschriftung „Stunden/Menge" + Kostenzeile anpassen */
+$("#groups").addEventListener("change", e=>{
+  const p = e.target.dataset.p; if(!p || !/\.art$/.test(p)) return;
+  const pos = getPath(p.replace(/\.art$/, ""));
+  if(!isZeit(pos) && pos.rolle === "Technische Mitarbeitende") pos.rolle = "Pauschalpaket";
+  if(isZeit(pos) && pos.rolle === "Pauschalpaket") pos.rolle = "Technische Mitarbeitende";
+  renderGroups(); render();
+});
+$("#btn-ub-add").onclick = ()=>{ model.uebersichtAbschnitte.push({ titel:"", on:true, text:"" }); renderEditor(); render(); };
+$("#btn-group-add").onclick = ()=>{ model.gruppen.push({ name:"", positionen:[{ titel:"", art:"Zeithonorar", rolle:"Technische Mitarbeitende", menge:0, satz:90, umfang:"", ergebnis:"" }] }); renderEditor(); render(); };
+
+$("#btn-save").onclick = ()=>{
+  const blob = new Blob([JSON.stringify(model, null, 2)], { type:"application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = (model.header.nr || "angebot").replace(/[^\w-]+/g,"_") + ".json"; a.click();
+};
+$("#btn-open").onclick = ()=> $("#file-open").click();
+$("#file-open").onchange = e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = ()=>{ try{ model = Object.assign(defaultModel(), JSON.parse(rd.result)); syncBound(); renderEditor(); render(); }catch(err){ alert("Datei nicht lesbar: " + err); } };
+  rd.readAsText(f);
+};
+$("#btn-pdf").onclick = ()=>{ try{ exportPDF(); }catch(err){ alert("PDF-Export fehlgeschlagen: " + err); console.error(err); } };
+$("#btn-print").onclick = ()=> window.print();
+
+/* ---- Zoom ---- */
+let zoom = 1, userZoomed = false;
+const PX_PER_MM = 1/MM_PER_CSSPX;
+function fitToWidth(){ return ($("#preview").clientWidth - 60) / (210*PX_PER_MM); }
+function fitToPage(){ const pv = $("#preview"); return Math.min((pv.clientWidth - 60)/(210*PX_PER_MM), (pv.clientHeight - 60)/(297*PX_PER_MM)); }
+function clampZoom(z){ return Math.max(Math.min(fitToPage(), 0.4), Math.min(3, z)); }
+function applyZoom(){
+  if(!userZoomed) zoom = Math.max(0.4, Math.min(1.9, fitToWidth()));
+  zoom = clampZoom(zoom);
+  stage.style.transform = "scale(" + zoom + ")";
+  const natH = stage.offsetHeight, natW = stage.offsetWidth;
+  stage.style.marginBottom = Math.max(0, (zoom - 1) * natH) + "px";
+  stage.style.marginLeft = stage.style.marginRight = Math.max(0, (zoom - 1) * natW / 2) + "px";
+  snapLines();
+}
+$("#btn-zoom-in").onclick  = ()=>{ userZoomed = true; zoom = clampZoom(zoom + 0.15); applyZoom(); };
+$("#btn-zoom-out").onclick = ()=>{ userZoomed = true; zoom = clampZoom(zoom - 0.15); applyZoom(); };
+$("#btn-zoom-fit").onclick = ()=>{ userZoomed = false; applyZoom(); };
+$("#btn-grid").onclick = ()=>{
+  showGrid = !showGrid;
+  $("#btn-grid").style.background = showGrid ? "var(--ink)" : "#fff";
+  $("#btn-grid").style.color = showGrid ? "#fff" : "var(--ink)";
+  render();
+};
+window.addEventListener("resize", ()=> applyZoom());
+
+/* ---- Splitter ---- */
+(function(){
+  const ed = $("#editor"), sp = $("#splitter"); let drag = false;
+  sp.addEventListener("mousedown", e=>{ drag = true; document.body.classList.add("resizing"); sp.classList.add("drag"); e.preventDefault(); });
+  window.addEventListener("mousemove", e=>{ if(!drag) return; ed.style.width = Math.max(360, Math.min(window.innerWidth*0.78, window.innerWidth - e.clientX)) + "px"; applyZoom(); });
+  window.addEventListener("mouseup", ()=>{ if(!drag) return; drag = false; document.body.classList.remove("resizing"); sp.classList.remove("drag");
+    try{ localStorage.setItem("an.editorW", ed.style.width); }catch(_){} });
+  try{ const w = localStorage.getItem("an.editorW"); if(w) ed.style.width = w; }catch(_){}
+})();
+
+/* ---- Start ---- */
+syncBound(); renderEditor(); render();
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=> render());
+</script>
+</body>
+</html>

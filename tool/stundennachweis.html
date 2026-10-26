@@ -250,8 +250,8 @@ const DS = {
   header:{
     monogram:{right:195, top:15, w:31.2, h:13.5},
     wordmarkTop1:14.6, wordmarkTop2:19.2,
-    titleK:5, placedateK:7,
-    ruleK:[5,7,9], ruleX1:122.65, ruleX2:195
+    titleK:5, midK:7, placedateK:9,           /* Kopf mit drei Zeilen (Ann, 2026-10-26) */
+    ruleK:[5,7,9,11], ruleX1:122.65, ruleX2:195
   },
   meta:{ labelK:12, gapK:3 },   /* AUFTRAG-/PROJEKT-Block untereinander, 3 Raster Abstand nach oben (Kopf-Linie K9) und unten (Tabelle) */
   table:{
@@ -352,6 +352,8 @@ let model = {
     { datum:"", taetigkeit:"Absprache mit APCOA",   bearbeiter:"Ann-Kathrin Salich", stunden:1.0 }
   ]
 };
+/* Kopfzeile 2: Bezug zum Angebot = Auftrags-Nr. */
+function headerMid(){ const nr = (model.meta && model.meta.auftrag && model.meta.auftrag.nr) || ''; return nr ? 'Angebotsnr.: ' + nr : ''; }
 function isoToday(){ return new Date().toISOString().slice(0,10); }
 function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
 function hours(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" Std."; }
@@ -448,6 +450,7 @@ function renderHeader(page){
   m.innerHTML = MONOGRAM_SVG; page.appendChild(m);
 
   page.appendChild(band('s-title',     {right:true, k:DS.header.titleK,     span:2}, model.header.title || ''));
+  page.appendChild(band('s-title',     {right:true, k:DS.header.midK,       span:2}, headerMid()));
   page.appendChild(band('s-placedate', {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`));
   DS.header.ruleK.forEach(k => rule(page, k, DS.header.ruleX1, DS.header.ruleX2));
 }
@@ -587,6 +590,7 @@ function exportPDF(){
     put('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, 'SOLUTION');
     monogram();
     put('s-title',     {right:true, k:DS.header.titleK,     span:2}, model.header.title || '');
+    put('s-title',     {right:true, k:DS.header.midK,       span:2}, headerMid());
     put('s-placedate', {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`);
     DS.header.ruleK.forEach(k => hline(k, DS.header.ruleX1, DS.header.ruleX2));
 
