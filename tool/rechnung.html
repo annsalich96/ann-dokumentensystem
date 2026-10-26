@@ -171,16 +171,16 @@ button:disabled{opacity:.4;cursor:not-allowed}
 
   <h2>Empfänger</h2>
   <div class="fg">
-    <div class="fld wide"><label>Name · Firma · Adresse (je Zeile)</label><textarea id="f-empf" rows="4">Robert Bräunlin
-Bräunlin Kolb Architekten GmbH
-Burgfelderstrasse 211
-4055 Basel</textarea></div>
+    <div class="fld wide"><label>Name · Firma · Adresse (je Zeile)</label><textarea id="f-empf" rows="4">Erika Muster
+Beispiel GmbH
+Musterstraße 1
+10115 Berlin</textarea></div>
   </div>
 
   <h2>Brieftext</h2>
   <div class="fg">
-    <div class="fld wide"><label>Anrede</label><input type="text" id="f-anrede" value="Sehr geehrter Herr Bräunlin,"></div>
-    <div class="fld wide"><label>Einleitung</label><textarea id="f-einleitung" rows="3">vielen Dank für Ihr Vertrauen und die Möglichkeit, Ihr Projekt „Gundilitor" in Basel gemeinsam mit Ihnen weiterzuentwickeln.</textarea></div>
+    <div class="fld wide"><label>Anrede</label><input type="text" id="f-anrede" value="Sehr geehrte Frau Muster,"></div>
+    <div class="fld wide"><label>Einleitung</label><textarea id="f-einleitung" rows="3">vielen Dank für Ihr Vertrauen und die Möglichkeit, Ihr Projekt gemeinsam mit Ihnen weiterzuentwickeln.</textarea></div>
     <div class="fld wide"><label>Schlusstext</label><textarea id="f-schluss" rows="3">Gerne unterbreiten wir Ihnen im Folgenden unser Angebot für die weiterführenden Leistungen. Das vorliegende Dokument umfasst Angebotspositionen für die Innenraumplanung im Erdgeschoss, die Gestaltung der Erdgeschossfassaden sowie.</textarea></div>
     <div class="fld"><label>Grußformel</label><input type="text" id="f-gruss" value="Mit freundlichen Grüßen,"></div>
     <div class="fld"><label>Absender</label><input type="text" id="f-absender" value="Ann-Kathrin Salich"></div>
@@ -266,10 +266,10 @@ const MONOGRAM_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88.33
 let model = {
   type:"rechnung",
   header:{ projekt:"", title:"Rechnungsnr.: OFF_GUN_02_260908", place:"Berlin", date:isoToday() },
-  empfaenger:"Robert Bräunlin\nBräunlin Kolb Architekten GmbH\nBurgfelderstrasse 211\n4055 Basel",
+  empfaenger:"Erika Muster\nBeispiel GmbH\nMusterstraße 1\n10115 Berlin",
   brief:{
-    anrede:"Sehr geehrter Herr Bräunlin,",
-    einleitung:"vielen Dank für Ihr Vertrauen und die Möglichkeit, Ihr Projekt „Gundilitor“ in Basel gemeinsam mit Ihnen weiterzuentwickeln.",
+    anrede:"Sehr geehrte Frau Muster,",
+    einleitung:"vielen Dank für Ihr Vertrauen und die Möglichkeit, Ihr Projekt gemeinsam mit Ihnen weiterzuentwickeln.",
     schluss:"Gerne unterbreiten wir Ihnen im Folgenden unser Angebot für die weiterführenden Leistungen. Das vorliegende Dokument umfasst Angebotspositionen für die Innenraumplanung im Erdgeschoss, die Gestaltung der Erdgeschossfassaden sowie.",
     gruss:"Mit freundlichen Grüßen,", absender:"Ann-Kathrin Salich"
   },

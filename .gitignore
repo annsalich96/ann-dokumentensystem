@@ -12,3 +12,6 @@ dev-screenshots/
 
 # tool/stundennachweis.standalone.html wird mitversioniert, damit es direkt
 # per htmlpreview / statischem Hosting aufrufbar ist (aus tool/build.py neu erzeugbar).
+
+# Dokumente mit echten Kundendaten — nie pushen (GitHub Pages ist öffentlich)
+docs/data/kunden-datenstruktur.md

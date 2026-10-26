@@ -176,15 +176,15 @@ button:disabled{opacity:.4;cursor:not-allowed}
 
   <h2>Auftrag</h2>
   <div class="fg">
-    <div class="fld"><label>Auftrags-Nr.</label><input type="text" id="f-auftrag-nr" value="OFF_KHP_N_01_260301"></div>
+    <div class="fld"><label>Auftrags-Nr.</label><input type="text" id="f-auftrag-nr" value="OFF_BPP_N_01_260301"></div>
     <div class="fld wide"><label>Bezeichnung</label><input type="text" id="f-auftrag-bez" value="Nachtrag 01 – Bodenmarkierungsplanung"></div>
   </div>
 
   <h2>Projekt</h2>
   <div class="fg">
-    <div class="fld wide"><label>Projektname</label><input type="text" id="f-proj-name" value="Kant Center – Parkhaus"></div>
-    <div class="fld wide"><label>Projekt-Adresse</label><textarea id="f-proj-adr" rows="2" style="resize:vertical">Krumme Str. 48
-10627 Berlin</textarea></div>
+    <div class="fld wide"><label>Projektname</label><input type="text" id="f-proj-name" value="Beispielprojekt – Parkhaus"></div>
+    <div class="fld wide"><label>Projekt-Adresse</label><textarea id="f-proj-adr" rows="2" style="resize:vertical">Musterstraße 1
+10115 Berlin</textarea></div>
   </div>
 
   <h2>Aus Time Tracking laden</h2>
@@ -342,14 +342,14 @@ let model = {
   type:"stundennachweis",
   header:{ title:"Anlage 01_Stundennachweis", place:"Berlin", date:isoToday() },
   meta:{
-    auftrag:{ nr:"OFF_KHP_N_01_260301", bez:"Nachtrag 01 – Bodenmarkierungsplanung" },
-    projekt:{ name:"Kant Center – Parkhaus", adresse:"Krumme Str. 48\n10627 Berlin" },
+    auftrag:{ nr:"OFF_BPP_N_01_260301", bez:"Nachtrag 01 – Bodenmarkierungsplanung" },
+    projekt:{ name:"Beispielprojekt – Parkhaus", adresse:"Musterstraße 1\n10115 Berlin" },
     zeitraum:{ von:"", bis:"" }
   },
   settings:{ einheit:"stunden", stundenProTag:8 },
   items:[
     { datum:"", taetigkeit:"Erstellung von Plänen", bearbeiter:"Ann-Kathrin Salich", stunden:0.5 },
-    { datum:"", taetigkeit:"Absprache mit APCOA",   bearbeiter:"Ann-Kathrin Salich", stunden:1.0 }
+    { datum:"", taetigkeit:"Abstimmung mit Fachplanung",   bearbeiter:"Ann-Kathrin Salich", stunden:1.0 }
   ]
 };
 /* Kopfzeile 2: Bezug zum Angebot = Auftrags-Nr. */
@@ -791,7 +791,7 @@ entriesBox.addEventListener('click', e=>{
 
 $('#btn-add').onclick = ()=>{ model.items.push({datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0}); renderEntries(); render(); };
 $('#btn-demo').onclick = ()=>{
-  const acts=["Erstellung von Plänen","Absprache mit APCOA","Baustellenbegehung","Abstimmung Fachplaner","Ausschreibungstext","Mengenermittlung"];
+  const acts=["Erstellung von Plänen","Abstimmung mit Fachplanung","Baustellenbegehung","Abstimmung Fachplaner","Ausschreibungstext","Mengenermittlung"];
   model.items = Array.from({length:14},(_,k)=>({
     datum:`2026-08-${String(3+k).padStart(2,'0')}`, taetigkeit:acts[k%6],
     bearbeiter:"Ann-Kathrin Salich", stunden:[0.5,1,2,1.5,3,0.75][k%6]

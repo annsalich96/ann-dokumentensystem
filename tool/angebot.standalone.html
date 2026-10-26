@@ -94,6 +94,12 @@ button.mini:hover{border-color:var(--ink)}
 .phbar{font-size:12px;color:var(--ui-muted);margin-top:6px;display:flex;flex-wrap:wrap;gap:5px;align-items:center}
 .phbar .phprev{flex-basis:100%;color:#2d6a3e;margin-top:2px}
 #editor textarea{overflow:hidden;min-height:44px}
+/* Textfeld mit Stichpunkten: Zeile mit „- " = Stichpunkt, Folgezeilen hängend eingerückt */
+.rt{width:100%;font-family:var(--ui);font-size:15px;line-height:1.4;padding:10px 12px;border:1px solid var(--ui-border);
+  border-radius:7px;background:#fff;color:var(--ink);min-height:44px;white-space:pre-wrap;overflow-wrap:anywhere;cursor:text}
+.rt:focus{outline:2px solid var(--ink);outline-offset:-1px;border-color:var(--ink)}
+.rt > div{min-height:1.4em}
+.rt > div.bul{padding-left:var(--bi,12px);text-indent:calc(-1 * var(--bi,12px))}
 .sums{font-size:13.5px;margin-top:6px;display:flex;flex-direction:column;gap:3px;max-width:380px}
 .sums>div{display:flex;justify-content:space-between}
 .sums .b{font-weight:700}
@@ -222,7 +228,7 @@ button.mini:hover{border-color:var(--ink)}
     <div class="fld wide"><label>Einleitung</label><textarea rows="2" data-bind="detail.text"></textarea></div>
   </div>
   <p class="hint" style="margin-top:16px">Positionen nach Gruppen. Die Nummer (1.01, 1.02, 2.01 …) entsteht automatisch.
-    Stichpunkte: Zeile mit „- “ beginnen oder markieren und „• Stichpunkte“ klicken; alles andere ist Fließtext. Gesamt = Menge × Satz.</p>
+    Stichpunkte: Zeile mit „- “ beginnen (Enter setzt den nächsten, Enter auf leerem Punkt beendet die Liste) oder Zeilen markieren und „• Stichpunkte“ klicken. Gesamt = Menge × Satz.</p>
   <div id="groups"></div>
   <div class="btnbar"><button class="ghost" id="btn-group-add">+ Gruppe</button></div>
   <div class="fg" style="margin-top:18px">
@@ -338,12 +344,12 @@ const BULLETS_1 = "- Erstellung schematischer Grundrisse und erforderlicher Ansi
 function defaultModel(){
   return {
     type:"angebot", version:2,
-    header:{ projectId:"KANT HOUSE ENTRANCES", projekt:"KANT HOUSE ENTRANCES", code:"KHE", seq:7, nr:"", place:"Berlin", date:isoToday() },
+    header:{ projectId:"", projekt:"Beispielprojekt – Eingänge", code:"BPE", seq:1, nr:"", place:"Berlin", date:isoToday() },
     clientId:"", contactId:"",
-    empfaenger:"Rafael Borbalán\nKintyre Project & Construction\nManagement GmbH\nSchillerstr. 27\n60313 Frankfurt am Main",
+    empfaenger:"Erika Muster\nBeispiel GmbH\nMusterstraße 1\n10115 Berlin",
     brief:{
-      anrede:"Sehr geehrter Herr Borbalán,",
-      text:"gerne unterbreiten wir Ihnen ein Angebot für die Erstellung einer schematischen Planung als Grundlage einer ersten Kosteneinschätzung für die von uns konzipierte Neugestaltung der Eingänge des Kant Centers an der Wilmersdorfer Straße und der Kantstraße. Grundlage sind die beigefügten Perspektiven.\n\nDen Leistungsumfang und die Abgrenzungen finden Sie auf den folgenden Seiten.\n\nGerne stehe ich Ihnen zur weiteren Erläuterung zur Verfügung.\nIch freue mich darauf, Ihnen bei Ihrem Projekt zur Seite zu stehen.",
+      anrede:"Sehr geehrte Frau Muster,",
+      text:"gerne unterbreiten wir Ihnen ein Angebot für die Erstellung einer schematischen Planung als Grundlage einer ersten Kosteneinschätzung für die Neugestaltung der Eingänge. Grundlage sind die beigefügten Perspektiven.\n\nDen Leistungsumfang und die Abgrenzungen finden Sie auf den folgenden Seiten.\n\nGerne stehe ich Ihnen zur weiteren Erläuterung zur Verfügung.\nIch freue mich darauf, Ihnen bei Ihrem Projekt zur Seite zu stehen.",
       gruss:"Mit freundlichen Grüßen,", name:"Ann-Kathrin Salich", funktion:"Freischaffende Architektin"
     },
     uebersichtAbschnitte:[
@@ -371,8 +377,8 @@ function defaultModel(){
 }
 let model = defaultModel();
 /* Beispiel-Kunde für die Erstansicht (wird beim Verbinden durch AppSheet ersetzt) */
-const BEISPIEL_KUNDE = { name:"Kintyre Project & Construction Management GmbH", street:"Schillerstr. 27", zip:"60313", city:"Frankfurt am Main", tax:"", email:"", phone:"" };
-const BEISPIEL_PERSON = { salutation:"Herr", first:"Rafael", last:"Borbalán", email:"", phone:"" };
+const BEISPIEL_KUNDE = { name:"Beispiel GmbH", street:"Musterstraße 1", zip:"10115", city:"Berlin", tax:"", email:"", phone:"" };
+const BEISPIEL_PERSON = { salutation:"Frau", first:"Erika", last:"Muster", email:"", phone:"" };
 
 function isoToday(){ return new Date().toISOString().slice(0,10); }
 function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
@@ -839,6 +845,7 @@ function syncBound(){
     if(el.type === "checkbox") el.checked = !!v; else el.value = v == null ? "" : v;
   });
   if(typeof growAll === "function") growAll();
+  document.querySelectorAll("[data-bind]").forEach(el => { if(el._rt && document.activeElement !== el._rt) rtSet(el._rt, el.value); });
 }
 
 /* Listen (Übersicht-Abschnitte, Gruppen/Positionen, Stundensätze, Bedingungen):
@@ -940,12 +947,101 @@ function insertPh(ta, key){
   ta.dispatchEvent(new Event("input", { bubbles:true }));
 }
 const BUL = '<button class="mini" data-act="bul" title="Markierte Zeilen zu Stichpunkten (oder zurück zu Fließtext)">• Stichpunkte</button>';
-function renderEditor(){ renderUebersichtList(); renderGroups(); renderAgb(); growAll(); }
+function renderEditor(){ renderUebersichtList(); renderGroups(); renderAgb(); enhanceAll(); growAll(); }
+
+/* ---- Textfelder mit Stichpunkten (Ann, 2026-10-26) ----------------------------------------
+   Normale Textfelder können keine hängenden Einzüge. Darum bekommt jedes Fließtext-Feld eine
+   bearbeitbare Fläche (.rt): jede Zeile ist ein <div>; beginnt sie mit „- " (oder „•"), wird sie
+   als Stichpunkt hängend eingerückt — umbrochene Folgezeilen stehen bündig mit dem Text.
+   Das versteckte <textarea> bleibt die Datenquelle (data-p / data-bind wie bisher). */
+const RT_BULLET = /^\s*[-•–]\s/;
+(function(){ const c = document.createElement("canvas").getContext("2d");
+  c.font = '15px -apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif';
+  document.documentElement.style.setProperty("--bi", Math.ceil(c.measureText("- ").width) + "px"); })();
+function rtSet(rt, text){
+  rt.innerHTML = "";
+  String(text || "").split("\n").forEach(line => {
+    const d = document.createElement("div");
+    if(line) d.textContent = line; else d.appendChild(document.createElement("br"));
+    rt.appendChild(d);
+  });
+  rtMark(rt);
+}
+function rtLines(rt){
+  const out = [];
+  rt.childNodes.forEach(n => out.push(n.nodeType === 3 ? n.textContent : (n.textContent || "")));
+  return out;
+}
+function rtGet(rt){ return rtLines(rt).join("\n").replace(/\u00a0/g, " "); }
+function rtMark(rt){ rt.querySelectorAll(":scope > div").forEach(d => d.classList.toggle("bul", RT_BULLET.test(d.textContent))); }
+function rtLineOf(rt){
+  const sel = getSelection(); if(!sel.rangeCount) return null;
+  let n = sel.anchorNode; while(n && n.parentNode !== rt) n = n.parentNode;
+  return n && n.nodeType === 1 ? n : null;
+}
+function rtSync(rt){
+  rtMark(rt);
+  const ta = rt._ta; ta.value = rtGet(rt);
+  ta.dispatchEvent(new Event("input", { bubbles:true }));
+}
+function enhance(ta){
+  if(ta._rt) return ta._rt;
+  const rt = document.createElement("div");
+  rt.className = "rt"; rt.contentEditable = "true"; rt.spellcheck = true;
+  rt._ta = ta; ta._rt = rt;
+  ta.style.display = "none"; ta.after(rt);
+  rtSet(rt, ta.value);
+  rt.addEventListener("input", e=>{
+    // Enter nach einem Stichpunkt -> neuer Stichpunkt
+    if(e.inputType === "insertParagraph"){
+      const line = rtLineOf(rt), prev = line && line.previousElementSibling;
+      if(prev && RT_BULLET.test(prev.textContent) && prev.textContent.replace(RT_BULLET, "").trim() && !line.textContent.trim()){
+        const m = prev.textContent.match(RT_BULLET)[0];
+        document.execCommand("insertText", false, m.trimStart());
+        return;                                    // insertText löst erneut „input" aus
+      }
+    }
+    rtSync(rt);
+  });
+  rt.addEventListener("keydown", e=>{
+    if(e.key !== "Enter" || e.shiftKey) return;
+    const line = rtLineOf(rt);
+    // Enter auf leerem Stichpunkt beendet die Liste
+    if(line && RT_BULLET.test(line.textContent) && !line.textContent.replace(RT_BULLET, "").trim()){
+      e.preventDefault(); line.innerHTML = "<br>";
+      const r = document.createRange(); r.setStart(line, 0); r.collapse(true);
+      getSelection().removeAllRanges(); getSelection().addRange(r);
+      rtSync(rt);
+    }
+  });
+  rt.addEventListener("paste", e=>{                // nur reinen Text einfügen, Zeilen bleiben Zeilen
+    e.preventDefault();
+    const lines = (e.clipboardData.getData("text/plain") || "").replace(/\r/g, "").split("\n");
+    lines.forEach((l, i) => { if(i) document.execCommand("insertParagraph"); if(l) document.execCommand("insertText", false, l); });
+  });
+  return rt;
+}
+function enhanceAll(){ document.querySelectorAll('#editor textarea:not([data-bind="empfaenger"])').forEach(enhance); }
+/* Stichpunkt-Knopf für die .rt-Fläche: markierte Zeilen umschalten */
+function rtToggleBullets(rt){
+  const sel = getSelection();
+  let lines = [...rt.querySelectorAll(":scope > div")];
+  if(sel.rangeCount && rt.contains(sel.anchorNode)){
+    const r = sel.getRangeAt(0);
+    const hit = lines.filter(d => r.intersectsNode(d));
+    if(hit.length) lines = hit;
+  } else lines = lines.slice(-1);
+  const filled = lines.filter(d => d.textContent.trim());
+  const allOn = filled.length && filled.every(d => RT_BULLET.test(d.textContent));
+  filled.forEach(d => { d.textContent = allOn ? d.textContent.replace(RT_BULLET, "") : (RT_BULLET.test(d.textContent) ? d.textContent : "- " + d.textContent.trim()); });
+  rtSync(rt);
+}
 
 /* Textfelder wachsen mit dem Inhalt — kein Scrollen im Feld (Ann, 2026-10-26) */
 function grow(ta){ ta.style.height = "auto"; ta.style.height = (ta.scrollHeight + 2) + "px"; }
 function growAll(){ document.querySelectorAll("#editor textarea").forEach(grow); }
 document.getElementById("editor").addEventListener("input", e => { if(e.target.tagName === "TEXTAREA") grow(e.target); });
+document.getElementById("editor").addEventListener("mousedown", e => { if(e.target.closest("button.mini")) e.preventDefault(); });
 window.addEventListener("resize", growAll);
 
 /* Stichpunkte: markierte Zeilen mit „- " versehen bzw. wieder entfernen */
@@ -990,8 +1086,14 @@ function updateSums(){
 document.getElementById("editor").addEventListener("click", e=>{
   const b = e.target.closest("[data-act]"); if(!b) return;
   const a = b.dataset.act, gi = +b.dataset.g, i = +b.dataset.i;
-  if(a === "bul"){ toggleBullets(b.closest(".fld").querySelector("textarea")); return; }
-  if(a === "ph"){ insertPh(b.closest(".fld").querySelector("textarea"), b.dataset.ph); return; }
+  if(a === "bul" || a === "ph"){
+    const ta = b.closest(".fld").querySelector("textarea");
+    if(ta && ta._rt){
+      if(a === "bul") rtToggleBullets(ta._rt);
+      else { if(!ta._rt.contains(getSelection().anchorNode)) ta._rt.focus(); document.execCommand("insertText", false, "{" + b.dataset.ph + "}"); }
+    } else if(a === "bul") toggleBullets(ta); else insertPh(ta, b.dataset.ph);
+    return;
+  }
   if(a === "ub-del") model.uebersichtAbschnitte.splice(i, 1);
   if(a === "group-del" && confirm("Gruppe mit allen Positionen entfernen?")) model.gruppen.splice(gi, 1);
   if(a === "pos-del") model.gruppen[gi].positionen.splice(i, 1);
@@ -1145,7 +1247,7 @@ const fillForm = (F, d) => Object.keys(F).forEach(k => $(F[k]).value = (d && d[k
 function clientForm(){ return readForm(CF); }
 function setClientForm(c){ fillForm(CF, c); }
 
-/* „Schillerstr. 27 60313 Frankfurt am Main“ -> {street, zip, city} */
+/* „Musterstraße 1 10115 Berlin“ -> {street, zip, city} */
 function splitAddress(s){
   const m = String(s || "").replace(/\s*\n\s*/g, " ").trim().match(/^(.*?)[,\s]+(\d{4,5})\s+(.+)$/);
   return m ? { street:m[1].trim(), zip:m[2], city:m[3].trim() } : { street:String(s || "").trim(), zip:"", city:"" };
@@ -1287,6 +1389,7 @@ async function connectAppSheet(){
 /* ---- Start ---- */
 setClientForm(BEISPIEL_KUNDE); fillForm(PF, BEISPIEL_PERSON);
 syncBound(); renderEditor(); render();
+syncBound();
 connectAppSheet();
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(growAll);
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=> render());
