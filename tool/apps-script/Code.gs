@@ -2,8 +2,10 @@
  * ann architecture — Dokumenten-System
  * Backend-Layer (Phase 1): Google Apps Script Web App über »Project Management NEW«.
  * Lesen: unverändert. Schreiben: NUR additiv — fünf neue Spalten am Ende von
- * `TimeTrackingRecords` und ein eigenes Tab `DocSystem_Log`. Keine bestehende
- * Spalte/Zeile/Formel wird angefasst. Schreibzugriffe brauchen den WRITE_SECRET.
+ * `TimeTrackingRecords`, eigene Tabs `DocSystem_Log` / `DocSystem_Offers`, neue Spalten
+ * am Ende von `Projects` (Kürzel, deutsche Bezeichnung) und `Clients` (Ansprechperson,
+ * Anrede, Adresse). Kunden werden im Angebot-Editor neu angelegt oder geändert (Ann,
+ * 2026-10-26). Keine Formel wird angefasst. Schreibzugriffe brauchen den WRITE_SECRET.
  *
  * Endpunkte (GET, ?action=…):
  *   ping
@@ -14,6 +16,13 @@
  *   cleanDescriptions&items=<JSON>[&project=…&phase=…&maxChars=…]  -> KI-bereinigte Texte
  *   markBilled&entries=<JSON>&document=…&date=…&secret=…[&dryRun=1]   -> Einträge abrechnen
  *   unmarkBilled&document=…&secret=…[&ids=<JSON>]                     -> Abbuchung zurücknehmen
+ *   getOfferContext                        -> Projekte (Kürzel, deutsche Bezeichnung, nächste
+ *                                             Angebots-Nr.) + Kunden für den Angebot-Editor
+ *   saveProjectInfo&project=…&code=…&title=…&secret=…    -> Kürzel/Bezeichnung in `Projects`
+ *   saveClient&secret=…&name=…[&id=…&salutation=…&first=…&last=…&address=…&email=…&phone=…&project=…]
+ *                                          -> Kunde in `Clients` anlegen/ändern
+ *   registerOffer&secret=…&nr=…&project=…&seq=…&date=…[&client=…&net=…&gross=…]
+ *                                          -> Angebot im Register `DocSystem_Offers` eintragen
  *
  * Script-Properties:
  *   WRITE_SECRET       nötig für markBilled/unmarkBilled (frei wählbarer Schlüssel)
@@ -60,6 +69,10 @@ function doGet(e){
       case 'cleanDescriptions': data = cleanDescriptions(p); break;
       case 'markBilled':    data = markBilled(p); break;
       case 'unmarkBilled':  data = unmarkBilled(p); break;
+      case 'getOfferContext': data = getOfferContext(); break;
+      case 'saveProjectInfo': data = saveProjectInfo(p); break;
+      case 'saveClient':      data = saveClient(p); break;
+      case 'registerOffer':   data = registerOffer(p); break;
       case 'getTimeRecords':data = getTimeRecords({
                               project:p.project || '', phase:p.phase || '', service:p.service || '',
                               from:p.from || '', to:p.to || '', user:p.user || ''
@@ -494,6 +507,180 @@ function unmarkBilled(p){
     if(ids.length) logRow_('unmarkBilled', ids, doc, before, []);
     return { cleared: writes.length };
   } finally { lock.releaseLock(); }
+}
+
+
+/* ------------------------------------------------------------------ */
+/*  ANGEBOT-EDITOR (Ann, 2026-10-26)
+    Angebotsnummer: OFF_<Projekt-Kürzel>_<lfd. Nr. je Projekt, 2-stellig>_<JJMMTT>.
+    Die laufende Nummer zählt pro Projekt (nicht pro Jahr) und kommt aus dem
+    eigenen Register-Tab DocSystem_Offers. Kürzel und deutsche Projektbezeichnung
+    stehen in zwei neuen Spalten am Ende von `Projects`. Kunden (Empfänger) kommen aus
+    `Clients`, ergänzt um Ansprechperson, Anrede (Herr/Frau) und Adresse.          */
+/* ------------------------------------------------------------------ */
+const OFFER_TAB = 'DocSystem_Offers';
+const OFFER_HEADERS = ['Offer_No', 'Project_ID', 'Seq', 'Offer_Date', 'Client_ID', 'Net', 'Gross', 'Created', 'Updated', 'User'];
+const PROJECT_OFFER_COLS = { code:'Project Code', title:'Project Title DE' };
+const CLIENT_OFFER_COLS = { salutation:'Contact Salutation', first:'Contact First Name', last:'Contact Last Name', address:'Address' };
+
+function getOfferContext(){
+  ensureOfferColumns_();
+  const maxSeq = {};
+  rowsSafe_(OFFER_TAB).forEach(function(r){
+    const pid = str_(r['Project_ID']); const n = Math.floor(num_(r['Seq']));
+    if(pid && n > (maxSeq[pid] || 0)) maxSeq[pid] = n;
+  });
+  const projects = rows_(CONFIG.TABS.projects)
+    .filter(function(r){ return str_(r['Project_ID']) && str_(r['Status']) !== 'Cancelled'; })
+    .map(function(r){
+      const id = str_(r['Project_ID']);
+      return {
+        id: id, name: str_(r['Project Name']) || id,
+        code: str_(r[PROJECT_OFFER_COLS.code]), title: str_(r[PROJECT_OFFER_COLS.title]),
+        clientId: str_(r['Client']), billName: str_(r['Bill Name']), billAddress: str_(r['Bill Address']),
+        status: str_(r['Status']), billable: bool_(r['Billable']),
+        lastSeq: maxSeq[id] || 0
+      };
+    })
+    .sort(function(a, b){ return cmpDe_(a.title || a.name, b.title || b.name); });
+  const clients = rowsSafe_(CONFIG.TABS.clients)
+    .filter(function(r){ return str_(r['Client_ID']); })
+    .map(clientOut_)
+    .sort(function(a, b){ return cmpDe_(a.name, b.name); });
+  return { projects: projects, clients: clients };
+}
+/* Legt die neuen Spalten in `Projects` und `Clients` an, falls sie fehlen (nur Kopfzeile,
+   am Ende) — damit Kürzel, deutsche Bezeichnung und Anrede (Herr/Frau) auch direkt in
+   AppSheet gepflegt werden können (nach „Regenerate Structure"). Einmal pro 6 h geprüft. */
+function ensureOfferColumns_(){
+  const cache = CacheService.getScriptCache();
+  if(cache.get('offerColsOk')) return;
+  withLock_(function(){
+    ensureCols_(ss_().getSheetByName(CONFIG.TABS.projects), [PROJECT_OFFER_COLS.code, PROJECT_OFFER_COLS.title]);
+    ensureCols_(ss_().getSheetByName(CONFIG.TABS.clients),
+      [CLIENT_OFFER_COLS.salutation, CLIENT_OFFER_COLS.first, CLIENT_OFFER_COLS.last, CLIENT_OFFER_COLS.address]);
+  });
+  cache.put('offerColsOk', '1', 21600);
+}
+function clientOut_(r){
+  return {
+    id: str_(r['Client_ID']), name: str_(r['Client Name']),
+    email: str_(r['Email']), phone: str_(r['Phone']),
+    salutation: str_(r[CLIENT_OFFER_COLS.salutation]),
+    first: str_(r[CLIENT_OFFER_COLS.first]), last: str_(r[CLIENT_OFFER_COLS.last]),
+    address: str_(r[CLIENT_OFFER_COLS.address])
+  };
+}
+
+/* Spalten am ENDE der Kopfzeile sicherstellen (wie ensureBillingCols_). -> {Name: 1-basiert} */
+function ensureCols_(sh, names){
+  var lastCol = sh.getLastColumn();
+  var header = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h){ return String(h).trim(); });
+  var idx = {};
+  names.forEach(function(name){
+    var at = header.indexOf(name);
+    if(at === -1){ lastCol += 1; sh.getRange(1, lastCol, 1, 1).setValue(name); header.push(name); at = header.length - 1; }
+    idx[name] = at + 1;
+  });
+  return { idx: idx, header: header };
+}
+/* 1-basierte Zeilennummer der Zeile mit key in Spalte keyCol, sonst -1. */
+function findRow_(sh, keyCol, key){
+  var col = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); }).indexOf(keyCol);
+  if(col === -1) throw new Error('Spalte fehlt: ' + keyCol);
+  var last = sh.getLastRow(); if(last < 2) return -1;
+  var vals = sh.getRange(2, col + 1, last - 1, 1).getValues();
+  for(var i = 0; i < vals.length; i++) if(str_(vals[i][0]) === key) return i + 2;
+  return -1;
+}
+function withLock_(fn){
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try{ return fn(); } finally { lock.releaseLock(); }
+}
+
+function saveProjectInfo(p){
+  assertWriteAuth_(p);
+  var id = str_(p.project); if(!id) throw new Error('project fehlt');
+  return withLock_(function(){
+    var sh = ss_().getSheetByName(CONFIG.TABS.projects);
+    var row = findRow_(sh, 'Project_ID', id); if(row < 0) throw new Error('Projekt nicht gefunden: ' + id);
+    var c = ensureCols_(sh, [PROJECT_OFFER_COLS.code, PROJECT_OFFER_COLS.title]).idx;
+    var before = [sh.getRange(row, c[PROJECT_OFFER_COLS.code]).getValue(), sh.getRange(row, c[PROJECT_OFFER_COLS.title]).getValue()];
+    var code = str_(p.code).toUpperCase(), title = str_(p.title);
+    sh.getRange(row, c[PROJECT_OFFER_COLS.code]).setValue(code);
+    sh.getRange(row, c[PROJECT_OFFER_COLS.title]).setValue(title);
+    SpreadsheetApp.flush();
+    logRow_('saveProjectInfo', [id], '', before, [code, title]);
+    return { id: id, code: code, title: title };
+  });
+}
+
+function saveClient(p){
+  assertWriteAuth_(p);
+  var name = str_(p.name); if(!name) throw new Error('Firmen-/Kundenname fehlt');
+  return withLock_(function(){
+    var sh = ss_().getSheetByName(CONFIG.TABS.clients);
+    var e = ensureCols_(sh, [CLIENT_OFFER_COLS.salutation, CLIENT_OFFER_COLS.first, CLIENT_OFFER_COLS.last, CLIENT_OFFER_COLS.address]);
+    var vals = {};
+    vals['Client Name'] = name;
+    vals['Email'] = str_(p.email); vals['Phone'] = str_(p.phone);
+    vals[CLIENT_OFFER_COLS.salutation] = str_(p.salutation);
+    vals[CLIENT_OFFER_COLS.first] = str_(p.first);
+    vals[CLIENT_OFFER_COLS.last] = str_(p.last);
+    vals[CLIENT_OFFER_COLS.address] = str_(p.address);
+    var id = str_(p.id), created = false, linked = false;
+    if(id){
+      var row = findRow_(sh, 'Client_ID', id); if(row < 0) throw new Error('Kunde nicht gefunden: ' + id);
+      var before = sh.getRange(row, 1, 1, e.header.length).getValues()[0];
+      Object.keys(vals).forEach(function(k){
+        var col = e.header.indexOf(k); if(col > -1) sh.getRange(row, col + 1).setValue(vals[k]);
+      });
+      logRow_('saveClient', [id], '', before, vals);
+    } else {
+      id = Utilities.getUuid().replace(/-/g, '').slice(0, 8);     // wie AppSheet UNIQUEID()
+      vals['Client_ID'] = id;
+      sh.appendRow(e.header.map(function(h){ return vals.hasOwnProperty(h) ? vals[h] : ''; }));
+      created = true;
+      logRow_('createClient', [id], '', [], vals);
+      // Mit dem Projekt verknüpfen — nur wenn das Projekt noch keinen Kunden hat.
+      var pid = str_(p.project);
+      if(pid){
+        var ps = ss_().getSheetByName(CONFIG.TABS.projects);
+        var prow = findRow_(ps, 'Project_ID', pid);
+        var ccol = ps.getRange(1, 1, 1, ps.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); }).indexOf('Client') + 1;
+        if(prow > 0 && ccol > 0 && !str_(ps.getRange(prow, ccol).getValue())){
+          ps.getRange(prow, ccol).setValue(id); linked = true;
+          logRow_('linkProjectClient', [pid], '', [''], [id]);
+        }
+      }
+    }
+    SpreadsheetApp.flush();
+    vals['Client_ID'] = id;
+    var out = clientOut_(vals); out.created = created; out.linked = linked;
+    return out;
+  });
+}
+
+function registerOffer(p){
+  assertWriteAuth_(p);
+  var nr = str_(p.nr), pid = str_(p.project);
+  if(!nr || !pid) throw new Error('nr/project fehlt');
+  return withLock_(function(){
+    var ss = ss_();
+    var sh = ss.getSheetByName(OFFER_TAB);
+    if(!sh){ sh = ss.insertSheet(OFFER_TAB); sh.appendRow(OFFER_HEADERS); sh.setFrozenRows(1); }
+    var user = (Session.getActiveUser() && Session.getActiveUser().getEmail()) || '';
+    var row = findRow_(sh, 'Offer_No', nr);
+    var vals = [nr, pid, Math.floor(num_(p.seq)), str_(p.date), str_(p.client), num_(p.net), num_(p.gross)];
+    if(row > 0){
+      sh.getRange(row, 1, 1, vals.length).setValues([vals]);
+      sh.getRange(row, 9, 1, 2).setValues([[new Date(), user]]);
+    } else {
+      sh.appendRow(vals.concat([new Date(), new Date(), user]));
+    }
+    SpreadsheetApp.flush();
+    return { nr: nr, updated: row > 0 };
+  });
 }
 
 /* ------------------------------------------------------------------ */

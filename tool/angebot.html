@@ -146,18 +146,38 @@ button.del{background:#fff;color:#B0291E;border-color:#e2c3bf}
   <h1>Angebot</h1>
   <p class="sub">ann architecture · Dokumenten-System · Prototyp · langes Format</p>
 
-  <h2>Kopf</h2>
+  <p class="sub" id="as-status" style="margin:-14px 0 10px">AppSheet: verbinde …</p>
+
+  <h2>Projekt &amp; Nummer</h2>
   <div class="fg">
-    <div class="fld wide"><label>Projekt</label><input type="text" data-bind="header.projekt"></div>
-    <div class="fld wide"><label>Angebotsnr.</label><input type="text" data-bind="header.nr"></div>
+    <div class="fld wide"><label>Projekt (aus AppSheet)</label><select id="f-proj"><option value="">— Projekt wählen —</option></select></div>
+    <div class="fld wide"><label>Projektbezeichnung im Kopf (deutsch, z. B. „Kant Haus – Eingänge“)</label><input type="text" id="f-ptitle" data-bind="header.projekt"></div>
+    <div class="fld"><label>Projekt-Kürzel (z. B. KHE)</label><input type="text" id="f-code" data-bind="header.code" style="text-transform:uppercase"></div>
+    <div class="fld"><label>Lfd. Nr. im Projekt</label><input type="number" min="1" step="1" id="f-seq" data-bind="header.seq" data-num></div>
+    <div class="fld wide"><button class="ghost small" id="btn-proj-save" style="align-self:flex-start" disabled>Kürzel + Bezeichnung in AppSheet speichern</button></div>
+    <div class="fld wide"><label>Angebotsnr. (automatisch: OFF_Kürzel_Nr_JJMMTT)</label><input type="text" id="f-nr" disabled></div>
     <div class="fld"><label>Ort</label><input type="text" data-bind="header.place"></div>
     <div class="fld"><label>Datum</label><input type="date" data-bind="header.date"></div>
   </div>
 
+  <h2>Empfänger</h2>
+  <div class="fg">
+    <div class="fld wide"><label>Kunde (aus AppSheet)</label><select id="f-client"><option value="">— Kunde wählen —</option></select></div>
+    <div class="fld wide"><label>Firma / Kundenname</label><input type="text" id="c-name"></div>
+    <div class="fld"><label>Anrede</label><select id="c-sal"><option value="">— (Sehr geehrte Damen und Herren)</option><option>Herr</option><option>Frau</option></select></div>
+    <div class="fld"></div>
+    <div class="fld"><label>Vorname</label><input type="text" id="c-first"></div>
+    <div class="fld"><label>Nachname</label><input type="text" id="c-last"></div>
+    <div class="fld wide"><label>Adresse (Straße / PLZ Ort, je Zeile)</label><textarea rows="2" id="c-addr"></textarea></div>
+    <div class="fld"><label>E-Mail</label><input type="email" id="c-email"></div>
+    <div class="fld"><label>Telefon</label><input type="text" id="c-phone"></div>
+    <div class="fld wide"><button class="ghost small" id="btn-client-save" style="align-self:flex-start" disabled>Kunde in AppSheet anlegen</button></div>
+  </div>
+
   <h2>1 · Anschreiben</h2>
   <div class="fg">
-    <div class="fld wide"><label>Empfänger (je Zeile)</label><textarea rows="5" data-bind="empfaenger"></textarea></div>
-    <div class="fld wide"><label>Anrede</label><input type="text" data-bind="brief.anrede"></div>
+    <div class="fld wide"><label>Empfänger im Dokument (je Zeile — kommt aus dem Kunden, hier nur Feinschliff)</label><textarea rows="5" data-bind="empfaenger"></textarea></div>
+    <div class="fld wide"><label>Anrede (kommt aus dem Kunden)</label><input type="text" data-bind="brief.anrede"></div>
     <div class="fld wide"><label>Text — Leerzeile = neuer Absatz, einfacher Zeilenumbruch = neue Zeile</label><textarea rows="9" data-bind="brief.text"></textarea></div>
     <div class="fld wide"><label>Grußformel</label><input type="text" data-bind="brief.gruss"></div>
     <div class="fld"><label>Name</label><input type="text" data-bind="brief.name"></div>
@@ -296,7 +316,8 @@ const BULLETS_1 = "Erstellung schematischer Grundrisse und erforderlicher Ansich
 function defaultModel(){
   return {
     type:"angebot", version:1,
-    header:{ projekt:"Kant Center, Neugestaltung Eingänge", nr:"OFF_KHE_07_261021", place:"Berlin", date:isoToday() },
+    header:{ projectId:"KANT HOUSE ENTRANCES", projekt:"Kant Haus – Eingänge", code:"KHE", seq:7, nr:"", place:"Berlin", date:isoToday() },
+    clientId:"",
     empfaenger:"Rafael Borbalán\nKintyre Project & Construction\nManagement GmbH\nSchillerstr. 27\n60313 Frankfurt am Main",
     brief:{
       anrede:"Sehr geehrter Herr Borbalán,",
@@ -327,6 +348,8 @@ function defaultModel(){
   };
 }
 let model = defaultModel();
+/* Beispiel-Kunde für die Erstansicht (wird beim Verbinden durch AppSheet ersetzt) */
+const BEISPIEL_KUNDE = { name:"Kintyre Project & Construction Management GmbH", salutation:"Herr", first:"Rafael", last:"Borbalán", address:"Schillerstr. 27\n60313 Frankfurt am Main", email:"", phone:"" };
 
 function isoToday(){ return new Date().toISOString().slice(0,10); }
 function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
@@ -342,6 +365,13 @@ function totalMwst(){ return totalNetto() * (Number(model.mwst)||0) / 100; }
 function totalBrutto(){ return totalNetto() + totalMwst(); }
 
 /* Platzhalter in allen Fließtexten */
+/* Angebotsnummer: OFF_<Kürzel>_<lfd. Nr. je Projekt, 2-stellig>_<JJMMTT> (Ann, 2026-10-26) */
+function offerNr(){
+  const h = model.header;
+  const d = (h.date || isoToday()).replace(/-/g, "").slice(2);
+  const code = String(h.code || "").trim().toUpperCase() || "XXX";
+  return "OFF_" + code + "_" + String(Math.max(0, parseInt(h.seq, 10) || 0)).padStart(2, "0") + "_" + d;
+}
 function fill(s){
   const saetze = (model.saetze||[]).filter(x=>x.rolle).map(x => x.rolle + " — " + eur(x.satz)).join(", ");
   return String(s||"")
@@ -658,6 +688,9 @@ function snapLines(){
   });
 }
 function render(){
+  model.header.nr = offerNr();
+  const nrEl = document.getElementById("f-nr"); if(nrEl) nrEl.value = model.header.nr;
+  if(typeof refreshAppSheetButtons === "function") refreshAppSheetButtons();
   stage.innerHTML = "";
   const pages = paginate();
   pages.forEach((ops, i)=>{
@@ -806,17 +839,18 @@ function renderGroups(){
           <button class="small ghost" data-act="pos-up" data-g="${gi}" data-i="${pi}" title="nach oben">↑</button>
           <button class="small del" data-act="pos-del" data-g="${gi}" data-i="${pi}">×</button>
         </div>
+        <!-- Reihenfolge wie im Angebot: Leistung · Leistungsumfang · Arbeitsergebnis · Kostenzeile · Abrechnung (Ann, 2026-10-26) -->
         <div class="fg3">
+          <div class="fld" style="grid-column:1/-1"><label>Leistungsumfang (je Zeile ein Punkt)</label><textarea rows="5" data-p="gruppen.${gi}.positionen.${pi}.umfang">${esc(p.umfang)}</textarea></div>
+          <div class="fld" style="grid-column:1/-1"><label>Arbeitsergebnis (je Zeile ein Punkt, leer = entfällt)</label><textarea rows="2" data-p="gruppen.${gi}.positionen.${pi}.ergebnis">${esc(p.ergebnis)}</textarea></div>
+          <div class="fld" style="grid-column:1/-1"><label>Kostenzeile (z. B. Technische Mitarbeitende / Pauschalpaket)</label><input type="text" data-p="gruppen.${gi}.positionen.${pi}.rolle" value="${esc(p.rolle)}"></div>
           <div class="fld"><label>Abrechnungsart</label>
             <select data-p="gruppen.${gi}.positionen.${pi}.art">
               ${["Zeithonorar","Pauschalangebot"].map(o=>`<option${o===p.art?" selected":""}>${o}</option>`).join("")}
             </select></div>
           <div class="fld"><label>${isZeit(p) ? "Stunden" : "Menge"}</label><input type="text" inputmode="decimal" data-num data-p="gruppen.${gi}.positionen.${pi}.menge" value="${esc(numIn(p.menge))}"></div>
           <div class="fld"><label>Satz netto €</label><input type="text" inputmode="decimal" data-num data-p="gruppen.${gi}.positionen.${pi}.satz" value="${esc(numIn(p.satz))}"></div>
-          <div class="fld"><label>Gesamt</label><input type="text" disabled value="${esc(eur(posGesamt(p)))}"></div>
-          <div class="fld" style="grid-column:1/-1"><label>Kostenzeile (z. B. Technische Mitarbeitende / Pauschalpaket)</label><input type="text" data-p="gruppen.${gi}.positionen.${pi}.rolle" value="${esc(p.rolle)}"></div>
-          <div class="fld" style="grid-column:1/-1"><label>Leistungsumfang (je Zeile ein Punkt)</label><textarea rows="5" data-p="gruppen.${gi}.positionen.${pi}.umfang">${esc(p.umfang)}</textarea></div>
-          <div class="fld" style="grid-column:1/-1"><label>Arbeitsergebnis (je Zeile ein Punkt, leer = entfällt)</label><textarea rows="2" data-p="gruppen.${gi}.positionen.${pi}.ergebnis">${esc(p.ergebnis)}</textarea></div>
+          <div class="fld"><label>Gesamt (automatisch)</label><input type="text" disabled value="${esc(eur(posGesamt(p)))}"></div>
         </div>
       </div>`).join("")}
       <button class="ghost small" data-act="pos-add" data-g="${gi}">+ Position</button>
@@ -896,7 +930,10 @@ $("#file-open").onchange = e=>{
   rd.onload = ()=>{ try{ model = Object.assign(defaultModel(), JSON.parse(rd.result)); syncBound(); renderEditor(); render(); }catch(err){ alert("Datei nicht lesbar: " + err); } };
   rd.readAsText(f);
 };
-$("#btn-pdf").onclick = ()=>{ try{ exportPDF(); }catch(err){ alert("PDF-Export fehlgeschlagen: " + err); console.error(err); } };
+$("#btn-pdf").onclick = ()=>{
+  try{ exportPDF(); }catch(err){ alert("PDF-Export fehlgeschlagen: " + err); console.error(err); return; }
+  registerOffer();
+};
 $("#btn-print").onclick = ()=> window.print();
 
 /* ---- Zoom ---- */
@@ -935,8 +972,165 @@ window.addEventListener("resize", ()=> applyZoom());
   try{ const w = localStorage.getItem("an.editorW"); if(w) ed.style.width = w; }catch(_){}
 })();
 
+
+/* ============================================================
+   10) APPSHEET-ANBINDUNG (Datenbrücke = Apps Script über „Project Management NEW")
+       Projekte (Kürzel, deutsche Bezeichnung, letzte Angebots-Nr.) und Kunden laden;
+       Kunden anlegen/ändern; Angebot beim PDF-Export im Register eintragen.
+       Ohne Verbindung bleiben alle Felder von Hand ausfüllbar.
+   ============================================================ */
+const SHEET_URL = 'https://script.google.com/a/macros/annarchitecture-studio.com/s/AKfycbyXg2mbuOKDwvgVkO70eoCUjQZaVgGfOTgnKMlIeJTzzozP_RoLuSvf0Is2pS-WUfjqpw/exec';
+const WRITE_SECRET = 'sn-wr-7Kx2Qm9pLeviaTr4Zb';
+let ctx = null;            // { projects:[…], clients:[…] }
+const asSay = (msg, bad) => { const el = $("#as-status"); el.textContent = "AppSheet: " + msg; el.style.color = bad ? "#B0291E" : ""; };
+
+function jsonp(action, params, timeoutMs){
+  return new Promise((resolve, reject)=>{
+    const cb = "an_cb_" + Date.now() + "_" + Math.floor(Math.random()*1e6);
+    const q = new URLSearchParams({ action, callback:cb, ...(params||{}) });
+    const s = document.createElement("script");
+    const t = setTimeout(()=>{ done(); reject(new Error("Zeitüberschreitung")); }, timeoutMs || 20000);
+    function done(){ clearTimeout(t); try{ delete window[cb]; }catch(_){ window[cb] = undefined; } s.remove(); }
+    window[cb] = (resp)=>{ done(); (resp && resp.ok) ? resolve(resp.data) : reject(new Error(resp && resp.error || "Fehler im Skript")); };
+    s.onerror = ()=>{ done(); reject(new Error("Datenbrücke nicht erreichbar (mit @annarchitecture-studio.com angemeldet?)")); };
+    s.src = SHEET_URL + "?" + q.toString();
+    document.head.appendChild(s);
+  });
+}
+async function api(action, params){
+  for(let i=0;i<2;i++){
+    try{ return await jsonp(action, params); }
+    catch(e){ if(i === 0){ await new Promise(r=>setTimeout(r,1500)); continue; } throw e; }
+  }
+}
+const curProj = () => ctx && ctx.projects.find(p => p.id === model.header.projectId);
+const curClient = () => ctx && ctx.clients.find(c => c.id === model.clientId);
+
+function fillProjects(){
+  const sel = $("#f-proj");
+  sel.innerHTML = '<option value="">— Projekt wählen —</option>' + ctx.projects.map(p =>
+    `<option value="${esc(p.id)}">${esc(p.title || p.name)}${p.code ? " · " + esc(p.code) : ""}</option>`).join("");
+  sel.value = model.header.projectId || "";
+}
+function fillClients(){
+  const sel = $("#f-client"), pr = curProj();
+  const own = pr && pr.clientId ? ctx.clients.filter(c => c.id === pr.clientId) : [];
+  const rest = ctx.clients.filter(c => !own.includes(c));
+  const opt = c => `<option value="${esc(c.id)}">${esc(c.name)}${c.last ? " · " + esc(c.first + " " + c.last) : ""}</option>`;
+  sel.innerHTML = '<option value="">— Kunde wählen —</option>' +
+    (own.length ? '<optgroup label="Kunde des Projekts">' + own.map(opt).join("") + '</optgroup>' : "") +
+    '<optgroup label="Alle Kunden">' + rest.map(opt).join("") + '</optgroup>' +
+    '<option value="__neu">+ Neuen Kunden anlegen …</option>';
+  sel.value = model.clientId || "";
+}
+
+/* Kundenfelder <-> Modell */
+const CF = { name:"#c-name", salutation:"#c-sal", first:"#c-first", last:"#c-last", address:"#c-addr", email:"#c-email", phone:"#c-phone" };
+function clientForm(){ const o = {}; Object.keys(CF).forEach(k => o[k] = $(CF[k]).value.trim()); return o; }
+function setClientForm(c){ Object.keys(CF).forEach(k => $(CF[k]).value = (c && c[k]) || ""); }
+/* Empfängerblock + Anrede automatisch aus dem Kunden */
+function applyClientToLetter(){
+  const c = clientForm();
+  const person = [c.first, c.last].filter(Boolean).join(" ");
+  model.empfaenger = [person, c.name].concat(c.address.split("\n")).map(s => s.trim()).filter(Boolean).join("\n");
+  model.brief.anrede =
+    c.salutation === "Herr" && c.last ? "Sehr geehrter Herr " + c.last + "," :
+    c.salutation === "Frau" && c.last ? "Sehr geehrte Frau " + c.last + "," :
+    "Sehr geehrte Damen und Herren,";
+  syncBound();
+}
+function clientDirty(){
+  const c = curClient(), f = clientForm();
+  if(!c) return !!f.name;
+  return Object.keys(CF).some(k => (c[k] || "") !== f[k]);
+}
+function refreshAppSheetButtons(){
+  const pr = curProj();
+  const pb = $("#btn-proj-save"), cb = $("#btn-client-save");
+  if(pb) pb.disabled = !pr || ((pr.code || "") === String(model.header.code || "").toUpperCase().trim() && (pr.title || "") === String(model.header.projekt || "").trim());
+  if(cb){
+    cb.disabled = !ctx || !clientDirty();
+    cb.textContent = curClient() ? "Änderungen am Kunden in AppSheet speichern" : "Kunde in AppSheet anlegen";
+  }
+}
+
+$("#f-proj").addEventListener("change", e=>{
+  model.header.projectId = e.target.value;
+  const pr = curProj();
+  if(pr){
+    model.header.code = pr.code || "";
+    model.header.projekt = pr.title || "";
+    model.header.seq = (pr.lastSeq || 0) + 1;
+    model.clientId = pr.clientId || "";
+    fillClients();
+    setClientForm(curClient() || { name: pr.billName, address: pr.billAddress });
+    applyClientToLetter();
+    if(!pr.title) $("#f-ptitle").placeholder = "In AppSheet: " + pr.name + " — bitte deutsche Bezeichnung eintragen";
+  }
+  syncBound(); render();
+});
+$("#f-client").addEventListener("change", e=>{
+  if(e.target.value === "__neu"){ model.clientId = ""; setClientForm(null); e.target.value = ""; $("#c-name").focus(); }
+  else { model.clientId = e.target.value; setClientForm(curClient()); }
+  applyClientToLetter(); render();
+});
+Object.values(CF).forEach(sel => $(sel).addEventListener("input", ()=>{ applyClientToLetter(); render(); }));
+$("#c-sal").addEventListener("change", ()=>{ applyClientToLetter(); render(); });
+
+$("#btn-proj-save").onclick = async ()=>{
+  const pr = curProj(); if(!pr) return;
+  const btn = $("#btn-proj-save"); btn.disabled = true; asSay("speichere Projekt …");
+  try{
+    const r = await api("saveProjectInfo", { project:pr.id, code:model.header.code || "", title:model.header.projekt || "", secret:WRITE_SECRET });
+    pr.code = r.code; pr.title = r.title; model.header.code = r.code;
+    fillProjects(); asSay("Kürzel und Bezeichnung für „" + pr.name + "“ gespeichert.");
+  }catch(err){ asSay("Speichern fehlgeschlagen — " + err.message, true); }
+  syncBound(); render();
+};
+$("#btn-client-save").onclick = async ()=>{
+  const f = clientForm();
+  if(!f.name){ alert("Bitte Firma / Kundenname eintragen."); return; }
+  const btn = $("#btn-client-save"); btn.disabled = true; asSay("speichere Kunden …");
+  try{
+    const r = await api("saveClient", Object.assign({ secret:WRITE_SECRET, id:model.clientId || "", project:model.header.projectId || "" }, f));
+    const i = ctx.clients.findIndex(c => c.id === r.id);
+    if(i >= 0) ctx.clients[i] = r; else ctx.clients.push(r);
+    model.clientId = r.id;
+    if(r.linked){ const pr = curProj(); if(pr) pr.clientId = r.id; }
+    fillClients();
+    asSay(r.created ? "Kunde „" + r.name + "“ angelegt" + (r.linked ? " und mit dem Projekt verknüpft." : ".") : "Kunde „" + r.name + "“ aktualisiert.");
+  }catch(err){ asSay("Speichern fehlgeschlagen — " + err.message, true); }
+  render();
+};
+
+async function registerOffer(){
+  if(!ctx || !model.header.projectId) return;
+  try{
+    await api("registerOffer", {
+      secret:WRITE_SECRET, nr:model.header.nr, project:model.header.projectId, seq:model.header.seq,
+      date:model.header.date, client:model.clientId || "", net:totalNetto().toFixed(2), gross:totalBrutto().toFixed(2)
+    });
+    const pr = curProj(); if(pr) pr.lastSeq = Math.max(pr.lastSeq || 0, parseInt(model.header.seq, 10) || 0);
+    asSay("Angebot " + model.header.nr + " im Register eingetragen.");
+  }catch(err){ asSay("PDF ok, Register-Eintrag fehlgeschlagen — " + err.message, true); }
+}
+
+async function connectAppSheet(){
+  try{
+    ctx = await api("getOfferContext");
+    fillProjects(); fillClients();
+    if(curClient()) setClientForm(curClient());
+    asSay("verbunden · " + ctx.projects.length + " Projekte · " + ctx.clients.length + " Kunden");
+  }catch(err){
+    asSay("nicht verbunden — Felder von Hand ausfüllen (" + err.message + ")", true);
+  }
+  refreshAppSheetButtons();
+}
+
 /* ---- Start ---- */
+setClientForm(BEISPIEL_KUNDE);
 syncBound(); renderEditor(); render();
+connectAppSheet();
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=> render());
 </script>
 </body>

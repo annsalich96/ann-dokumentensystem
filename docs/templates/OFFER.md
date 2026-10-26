@@ -60,8 +60,25 @@ Die Kurzvariante (`Angebote_kurz.pdf`) wird vorerst **nicht** gebaut.
 - ABRECHNUNGSART in der Detailtabelle wie in der Übersicht auf Spalte 7 und mit Spaltenkopf.
 - Keine Silbentrennung im Blocksatz → bei langen Wörtern teils große Wortabstände.
 
+## Nummer, Projekt, Empfänger (Ann, 2026-10-26)
+
+- **Angebotsnr.:** `OFF_<Projekt-Kürzel>_<lfd. Nr. je Projekt, 2-stellig>_<JJMMTT>`, z. B. `OFF_KHE_07_261021`.
+  Laufende Nummer **pro Projekt** (nicht pro Jahr). Vorschlag = höchste Nummer im Register
+  `DocSystem_Offers` + 1, überschreibbar. Beim PDF-Export wird das Angebot dort eingetragen.
+  Für Projekte mit Altangeboten einmal die nächste Nummer von Hand setzen.
+- **Projekt:** Dropdown aus `Projects`. Im Kopf steht die **deutsche Bezeichnung** (z. B. „Kant Haus –
+  Eingänge“ statt „KANT HOUSE ENTRANCES“) aus der neuen Spalte `Project Title DE`; Kürzel aus
+  `Project Code`. Im Editor eintragbar und nach AppSheet speicherbar.
+- **Empfänger:** Kunde aus `Clients` (Kunde des Projekts oben). Neue Spalten `Contact Salutation`
+  (Herr/Frau), `Contact First Name`, `Contact Last Name`, `Address` — auch direkt in AppSheet
+  pflegbar (nach „Regenerate Structure“). Empfängerblock und Anrede („Sehr geehrter Herr …“ /
+  „Sehr geehrte Frau …“ / ohne Angabe „Sehr geehrte Damen und Herren“) entstehen automatisch.
+  Neue Kunden werden im Editor angelegt und landen in `Clients` → AppSheet.
+- **Editor-Reihenfolge je Position:** Leistung · Leistungsumfang · Arbeitsergebnis · Kostenzeile ·
+  Abrechnungsart / Menge / Satz netto / Gesamt (automatisch) — wie im Angebot.
+
 ## Offen
 
-- AppSheet-Anbindung: Projekt, Empfänger, Angebotsnr., Stundensätze automatisch laden.
+- Stundensätze aus AppSheet statt aus dem Editor.
 - Tabellenkopf auf Folgeseiten der Detailtabelle wiederholen? (Vorlage: nein)
 - Kurzformat.
