@@ -18,7 +18,7 @@
  *   unmarkBilled&document=…&secret=…[&ids=<JSON>]                     -> Abbuchung zurücknehmen
  *   getOfferContext                        -> Projekte (Kürzel, deutsche Bezeichnung, nächste
  *                                             Angebots-Nr.) + Kunden für den Angebot-Editor
- *   saveProjectInfo&project=…&code=…&title=…&secret=…    -> Kürzel/Bezeichnung in `Projects`
+ *   saveProjectInfo&project=…&code=…&secret=…            -> Projekt-Kürzel in `Projects`
  *   saveClient&secret=…&name=…[&id=…&salutation=…&first=…&last=…&address=…&email=…&phone=…&project=…]
  *                                          -> Kunde in `Clients` anlegen/ändern
  *   registerOffer&secret=…&nr=…&project=…&seq=…&date=…[&client=…&net=…&gross=…]
@@ -520,7 +520,8 @@ function unmarkBilled(p){
 /* ------------------------------------------------------------------ */
 const OFFER_TAB = 'DocSystem_Offers';
 const OFFER_HEADERS = ['Offer_No', 'Project_ID', 'Seq', 'Offer_Date', 'Client_ID', 'Net', 'Gross', 'Created', 'Updated', 'User'];
-const PROJECT_OFFER_COLS = { code:'Project Code', title:'Project Title DE' };
+/* Nur das Kürzel ist neu; im Kopf steht der „Project Name“ aus AppSheet (Ann, 2026-10-26). */
+const PROJECT_OFFER_COLS = { code:'Project Code' };
 /* Kunde = Firma (Client Name + Company Address) mit einer Ansprechperson (Anrede, Vor-/Nachname). */
 const CLIENT_OFFER_COLS = { salutation:'Contact Salutation', first:'Contact First Name', last:'Contact Last Name', address:'Company Address' };
 
@@ -537,13 +538,13 @@ function getOfferContext(){
       const id = str_(r['Project_ID']);
       return {
         id: id, name: str_(r['Project Name']) || id,
-        code: str_(r[PROJECT_OFFER_COLS.code]), title: str_(r[PROJECT_OFFER_COLS.title]),
+        code: str_(r[PROJECT_OFFER_COLS.code]),
         clientId: str_(r['Client']), billName: str_(r['Bill Name']), billAddress: str_(r['Bill Address']),
         status: str_(r['Status']), billable: bool_(r['Billable']),
         lastSeq: maxSeq[id] || 0
       };
     })
-    .sort(function(a, b){ return cmpDe_(a.title || a.name, b.title || b.name); });
+    .sort(function(a, b){ return cmpDe_(a.name, b.name); });
   const clients = rowsSafe_(CONFIG.TABS.clients)
     .filter(function(r){ return str_(r['Client_ID']); })
     .map(clientOut_)
@@ -555,14 +556,15 @@ function getOfferContext(){
    AppSheet gepflegt werden können (nach „Regenerate Structure"). Einmal pro 6 h geprüft. */
 function ensureOfferColumns_(){
   const cache = CacheService.getScriptCache();
-  if(cache.get('offerColsOk2')) return;
+  if(cache.get('offerColsOk3')) return;
   withLock_(function(){
-    ensureCols_(ss_().getSheetByName(CONFIG.TABS.projects), [PROJECT_OFFER_COLS.code, PROJECT_OFFER_COLS.title]);
+    const ps = ss_().getSheetByName(CONFIG.TABS.projects);
+    ensureCols_(ps, [PROJECT_OFFER_COLS.code]);
     renameHeader_(ss_().getSheetByName(CONFIG.TABS.clients), 'Address', CLIENT_OFFER_COLS.address);   // erste Version hieß nur „Address“
     ensureCols_(ss_().getSheetByName(CONFIG.TABS.clients),
       [CLIENT_OFFER_COLS.salutation, CLIENT_OFFER_COLS.first, CLIENT_OFFER_COLS.last, CLIENT_OFFER_COLS.address]);
   });
-  cache.put('offerColsOk2', '1', 21600);
+  cache.put('offerColsOk3', '1', 21600);
 }
 function clientOut_(r){
   return {
@@ -612,14 +614,13 @@ function saveProjectInfo(p){
   return withLock_(function(){
     var sh = ss_().getSheetByName(CONFIG.TABS.projects);
     var row = findRow_(sh, 'Project_ID', id); if(row < 0) throw new Error('Projekt nicht gefunden: ' + id);
-    var c = ensureCols_(sh, [PROJECT_OFFER_COLS.code, PROJECT_OFFER_COLS.title]).idx;
-    var before = [sh.getRange(row, c[PROJECT_OFFER_COLS.code]).getValue(), sh.getRange(row, c[PROJECT_OFFER_COLS.title]).getValue()];
-    var code = str_(p.code).toUpperCase(), title = str_(p.title);
-    sh.getRange(row, c[PROJECT_OFFER_COLS.code]).setValue(code);
-    sh.getRange(row, c[PROJECT_OFFER_COLS.title]).setValue(title);
+    var c = ensureCols_(sh, [PROJECT_OFFER_COLS.code]).idx[PROJECT_OFFER_COLS.code];
+    var before = sh.getRange(row, c).getValue();
+    var code = str_(p.code).toUpperCase();
+    sh.getRange(row, c).setValue(code);
     SpreadsheetApp.flush();
-    logRow_('saveProjectInfo', [id], '', before, [code, title]);
-    return { id: id, code: code, title: title };
+    logRow_('saveProjectInfo', [id], '', [before], [code]);
+    return { id: id, code: code };
   });
 }
 

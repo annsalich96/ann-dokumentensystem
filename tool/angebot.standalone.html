@@ -165,10 +165,10 @@ button.mini:hover{border-color:var(--ink)}
   <h2>Projekt &amp; Nummer</h2>
   <div class="fg">
     <div class="fld wide"><label>Projekt (aus AppSheet)</label><select id="f-proj"><option value="">— Projekt wählen —</option></select></div>
-    <div class="fld wide"><label>Projektbezeichnung im Kopf (deutsch, z. B. „Kant Haus – Eingänge“)</label><input type="text" id="f-ptitle" data-bind="header.projekt"></div>
+    <div class="fld wide"><label>Projekt im Kopf (aus AppSheet „Project Name“, hier nur für dieses Angebot änderbar)</label><input type="text" id="f-ptitle" data-bind="header.projekt"></div>
     <div class="fld"><label>Projekt-Kürzel (z. B. KHE)</label><input type="text" id="f-code" data-bind="header.code" style="text-transform:uppercase"></div>
     <div class="fld"><label>Lfd. Nr. im Projekt</label><input type="number" min="1" step="1" id="f-seq" data-bind="header.seq" data-num></div>
-    <div class="fld wide"><button class="ghost small" id="btn-proj-save" style="align-self:flex-start" disabled>Kürzel + Bezeichnung in AppSheet speichern</button></div>
+    <div class="fld wide"><button class="ghost small" id="btn-proj-save" style="align-self:flex-start" disabled>Kürzel in AppSheet speichern</button></div>
     <div class="fld wide"><label>Angebotsnr. (automatisch: OFF_Kürzel_Nr_JJMMTT)</label><input type="text" id="f-nr" disabled></div>
     <div class="fld"><label>Ort</label><input type="text" data-bind="header.place"></div>
     <div class="fld"><label>Datum</label><input type="date" data-bind="header.date"></div>
@@ -335,7 +335,7 @@ const BULLETS_1 = "- Erstellung schematischer Grundrisse und erforderlicher Ansi
 function defaultModel(){
   return {
     type:"angebot", version:2,
-    header:{ projectId:"KANT HOUSE ENTRANCES", projekt:"Kant Haus – Eingänge", code:"KHE", seq:7, nr:"", place:"Berlin", date:isoToday() },
+    header:{ projectId:"KANT HOUSE ENTRANCES", projekt:"KANT HOUSE ENTRANCES", code:"KHE", seq:7, nr:"", place:"Berlin", date:isoToday() },
     clientId:"",
     empfaenger:"Rafael Borbalán\nKintyre Project & Construction\nManagement GmbH\nSchillerstr. 27\n60313 Frankfurt am Main",
     brief:{
@@ -1107,7 +1107,7 @@ function offerProjects(){ return ctx.projects.filter(p => p.billable || p.id ===
 function fillProjects(){
   const sel = $("#f-proj");
   sel.innerHTML = '<option value="">— Projekt wählen —</option>' + offerProjects().map(p =>
-    `<option value="${esc(p.id)}">${esc(p.title || p.name)}${p.code ? " · " + esc(p.code) : ""}</option>`).join("");
+    `<option value="${esc(p.id)}">${esc(p.name)}${p.code ? " · " + esc(p.code) : ""}</option>`).join("");
   sel.value = model.header.projectId || "";
 }
 function fillClients(){
@@ -1145,7 +1145,7 @@ function clientDirty(){
 function refreshAppSheetButtons(){
   const pr = curProj();
   const pb = $("#btn-proj-save"), cb = $("#btn-client-save");
-  if(pb) pb.disabled = !pr || ((pr.code || "") === String(model.header.code || "").toUpperCase().trim() && (pr.title || "") === String(model.header.projekt || "").trim());
+  if(pb) pb.disabled = !pr || (pr.code || "") === String(model.header.code || "").toUpperCase().trim();
   if(cb){
     cb.disabled = !ctx || !clientDirty();
     cb.textContent = curClient() ? "Änderungen am Kunden in AppSheet speichern" : "Kunde in AppSheet anlegen";
@@ -1157,13 +1157,12 @@ $("#f-proj").addEventListener("change", e=>{
   const pr = curProj();
   if(pr){
     model.header.code = pr.code || "";
-    model.header.projekt = pr.title || "";
+    model.header.projekt = pr.name || "";
     model.header.seq = (pr.lastSeq || 0) + 1;
     model.clientId = pr.clientId || "";
     fillClients();
     setClientForm(curClient() || { name: pr.billName, address: pr.billAddress });
     applyClientToLetter();
-    if(!pr.title) $("#f-ptitle").placeholder = "In AppSheet: " + pr.name + " — bitte deutsche Bezeichnung eintragen";
   }
   syncBound(); render();
 });
@@ -1179,9 +1178,9 @@ $("#btn-proj-save").onclick = async ()=>{
   const pr = curProj(); if(!pr) return;
   const btn = $("#btn-proj-save"); btn.disabled = true; asSay("speichere Projekt …");
   try{
-    const r = await api("saveProjectInfo", { project:pr.id, code:model.header.code || "", title:model.header.projekt || "", secret:WRITE_SECRET });
-    pr.code = r.code; pr.title = r.title; model.header.code = r.code;
-    fillProjects(); asSay("Kürzel und Bezeichnung für „" + pr.name + "“ gespeichert.");
+    const r = await api("saveProjectInfo", { project:pr.id, code:model.header.code || "", secret:WRITE_SECRET });
+    pr.code = r.code; model.header.code = r.code;
+    fillProjects(); asSay("Kürzel " + r.code + " für „" + pr.name + "“ gespeichert.");
   }catch(err){ asSay("Speichern fehlgeschlagen — " + err.message, true); }
   syncBound(); render();
 };
