@@ -49,15 +49,14 @@ Die Kurzvariante (`Angebote_kurz.pdf`) wird vorerst **nicht** gebaut.
 | Gruppenname / Nr. im Detail | Bold 8 pt, rechtsbündig an der Kante von Spalte 2 |
 | Positionstitel | 2-BL-Zeile, Bold 8 pt |
 | Aufzählung | „•“ Sp. 3, Text Sp. 4 bis Ende Sp. 11 |
-| Kostenzeile | 1 BL Abstand zur Aufzählung, Linie oben + unten, 2 BL |
-| Summenblock | direkt unter der letzten Zeile, Label Sp. 8, 3 Zeilen, Linie darunter |
+| Kostenzeile | **0,5 BL** unter der Aufzählung (bewusster Halb-Raster-Versatz, Ann 2026-10-26), Linie oben + unten, 2 BL; folgende Position läuft im halben Raster weiter |
+| Summenblock | **0,5 BL** unter der letzten Tabellenlinie, Label Sp. 8, 3 Zeilen, Linie darunter |
 | Unterschrift | 4 BL Leerraum, Linie Sp. 3–Sp. 7 und Sp. 8–195 mm |
 | Umbruch | mind. 2 BL vor dem Footer (letzte Inhaltszeile endet ≤ K55) |
 
 ## Abweichungen von der Vorlage (bewusst, bitte prüfen)
 
 - „ANGEBOT“ in 10 pt statt 12 pt (Regel: nur 10 oder 8 pt).
-- Kostenzeile 1 BL statt 0,5 BL unter der Aufzählung (keine halben Abstände).
 - ABRECHNUNGSART in der Detailtabelle wie in der Übersicht auf Spalte 7 und mit Spaltenkopf.
 - Keine Silbentrennung im Blocksatz → bei langen Wörtern teils große Wortabstände.
 

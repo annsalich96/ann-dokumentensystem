@@ -436,7 +436,8 @@ function partAnschreiben(){
 
 /* ---- Summenblock (Übersicht + Leistungen) ---- */
 function totalsRow(){
-  return { h:3, gap:0, keep:false, draw:k=>[
+  /* 0,5 BL unter der letzten Tabellenlinie (Ann: bewusst ein halbes Raster versetzt) */
+  return { h:3, gap:0.5, keep:false, draw:k=>[
     T("s-cellb", k,   { x:X.sumL }, "Voraussichtlicher Gesamtbetrag netto"),
     T("s-cellb", k,   { rx:X.gesamtR }, eur(totalNetto())),
     T("s-cell",  k+1, { x:X.sumL }, "Umsatzsteuer " + num(model.mwst) + "%"),
@@ -520,7 +521,9 @@ function partLeistungen(){
       rows = rows.concat(b);
     });
     rows[rows.length-1].keep = true;  // Kostenzeile nie allein oben auf einer neuen Seite
-    rows.push({ h:2, gap:1, keep:false, draw:k=>[
+    /* Kostenzeile 0,5 BL unter der Aufzählung — bewusster Halb-Raster-Versatz (Ann, 2026-10-26);
+       alles danach läuft im halben Raster weiter, wie in Angebote_lang.pdf */
+    rows.push({ h:2, gap:0.5, keep:false, draw:k=>[
       Ln(k, X.text, X.gesamtR),
       T("s-cell", k, { span:2, x:X.text }, p.rolle || ""),
       T("s-cell", k, { span:2, x:X.art }, p.art || ""),
