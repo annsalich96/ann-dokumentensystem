@@ -65,16 +65,24 @@ Die Kurzvariante (`Angebote_kurz.pdf`) wird vorerst **nicht** gebaut.
 - **Angebotsnr.:** `OFF_<Projekt-Kürzel>_<lfd. Nr. je Projekt, 2-stellig>_<JJMMTT>`, z. B. `OFF_KHE_07_261021`.
   Laufende Nummer **pro Projekt** (nicht pro Jahr). Vorschlag = höchste Nummer im Register
   `DocSystem_Offers` + 1, überschreibbar. Beim PDF-Export wird das Angebot dort eingetragen.
-  Für Projekte mit Altangeboten einmal die nächste Nummer von Hand setzen.
-- **Projekt:** Dropdown aus `Projects`, **nur externe Projekte** (`Billable` = Y) — interne Projekte bekommen
-  nie Angebote/Rechnungen. Im Kopf steht der **`Project Name` aus AppSheet** (Ann, 2026-10-26: keine eigene
-  deutsche Bezeichnung). Neu ist nur die Spalte `Project Code` (Kürzel), im Editor speicherbar.
-- **Empfänger:** Kunde aus `Clients` (Kunde des Projekts oben). Ein Kunde = **Firma** (Bezeichnung
-  `Client Name`, neue Spalte `Company Address`) + **eine Ansprechperson** (neue Spalten
-  `Contact Salutation` Herr/Frau, `Contact First Name`, `Contact Last Name`) — auch direkt in AppSheet
-  pflegbar (nach „Regenerate Structure“). Empfängerblock und Anrede („Sehr geehrter Herr …“ /
-  „Sehr geehrte Frau …“ / ohne Angabe „Sehr geehrte Damen und Herren“) entstehen automatisch.
-  Neue Kunden werden im Editor angelegt und landen in `Clients` → AppSheet.
+- **Projekt-Kürzel (automatisch, nie doppelt):** Die Datenbrücke vergibt jedem externen Projekt ohne
+  Kürzel eins und schreibt es in `Projects` → `Project Code`. Regel, aus dem `Project Name`:
+  - 3+ Wörter: Anfangsbuchstaben der ersten drei (KANT HOUSE ENTRANCES → KHE)
+  - 2 Wörter: beide Anfangsbuchstaben + 2. Buchstabe des zweiten Wortes (RING CENTER → RCE)
+  - 1 Wort: die ersten drei Buchstaben (GUNDILITOR → GUN)
+  - vergeben → dritter Buchstabe = nächster Buchstabe des letzten Wortes (RCE → RCN), notfalls A–Z.
+  Ein Kürzel ändert sich nie wieder (die Angebotsnummern hängen daran).
+- **Projekt:** Dropdown, **nur externe Projekte** (`Billable` = Y). Im Kopf steht der `Project Name`.
+- **Kunde = Firma + Ansprechpersonen:**
+  - Firma in `Clients`: `Client Name` (in AppSheet als „Company Name“ anzeigen), neue Spalten
+    `Company Street` (Straße + Nr.), `Company Postal Code`, `Company City`, `Tax Number`; `Email`/`Phone` vorhanden.
+  - Ansprechpersonen im neuen Tab `Contacts`: `Contact_ID`, `Client_ID` (Ref → Clients), `Salutation`
+    (Herr/Frau), `First Name`, `Last Name`, `Email`, `Phone`. Eine Firma kann mehrere Personen haben.
+  - Projekt merkt sich Firma (`Client`) und Standard-Ansprechperson (neue Spalte `Contact`).
+  - Fälle: nur Firma · Firma + eine Person · Firma + mehrere Personen · Privatperson (Firmenname = Name der Person).
+  - Im Angebot: Person · Firma · Straße · PLZ Ort; Anrede aus Herr/Frau + Nachname, ohne Person
+    „Sehr geehrte Damen und Herren“. Steuernummer, E-Mail, Telefon nicht im Angebot.
+  - Hat die Firma noch keine Adresse, nimmt der Editor `Bill Name`/`Bill Address` des Projekts.
 - **Editor-Reihenfolge je Position:** Leistung · Leistungsumfang · Arbeitsergebnis · Kostenzeile ·
   Abrechnungsart / Menge / Satz netto / Gesamt (automatisch) — wie im Angebot.
 

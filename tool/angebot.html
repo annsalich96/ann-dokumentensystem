@@ -159,32 +159,35 @@ button.mini:hover{border-color:var(--ink)}
   <div class="fg">
     <div class="fld wide"><label>Projekt (aus AppSheet)</label><select id="f-proj"><option value="">— Projekt wählen —</option></select></div>
     <div class="fld wide"><label>Projekt im Kopf (aus AppSheet „Project Name“, hier nur für dieses Angebot änderbar)</label><input type="text" id="f-ptitle" data-bind="header.projekt"></div>
-    <div class="fld"><label>Projekt-Kürzel (z. B. KHE)</label><input type="text" id="f-code" data-bind="header.code" style="text-transform:uppercase"></div>
+    <div class="fld"><label>Projekt-Kürzel (automatisch aus AppSheet)</label><input type="text" id="f-code" data-bind="header.code" disabled></div>
     <div class="fld"><label>Lfd. Nr. im Projekt</label><input type="number" min="1" step="1" id="f-seq" data-bind="header.seq" data-num></div>
-    <div class="fld wide"><button class="ghost small" id="btn-proj-save" style="align-self:flex-start" disabled>Kürzel in AppSheet speichern</button></div>
     <div class="fld wide"><label>Angebotsnr. (automatisch: OFF_Kürzel_Nr_JJMMTT)</label><input type="text" id="f-nr" disabled></div>
     <div class="fld"><label>Ort</label><input type="text" data-bind="header.place"></div>
     <div class="fld"><label>Datum</label><input type="date" data-bind="header.date"></div>
   </div>
 
   <h2>Empfänger</h2>
+  <p class="hint">Erst die Firma, dann eine ihrer Ansprechpersonen. Privatperson: als Firmenname den Namen der Person eintragen.</p>
   <div class="fg">
-    <div class="fld wide"><label>Kunde (aus AppSheet)</label><select id="f-client"><option value="">— Kunde wählen —</option></select></div>
+    <div class="fld wide"><label>Firma (aus AppSheet)</label><select id="f-client"><option value="">— Firma wählen —</option></select></div>
+    <div class="fld wide"><label>Firmenname</label><input type="text" id="c-name"></div>
+    <div class="fld wide"><label>Straße und Hausnummer</label><input type="text" id="c-street"></div>
+    <div class="fld"><label>PLZ</label><input type="text" id="c-zip"></div>
+    <div class="fld"><label>Ort</label><input type="text" id="c-city"></div>
+    <div class="fld"><label>E-Mail (nicht im Angebot)</label><input type="email" id="c-email"></div>
+    <div class="fld"><label>Telefon (nicht im Angebot)</label><input type="text" id="c-phone"></div>
+    <div class="fld wide"><label>Steuernummer / USt-IdNr. (optional, nicht im Angebot)</label><input type="text" id="c-tax"></div>
+    <div class="fld wide"><button class="ghost small" id="btn-client-save" style="align-self:flex-start" disabled>Firma in AppSheet anlegen</button></div>
   </div>
-  <p class="hint" style="margin:18px 0 8px;font-weight:600;color:var(--ink)">Firma</p>
-  <div class="fg">
-    <div class="fld wide"><label>Firmenbezeichnung</label><input type="text" id="c-name"></div>
-    <div class="fld wide"><label>Firmenadresse (Straße / PLZ Ort, je Zeile)</label><textarea rows="2" id="c-addr"></textarea></div>
-  </div>
-  <p class="hint" style="margin:18px 0 8px;font-weight:600;color:var(--ink)">Ansprechperson</p>
-  <div class="fg">
-    <div class="fld"><label>Anrede</label><select id="c-sal"><option value="">— (Sehr geehrte Damen und Herren)</option><option>Herr</option><option>Frau</option></select></div>
+  <div class="fg" style="margin-top:22px">
+    <div class="fld wide"><label>Ansprechperson (optional)</label><select id="f-contact"><option value="">— keine Ansprechperson —</option></select></div>
+    <div class="fld"><label>Herr / Frau</label><select id="p-sal"><option value="">—</option><option>Herr</option><option>Frau</option></select></div>
     <div class="fld"></div>
-    <div class="fld"><label>Vorname</label><input type="text" id="c-first"></div>
-    <div class="fld"><label>Nachname</label><input type="text" id="c-last"></div>
-    <div class="fld"><label>E-Mail</label><input type="email" id="c-email"></div>
-    <div class="fld"><label>Telefon</label><input type="text" id="c-phone"></div>
-    <div class="fld wide"><button class="ghost small" id="btn-client-save" style="align-self:flex-start" disabled>Kunde in AppSheet anlegen</button></div>
+    <div class="fld"><label>Vorname</label><input type="text" id="p-first"></div>
+    <div class="fld"><label>Nachname</label><input type="text" id="p-last"></div>
+    <div class="fld"><label>E-Mail (nicht im Angebot)</label><input type="email" id="p-email"></div>
+    <div class="fld"><label>Telefon (nicht im Angebot)</label><input type="text" id="p-phone"></div>
+    <div class="fld wide"><button class="ghost small" id="btn-contact-save" style="align-self:flex-start" disabled>Ansprechperson in AppSheet anlegen</button></div>
   </div>
 
   <h2>1 · Anschreiben</h2>
@@ -329,7 +332,7 @@ function defaultModel(){
   return {
     type:"angebot", version:2,
     header:{ projectId:"KANT HOUSE ENTRANCES", projekt:"KANT HOUSE ENTRANCES", code:"KHE", seq:7, nr:"", place:"Berlin", date:isoToday() },
-    clientId:"",
+    clientId:"", contactId:"",
     empfaenger:"Rafael Borbalán\nKintyre Project & Construction\nManagement GmbH\nSchillerstr. 27\n60313 Frankfurt am Main",
     brief:{
       anrede:"Sehr geehrter Herr Borbalán,",
@@ -361,7 +364,8 @@ function defaultModel(){
 }
 let model = defaultModel();
 /* Beispiel-Kunde für die Erstansicht (wird beim Verbinden durch AppSheet ersetzt) */
-const BEISPIEL_KUNDE = { name:"Kintyre Project & Construction Management GmbH", salutation:"Herr", first:"Rafael", last:"Borbalán", address:"Schillerstr. 27\n60313 Frankfurt am Main", email:"", phone:"" };
+const BEISPIEL_KUNDE = { name:"Kintyre Project & Construction Management GmbH", street:"Schillerstr. 27", zip:"60313", city:"Frankfurt am Main", tax:"", email:"", phone:"" };
+const BEISPIEL_PERSON = { salutation:"Herr", first:"Rafael", last:"Borbalán", email:"", phone:"" };
 
 function isoToday(){ return new Date().toISOString().slice(0,10); }
 function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
@@ -1091,11 +1095,14 @@ async function api(action, params){
     catch(e){ if(i === 0){ await new Promise(r=>setTimeout(r,1500)); continue; } throw e; }
   }
 }
-const curProj = () => ctx && ctx.projects.find(p => p.id === model.header.projectId);
-const curClient = () => ctx && ctx.clients.find(c => c.id === model.clientId);
+/* Projekt-Kürzel vergibt die Datenbrücke automatisch (3 Buchstaben aus dem Projektnamen,
+   nie doppelt — Regel in Code.gs suggestCode_). Hier nur Anzeige. */
+const curProj    = () => ctx && ctx.projects.find(p => p.id === model.header.projectId);
+const curClient  = () => ctx && ctx.clients.find(c => c.id === model.clientId);
+const curContact = () => ctx && ctx.contacts.find(c => c.id === model.contactId);
+const contactsOf = id => ctx ? ctx.contacts.filter(c => c.clientId === id) : [];
 
-/* Nur externe = abrechenbare Projekte (AppSheet „Billable" = Y); interne Projekte bekommen
-   nie Angebote/Rechnungen (Ann, 2026-10-26). */
+/* Nur externe = abrechenbare Projekte (AppSheet „Billable" = Y). */
 function offerProjects(){ return ctx.projects.filter(p => p.billable || p.id === model.header.projectId); }
 function fillProjects(){
   const sel = $("#f-proj");
@@ -1107,42 +1114,74 @@ function fillClients(){
   const sel = $("#f-client"), pr = curProj();
   const own = pr && pr.clientId ? ctx.clients.filter(c => c.id === pr.clientId) : [];
   const rest = ctx.clients.filter(c => !own.includes(c));
-  const opt = c => `<option value="${esc(c.id)}">${esc(c.name)}${c.last ? " — " + esc([c.salutation, c.first, c.last].filter(Boolean).join(" ")) : ""}</option>`;
-  sel.innerHTML = '<option value="">— Kunde wählen —</option>' +
-    (own.length ? '<optgroup label="Kunde des Projekts">' + own.map(opt).join("") + '</optgroup>' : "") +
-    '<optgroup label="Alle Kunden">' + rest.map(opt).join("") + '</optgroup>' +
-    '<option value="__neu">+ Neuen Kunden anlegen …</option>';
+  const opt = c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`;
+  sel.innerHTML = '<option value="">— Firma wählen —</option>' +
+    (own.length ? '<optgroup label="Firma des Projekts">' + own.map(opt).join("") + '</optgroup>' : "") +
+    '<optgroup label="Alle Firmen">' + rest.map(opt).join("") + '</optgroup>' +
+    '<option value="__neu">+ Neue Firma anlegen …</option>';
   sel.value = model.clientId || "";
 }
+function fillContacts(){
+  const sel = $("#f-contact");
+  const list = contactsOf(model.clientId);
+  sel.innerHTML = '<option value="">— keine Ansprechperson —</option>' +
+    list.map(c => `<option value="${esc(c.id)}">${esc([c.salutation, c.first, c.last].filter(Boolean).join(" "))}</option>`).join("") +
+    (model.clientId ? '<option value="__neu">+ Neue Ansprechperson …</option>' : "");
+  sel.value = model.contactId || "";
+}
 
-/* Kundenfelder <-> Modell */
-const CF = { name:"#c-name", salutation:"#c-sal", first:"#c-first", last:"#c-last", address:"#c-addr", email:"#c-email", phone:"#c-phone" };
-function clientForm(){ const o = {}; Object.keys(CF).forEach(k => o[k] = $(CF[k]).value.trim()); return o; }
-function setClientForm(c){ Object.keys(CF).forEach(k => $(CF[k]).value = (c && c[k]) || ""); }
-/* Empfängerblock + Anrede automatisch aus dem Kunden */
+/* Formularfelder <-> Daten */
+const CF = { name:"#c-name", street:"#c-street", zip:"#c-zip", city:"#c-city", email:"#c-email", phone:"#c-phone", tax:"#c-tax" };
+const PF = { salutation:"#p-sal", first:"#p-first", last:"#p-last", email:"#p-email", phone:"#p-phone" };
+const readForm = F => { const o = {}; Object.keys(F).forEach(k => o[k] = $(F[k]).value.trim()); return o; };
+const fillForm = (F, d) => Object.keys(F).forEach(k => $(F[k]).value = (d && d[k]) || "");
+function clientForm(){ return readForm(CF); }
+function setClientForm(c){ fillForm(CF, c); }
+
+/* „Schillerstr. 27 60313 Frankfurt am Main“ -> {street, zip, city} */
+function splitAddress(s){
+  const m = String(s || "").replace(/\s*\n\s*/g, " ").trim().match(/^(.*?)[,\s]+(\d{4,5})\s+(.+)$/);
+  return m ? { street:m[1].trim(), zip:m[2], city:m[3].trim() } : { street:String(s || "").trim(), zip:"", city:"" };
+}
+/* Firma aus AppSheet; hat sie noch keine Adresse, kommen Name/Adresse aus Bill Name/Bill Address des Projekts */
+function clientWithFallback(){
+  const c = Object.assign({}, curClient() || {}), pr = curProj();
+  if(!pr || c.street) return c;
+  if(pr.billName) c.name = pr.billName;
+  if(pr.billAddress) Object.assign(c, splitAddress(pr.billAddress));
+  return c;
+}
+
+/* Empfängerblock + Anrede automatisch aus Firma und Ansprechperson */
 function applyClientToLetter(){
-  const c = clientForm();
-  const person = [c.first, c.last].filter(Boolean).join(" ");
-  model.empfaenger = [person, c.name].concat(c.address.split("\n")).map(s => s.trim()).filter(Boolean).join("\n");
+  const c = readForm(CF), p = readForm(PF);
+  const person = [p.first, p.last].filter(Boolean).join(" ");
+  const firma = c.name && c.name !== person ? c.name : "";        // Privatperson: Name nicht doppelt
+  model.empfaenger = [person, firma, c.street, [c.zip, c.city].filter(Boolean).join(" ")]
+    .map(s => s.trim()).filter(Boolean).join("\n");
   model.brief.anrede =
-    c.salutation === "Herr" && c.last ? "Sehr geehrter Herr " + c.last + "," :
-    c.salutation === "Frau" && c.last ? "Sehr geehrte Frau " + c.last + "," :
+    p.salutation === "Herr" && p.last ? "Sehr geehrter Herr " + p.last + "," :
+    p.salutation === "Frau" && p.last ? "Sehr geehrte Frau " + p.last + "," :
     "Sehr geehrte Damen und Herren,";
   syncBound();
 }
-function clientDirty(){
-  const c = curClient(), f = clientForm();
-  if(!c) return !!f.name;
-  return Object.keys(CF).some(k => (c[k] || "") !== f[k]);
-}
+const differs = (F, d) => { const f = readForm(F); return d ? Object.keys(F).some(k => (d[k] || "") !== f[k]) : Object.values(f).some(Boolean); };
 function refreshAppSheetButtons(){
-  const pr = curProj();
-  const pb = $("#btn-proj-save"), cb = $("#btn-client-save");
-  if(pb) pb.disabled = !pr || (pr.code || "") === String(model.header.code || "").toUpperCase().trim();
+  const cb = $("#btn-client-save"), pb = $("#btn-contact-save");
   if(cb){
-    cb.disabled = !ctx || !clientDirty();
-    cb.textContent = curClient() ? "Änderungen am Kunden in AppSheet speichern" : "Kunde in AppSheet anlegen";
+    cb.disabled = !ctx || !differs(CF, curClient());
+    cb.textContent = curClient() ? "Änderungen an der Firma in AppSheet speichern" : "Firma in AppSheet anlegen";
   }
+  if(pb){
+    pb.disabled = !ctx || !model.clientId || !differs(PF, curContact());
+    pb.textContent = !model.clientId ? "Ansprechperson anlegen (erst die Firma speichern)"
+      : curContact() ? "Änderungen an der Ansprechperson speichern" : "Ansprechperson in AppSheet anlegen";
+  }
+}
+function pickContact(){
+  const list = contactsOf(model.clientId), pr = curProj();
+  const pref = pr && pr.contactId && list.find(c => c.id === pr.contactId);
+  model.contactId = pref ? pref.id : (list.length === 1 ? list[0].id : "");
 }
 
 $("#f-proj").addEventListener("change", e=>{
@@ -1153,42 +1192,57 @@ $("#f-proj").addEventListener("change", e=>{
     model.header.projekt = pr.name || "";
     model.header.seq = (pr.lastSeq || 0) + 1;
     model.clientId = pr.clientId || "";
-    fillClients();
-    setClientForm(curClient() || { name: pr.billName, address: pr.billAddress });
+    pickContact();
+    fillClients(); fillContacts();
+    setClientForm(clientWithFallback()); fillForm(PF, curContact());
     applyClientToLetter();
   }
   syncBound(); render();
 });
 $("#f-client").addEventListener("change", e=>{
   if(e.target.value === "__neu"){ model.clientId = ""; setClientForm(null); e.target.value = ""; $("#c-name").focus(); }
-  else { model.clientId = e.target.value; setClientForm(curClient()); }
+  else model.clientId = e.target.value;
+  if(model.clientId) setClientForm(clientWithFallback());
+  pickContact(); fillContacts(); fillForm(PF, curContact());
   applyClientToLetter(); render();
 });
-Object.values(CF).forEach(sel => $(sel).addEventListener("input", ()=>{ applyClientToLetter(); render(); }));
-$("#c-sal").addEventListener("change", ()=>{ applyClientToLetter(); render(); });
+$("#f-contact").addEventListener("change", e=>{
+  if(e.target.value === "__neu"){ model.contactId = ""; fillForm(PF, null); e.target.value = ""; $("#p-last").focus(); }
+  else { model.contactId = e.target.value; fillForm(PF, curContact()); }
+  applyClientToLetter(); render();
+});
+Object.values(CF).concat(Object.values(PF)).forEach(sel => {
+  $(sel).addEventListener("input", ()=>{ applyClientToLetter(); render(); });
+  $(sel).addEventListener("change", ()=>{ applyClientToLetter(); render(); });
+});
 
-$("#btn-proj-save").onclick = async ()=>{
-  const pr = curProj(); if(!pr) return;
-  const btn = $("#btn-proj-save"); btn.disabled = true; asSay("speichere Projekt …");
-  try{
-    const r = await api("saveProjectInfo", { project:pr.id, code:model.header.code || "", secret:WRITE_SECRET });
-    pr.code = r.code; model.header.code = r.code;
-    fillProjects(); asSay("Kürzel " + r.code + " für „" + pr.name + "“ gespeichert.");
-  }catch(err){ asSay("Speichern fehlgeschlagen — " + err.message, true); }
-  syncBound(); render();
-};
 $("#btn-client-save").onclick = async ()=>{
-  const f = clientForm();
-  if(!f.name){ alert("Bitte Firma / Kundenname eintragen."); return; }
-  const btn = $("#btn-client-save"); btn.disabled = true; asSay("speichere Kunden …");
+  const f = readForm(CF);
+  if(!f.name){ alert("Bitte den Firmennamen eintragen."); return; }
+  $("#btn-client-save").disabled = true; asSay("speichere Firma …");
   try{
     const r = await api("saveClient", Object.assign({ secret:WRITE_SECRET, id:model.clientId || "", project:model.header.projectId || "" }, f));
     const i = ctx.clients.findIndex(c => c.id === r.id);
     if(i >= 0) ctx.clients[i] = r; else ctx.clients.push(r);
     model.clientId = r.id;
     if(r.linked){ const pr = curProj(); if(pr) pr.clientId = r.id; }
-    fillClients();
-    asSay(r.created ? "Kunde „" + r.name + "“ angelegt" + (r.linked ? " und mit dem Projekt verknüpft." : ".") : "Kunde „" + r.name + "“ aktualisiert.");
+    fillClients(); fillContacts();
+    asSay(r.created ? "Firma „" + r.name + "“ angelegt" + (r.linked ? " und mit dem Projekt verknüpft." : ".") : "Firma „" + r.name + "“ aktualisiert.");
+  }catch(err){ asSay("Speichern fehlgeschlagen — " + err.message, true); }
+  render();
+};
+$("#btn-contact-save").onclick = async ()=>{
+  const f = readForm(PF);
+  if(!f.last && !f.first){ alert("Bitte den Namen der Ansprechperson eintragen."); return; }
+  $("#btn-contact-save").disabled = true; asSay("speichere Ansprechperson …");
+  try{
+    const r = await api("saveContact", Object.assign({ secret:WRITE_SECRET, id:model.contactId || "", clientId:model.clientId, project:model.header.projectId || "" }, f));
+    const i = ctx.contacts.findIndex(c => c.id === r.id);
+    if(i >= 0) ctx.contacts[i] = r; else ctx.contacts.push(r);
+    model.contactId = r.id;
+    if(r.linked){ const pr = curProj(); if(pr) pr.contactId = r.id; }
+    fillContacts();
+    asSay(r.created ? "Ansprechperson " + [r.first, r.last].filter(Boolean).join(" ") + " angelegt." : "Ansprechperson aktualisiert.");
   }catch(err){ asSay("Speichern fehlgeschlagen — " + err.message, true); }
   render();
 };
@@ -1198,9 +1252,11 @@ async function registerOffer(){
   try{
     await api("registerOffer", {
       secret:WRITE_SECRET, nr:model.header.nr, project:model.header.projectId, seq:model.header.seq,
-      date:model.header.date, client:model.clientId || "", net:totalNetto().toFixed(2), gross:totalBrutto().toFixed(2)
+      date:model.header.date, client:model.clientId || "", contact:model.contactId || "",
+      net:totalNetto().toFixed(2), gross:totalBrutto().toFixed(2)
     });
-    const pr = curProj(); if(pr) pr.lastSeq = Math.max(pr.lastSeq || 0, parseInt(model.header.seq, 10) || 0);
+    const pr = curProj();
+    if(pr){ pr.lastSeq = Math.max(pr.lastSeq || 0, parseInt(model.header.seq, 10) || 0); pr.clientId = pr.clientId || model.clientId; pr.contactId = pr.contactId || model.contactId; }
     asSay("Angebot " + model.header.nr + " im Register eingetragen.");
   }catch(err){ asSay("PDF ok, Register-Eintrag fehlgeschlagen — " + err.message, true); }
 }
@@ -1208,9 +1264,13 @@ async function registerOffer(){
 async function connectAppSheet(){
   try{
     ctx = await api("getOfferContext");
-    fillProjects(); fillClients();
-    if(curClient()) setClientForm(curClient());
-    asSay("verbunden · " + offerProjects().length + " externe Projekte · " + ctx.clients.length + " Kunden");
+    ctx.contacts = ctx.contacts || [];
+    fillProjects(); fillClients(); fillContacts();
+    const pr = curProj(); if(pr && pr.code) model.header.code = pr.code;
+    if(curClient()) setClientForm(clientWithFallback());
+    if(curContact()) fillForm(PF, curContact());
+    asSay("verbunden · " + offerProjects().length + " externe Projekte · " + ctx.clients.length + " Firmen · " + ctx.contacts.length + " Ansprechpersonen");
+    syncBound(); render();
   }catch(err){
     asSay("nicht verbunden — Felder von Hand ausfüllen (" + err.message + ")", true);
   }
@@ -1218,7 +1278,7 @@ async function connectAppSheet(){
 }
 
 /* ---- Start ---- */
-setClientForm(BEISPIEL_KUNDE);
+setClientForm(BEISPIEL_KUNDE); fillForm(PF, BEISPIEL_PERSON);
 syncBound(); renderEditor(); render();
 connectAppSheet();
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(growAll);

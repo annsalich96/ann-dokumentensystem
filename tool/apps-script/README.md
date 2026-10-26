@@ -51,10 +51,10 @@ Google-Tabelle **„Project Management NEW"** (die Mappe hinter deiner AppSheet-
 | `…/exec?action=cleanDescriptions&items=<JSON>[&project=…&phase=…&maxChars=…]` | KI-bereinigte Tätigkeitstexte: `{items:[{i,text}]}` |
 | `…/exec?action=markBilled&entries=<JSON>&document=…&date=…&secret=…[&dryRun=1]` | markiert Zeiteinträge als abgerechnet (schreibt 5 neue Spalten in `TimeTrackingRecords`) → `{updated, notFound, dryRun}` |
 | `…/exec?action=unmarkBilled&document=…&secret=…[&ids=<JSON>]` | nimmt die Abbuchung eines Dokuments zurück (`Billing_Description` bleibt) → `{cleared}` |
-| `…/exec?action=getOfferContext` | Angebot-Editor: `{projects:[{id,name,code,clientId,billName,billAddress,lastSeq}], clients:[{id,name,salutation,first,last,address,email,phone}]}`. Legt beim ersten Aufruf die neuen Spalten in `Projects`/`Clients` an (nur Kopfzeile, am Ende) |
-| `…/exec?action=saveProjectInfo&project=…&code=…&secret=…` | Projekt-Kürzel → Spalte `Project Code` in `Projects` |
-| `…/exec?action=saveClient&secret=…&name=…[&id=…&salutation=Herr\|Frau&first=…&last=…&address=…&email=…&phone=…&project=…]` | Kunde in `Clients` anlegen (ohne `id`) oder ändern; Spalten `Contact Salutation`, `Contact First Name`, `Contact Last Name`, `Company Address` (Kunde = Firma + eine Ansprechperson). Neuer Kunde wird mit dem Projekt verknüpft, wenn dieses noch keinen Kunden hat |
-| `…/exec?action=registerOffer&secret=…&nr=…&project=…&seq=…&date=…[&client=…&net=…&gross=…]` | Angebot ins Register-Tab `DocSystem_Offers` (Quelle der laufenden Nummer je Projekt) |
+| `…/exec?action=getOfferContext` | Angebot-Editor: `{projects:[{id,name,code,clientId,contactId,billName,billAddress,billable,lastSeq}], clients:[{id,name,street,zip,city,tax,email,phone}], contacts:[{id,clientId,salutation,first,last,email,phone}]}`. Legt fehlende Spalten/Tab `Contacts` an und vergibt fehlende Projekt-Kürzel |
+| `…/exec?action=saveClient&secret=…&name=…[&id=…&street=…&zip=…&city=…&tax=…&email=…&phone=…&project=…]` | Firma in `Clients` anlegen/ändern; neue Firma wird Kunde des Projekts, wenn dieses noch keinen hat |
+| `…/exec?action=saveContact&secret=…&clientId=…[&id=…&salutation=…&first=…&last=…&email=…&phone=…&project=…]` | Ansprechperson in `Contacts` anlegen/ändern; neue Person wird Standard-Ansprechperson des Projekts, wenn leer |
+| `…/exec?action=registerOffer&secret=…&nr=…&project=…&seq=…&date=…[&client=…&contact=…&net=…&gross=…]` | Angebot ins Register `DocSystem_Offers` (laufende Nr. je Projekt) |
 
 ## Abbuchen einrichten (für `markBilled` / `unmarkBilled`)
 

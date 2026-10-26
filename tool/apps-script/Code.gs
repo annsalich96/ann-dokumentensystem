@@ -3,9 +3,9 @@
  * Backend-Layer (Phase 1): Google Apps Script Web App über »Project Management NEW«.
  * Lesen: unverändert. Schreiben: NUR additiv — fünf neue Spalten am Ende von
  * `TimeTrackingRecords`, eigene Tabs `DocSystem_Log` / `DocSystem_Offers`, neue Spalten
- * am Ende von `Projects` (Kürzel, deutsche Bezeichnung) und `Clients` (Ansprechperson,
- * Anrede, Adresse). Kunden werden im Angebot-Editor neu angelegt oder geändert (Ann,
- * 2026-10-26). Keine Formel wird angefasst. Schreibzugriffe brauchen den WRITE_SECRET.
+ * am Ende von `Projects` (Kürzel, Standard-Ansprechperson) und `Clients` (Adresse,
+ * Steuernummer), eigenes Tab `Contacts` (Ansprechpersonen). Firmen/Personen werden im
+ * Angebot-Editor angelegt oder geändert (Ann, 2026-10-26). Keine Formel wird angefasst. Schreibzugriffe brauchen den WRITE_SECRET.
  *
  * Endpunkte (GET, ?action=…):
  *   ping
@@ -16,12 +16,13 @@
  *   cleanDescriptions&items=<JSON>[&project=…&phase=…&maxChars=…]  -> KI-bereinigte Texte
  *   markBilled&entries=<JSON>&document=…&date=…&secret=…[&dryRun=1]   -> Einträge abrechnen
  *   unmarkBilled&document=…&secret=…[&ids=<JSON>]                     -> Abbuchung zurücknehmen
- *   getOfferContext                        -> Projekte (Kürzel, deutsche Bezeichnung, nächste
- *                                             Angebots-Nr.) + Kunden für den Angebot-Editor
- *   saveProjectInfo&project=…&code=…&secret=…            -> Projekt-Kürzel in `Projects`
- *   saveClient&secret=…&name=…[&id=…&salutation=…&first=…&last=…&address=…&email=…&phone=…&project=…]
- *                                          -> Kunde in `Clients` anlegen/ändern
- *   registerOffer&secret=…&nr=…&project=…&seq=…&date=…[&client=…&net=…&gross=…]
+ *   getOfferContext                        -> Angebot-Editor: Projekte (Kürzel automatisch, nächste
+ *                                             Angebots-Nr.), Firmen, Ansprechpersonen
+ *   saveClient&secret=…&name=…[&id=…&street=…&zip=…&city=…&tax=…&email=…&phone=…&project=…]
+ *                                          -> Firma in `Clients` anlegen/ändern
+ *   saveContact&secret=…&clientId=…[&id=…&salutation=…&first=…&last=…&email=…&phone=…&project=…]
+ *                                          -> Ansprechperson in `Contacts` anlegen/ändern
+ *   registerOffer&secret=…&nr=…&project=…&seq=…&date=…[&client=…&contact=…&net=…&gross=…]
  *                                          -> Angebot im Register `DocSystem_Offers` eintragen
  *
  * Script-Properties:
@@ -70,8 +71,8 @@ function doGet(e){
       case 'markBilled':    data = markBilled(p); break;
       case 'unmarkBilled':  data = unmarkBilled(p); break;
       case 'getOfferContext': data = getOfferContext(); break;
-      case 'saveProjectInfo': data = saveProjectInfo(p); break;
       case 'saveClient':      data = saveClient(p); break;
+      case 'saveContact':     data = saveContact(p); break;
       case 'registerOffer':   data = registerOffer(p); break;
       case 'getTimeRecords':data = getTimeRecords({
                               project:p.project || '', phase:p.phase || '', service:p.service || '',
@@ -513,20 +514,25 @@ function unmarkBilled(p){
 /* ------------------------------------------------------------------ */
 /*  ANGEBOT-EDITOR (Ann, 2026-10-26)
     Angebotsnummer: OFF_<Projekt-Kürzel>_<lfd. Nr. je Projekt, 2-stellig>_<JJMMTT>.
-    Die laufende Nummer zählt pro Projekt (nicht pro Jahr) und kommt aus dem
-    eigenen Register-Tab DocSystem_Offers. Kürzel und deutsche Projektbezeichnung
-    stehen in zwei neuen Spalten am Ende von `Projects`. Kunden (Empfänger) kommen aus
-    `Clients`, ergänzt um Ansprechperson, Anrede (Herr/Frau) und Adresse.          */
+    - Kürzel: automatisch aus dem Projektnamen (3 Buchstaben, nie doppelt), Spalte
+      `Project Code` am Ende von `Projects`; wird für jedes externe Projekt (Billable = Y)
+      ohne Kürzel beim Laden vergeben.
+    - Laufende Nummer: pro Projekt aus dem eigenen Register-Tab DocSystem_Offers.
+    - Kunde = Firma (`Clients`: Client Name + Straße/PLZ/Ort, Steuernummer, E-Mail, Telefon)
+      mit beliebig vielen Ansprechpersonen (eigenes Tab `Contacts`, Ref Client_ID).
+      Projekt merkt sich Firma (`Client`) und Standard-Ansprechperson (`Contact`).     */
 /* ------------------------------------------------------------------ */
 const OFFER_TAB = 'DocSystem_Offers';
-const OFFER_HEADERS = ['Offer_No', 'Project_ID', 'Seq', 'Offer_Date', 'Client_ID', 'Net', 'Gross', 'Created', 'Updated', 'User'];
-/* Nur das Kürzel ist neu; im Kopf steht der „Project Name“ aus AppSheet (Ann, 2026-10-26). */
-const PROJECT_OFFER_COLS = { code:'Project Code' };
-/* Kunde = Firma (Client Name + Company Address) mit einer Ansprechperson (Anrede, Vor-/Nachname). */
-const CLIENT_OFFER_COLS = { salutation:'Contact Salutation', first:'Contact First Name', last:'Contact Last Name', address:'Company Address' };
+const OFFER_HEADERS = ['Offer_No', 'Project_ID', 'Seq', 'Offer_Date', 'Client_ID', 'Contact_ID', 'Net', 'Gross', 'Created', 'Updated', 'User'];
+const CONTACTS_TAB = 'Contacts';
+const CONTACT_HEADERS = ['Contact_ID', 'Client_ID', 'Salutation', 'First Name', 'Last Name', 'Email', 'Phone'];
+const PROJECT_OFFER_COLS = { code:'Project Code', contact:'Contact' };
+const CLIENT_OFFER_COLS = { street:'Company Street', zip:'Company Postal Code', city:'Company City', tax:'Tax Number' };
 
 function getOfferContext(){
   ensureOfferColumns_();
+  assignProjectCodes_();
+  _rowsMemo = {};                                   // nach dem Schreiben frisch lesen
   const maxSeq = {};
   rowsSafe_(OFFER_TAB).forEach(function(r){
     const pid = str_(r['Project_ID']); const n = Math.floor(num_(r['Seq']));
@@ -539,7 +545,8 @@ function getOfferContext(){
       return {
         id: id, name: str_(r['Project Name']) || id,
         code: str_(r[PROJECT_OFFER_COLS.code]),
-        clientId: str_(r['Client']), billName: str_(r['Bill Name']), billAddress: str_(r['Bill Address']),
+        clientId: str_(r['Client']), contactId: str_(r[PROJECT_OFFER_COLS.contact]),
+        billName: str_(r['Bill Name']), billAddress: str_(r['Bill Address']),
         status: str_(r['Status']), billable: bool_(r['Billable']),
         lastSeq: maxSeq[id] || 0
       };
@@ -549,34 +556,91 @@ function getOfferContext(){
     .filter(function(r){ return str_(r['Client_ID']); })
     .map(clientOut_)
     .sort(function(a, b){ return cmpDe_(a.name, b.name); });
-  return { projects: projects, clients: clients };
-}
-/* Legt die neuen Spalten in `Projects` und `Clients` an, falls sie fehlen (nur Kopfzeile,
-   am Ende) — damit Kürzel, deutsche Bezeichnung und Anrede (Herr/Frau) auch direkt in
-   AppSheet gepflegt werden können (nach „Regenerate Structure"). Einmal pro 6 h geprüft. */
-function ensureOfferColumns_(){
-  const cache = CacheService.getScriptCache();
-  if(cache.get('offerColsOk3')) return;
-  withLock_(function(){
-    const ps = ss_().getSheetByName(CONFIG.TABS.projects);
-    ensureCols_(ps, [PROJECT_OFFER_COLS.code]);
-    renameHeader_(ss_().getSheetByName(CONFIG.TABS.clients), 'Address', CLIENT_OFFER_COLS.address);   // erste Version hieß nur „Address“
-    ensureCols_(ss_().getSheetByName(CONFIG.TABS.clients),
-      [CLIENT_OFFER_COLS.salutation, CLIENT_OFFER_COLS.first, CLIENT_OFFER_COLS.last, CLIENT_OFFER_COLS.address]);
-  });
-  cache.put('offerColsOk3', '1', 21600);
+  const contacts = rowsSafe_(CONTACTS_TAB)
+    .filter(function(r){ return str_(r['Contact_ID']); })
+    .map(contactOut_)
+    .sort(function(a, b){ return cmpDe_(a.last + ' ' + a.first, b.last + ' ' + b.first); });
+  return { projects: projects, clients: clients, contacts: contacts };
 }
 function clientOut_(r){
   return {
     id: str_(r['Client_ID']), name: str_(r['Client Name']),
     email: str_(r['Email']), phone: str_(r['Phone']),
-    salutation: str_(r[CLIENT_OFFER_COLS.salutation]),
-    first: str_(r[CLIENT_OFFER_COLS.first]), last: str_(r[CLIENT_OFFER_COLS.last]),
-    address: str_(r[CLIENT_OFFER_COLS.address])
+    street: str_(r[CLIENT_OFFER_COLS.street]), zip: str_(r[CLIENT_OFFER_COLS.zip]),
+    city: str_(r[CLIENT_OFFER_COLS.city]), tax: str_(r[CLIENT_OFFER_COLS.tax])
+  };
+}
+function contactOut_(r){
+  return {
+    id: str_(r['Contact_ID']), clientId: str_(r['Client_ID']),
+    salutation: str_(r['Salutation']), first: str_(r['First Name']), last: str_(r['Last Name']),
+    email: str_(r['Email']), phone: str_(r['Phone'])
   };
 }
 
-/* Spalten am ENDE der Kopfzeile sicherstellen (wie ensureBillingCols_). -> {Name: 1-basiert} */
+/* Neue Spalten/Tabs anlegen, falls sie fehlen (nur Kopfzeile, am Ende). Einmal pro 6 h. */
+function ensureOfferColumns_(){
+  const cache = CacheService.getScriptCache();
+  if(cache.get('offerColsOk5')) return;
+  withLock_(function(){
+    const ss = ss_();
+    ensureCols_(ss.getSheetByName(CONFIG.TABS.projects), [PROJECT_OFFER_COLS.code, PROJECT_OFFER_COLS.contact]);
+    const cs = ss.getSheetByName(CONFIG.TABS.clients);
+    renameHeader_(cs, 'Address', CLIENT_OFFER_COLS.street);            // frühere Versionen: eine Adress-Spalte
+    renameHeader_(cs, 'Company Address', CLIENT_OFFER_COLS.street);
+    ensureCols_(cs, Object.keys(CLIENT_OFFER_COLS).map(function(k){ return CLIENT_OFFER_COLS[k]; }));
+    let ct = ss.getSheetByName(CONTACTS_TAB);
+    if(!ct){ ct = ss.insertSheet(CONTACTS_TAB); ct.appendRow(CONTACT_HEADERS); ct.setFrozenRows(1); }
+    else ensureCols_(ct, CONTACT_HEADERS);
+  });
+  cache.put('offerColsOk5', '1', 21600);
+}
+
+/* Kürzel-Regel (Ann, 2026-10-26) — identisch zu suggestCode() im Angebot-Editor:
+     3+ Wörter: Anfangsbuchstaben der ersten drei      KANT HOUSE ENTRANCES -> KHE
+     2 Wörter:  beide Anfangsbuchstaben + 2. Buchstabe des zweiten Wortes   RING CENTER -> RCE
+     1 Wort:    die ersten drei Buchstaben             GUNDILITOR -> GUN
+   Vergeben? -> dritter Buchstabe = nächster Buchstabe des letzten Wortes, notfalls A–Z. */
+function suggestCode_(name, taken){
+  var words = str_(name).toUpperCase()
+    .replace(/Ä/g,'AE').replace(/Ö/g,'OE').replace(/Ü/g,'UE').replace(/ß/g,'SS')
+    .split(/[^A-Z0-9]+/).filter(function(w){ return w; });
+  if(!words.length) return '';
+  var last = words.length >= 3 ? words[2] : words[words.length - 1];
+  var head = words.length >= 2 ? words[0][0] + words[1][0] : words[0].slice(0, 2);
+  if(head.length < 2) head = (head + 'X').slice(0, 2);
+  var start = words.length >= 3 ? 0 : words.length === 2 ? 1 : 2;
+  var cands = [];
+  for(var i = start; i < last.length; i++) cands.push(head + last[i]);
+  for(var c = 65; c <= 90; c++) cands.push(head + String.fromCharCode(c));
+  for(var j = 0; j < cands.length; j++) if(taken.indexOf(cands[j]) === -1) return cands[j];
+  return '';
+}
+function assignProjectCodes_(){
+  withLock_(function(){
+    var sh = ss_().getSheetByName(CONFIG.TABS.projects);
+    var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); });
+    var cCode = head.indexOf(PROJECT_OFFER_COLS.code), cName = head.indexOf('Project Name'), cId = head.indexOf('Project_ID'),
+        cBill = head.indexOf('Billable'), cStat = head.indexOf('Status');
+    if(cCode < 0 || cName < 0) return;
+    var last = sh.getLastRow(); if(last < 2) return;
+    var vals = sh.getRange(2, 1, last - 1, head.length).getValues();
+    var taken = vals.map(function(r){ return str_(r[cCode]).toUpperCase(); }).filter(function(c){ return c; });
+    var changed = [];
+    vals.forEach(function(r, i){
+      if(!str_(r[cId]) || str_(r[cCode])) return;
+      if(cBill > -1 && !bool_(r[cBill])) return;               // nur externe Projekte
+      if(cStat > -1 && str_(r[cStat]) === 'Cancelled') return;
+      var code = suggestCode_(r[cName] || r[cId], taken);
+      if(!code) return;
+      sh.getRange(i + 2, cCode + 1).setValue(code);
+      taken.push(code); changed.push(str_(r[cId]) + '=' + code);
+    });
+    if(changed.length){ SpreadsheetApp.flush(); logRow_('assignProjectCodes', changed, '', [], changed); }
+  });
+}
+
+/* Spalten am ENDE der Kopfzeile sicherstellen. -> {idx:{Name: 1-basiert}, header:[…]} */
 function ensureCols_(sh, names){
   var lastCol = sh.getLastColumn();
   var header = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h){ return String(h).trim(); });
@@ -607,65 +671,68 @@ function withLock_(fn){
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
   try{ return fn(); } finally { lock.releaseLock(); }
 }
+function newId_(){ return Utilities.getUuid().replace(/-/g, '').slice(0, 8); }   // wie AppSheet UNIQUEID()
 
-function saveProjectInfo(p){
+/* Zeile anlegen (ohne id) oder Felder setzen (mit id). vals = {Spaltenname: Wert}. */
+function upsertRow_(sh, idCol, id, vals){
+  var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); });
+  if(id){
+    var row = findRow_(sh, idCol, id); if(row < 0) throw new Error('nicht gefunden: ' + id);
+    var before = sh.getRange(row, 1, 1, head.length).getValues()[0];
+    Object.keys(vals).forEach(function(k){ var c = head.indexOf(k); if(c > -1) sh.getRange(row, c + 1).setValue(vals[k]); });
+    return { id: id, created: false, before: before };
+  }
+  id = newId_(); vals[idCol] = id;
+  sh.appendRow(head.map(function(h){ return vals.hasOwnProperty(h) ? vals[h] : ''; }));
+  return { id: id, created: true, before: [] };
+}
+/* Feld eines Projekts setzen, wenn es leer ist. */
+function setProjectFieldIfEmpty_(pid, col, value){
+  if(!pid || !value) return false;
+  var ps = ss_().getSheetByName(CONFIG.TABS.projects);
+  var row = findRow_(ps, 'Project_ID', pid);
+  var c = ps.getRange(1, 1, 1, ps.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); }).indexOf(col) + 1;
+  if(row < 0 || c < 1 || str_(ps.getRange(row, c).getValue())) return false;
+  ps.getRange(row, c).setValue(value);
+  logRow_('setProject_' + col, [pid], '', [''], [value]);
+  return true;
+}
+
+/* Firma anlegen/ändern. Neue Firma wird Kunde des Projekts, wenn dieses noch keinen hat. */
+function saveClient(p){
   assertWriteAuth_(p);
-  var id = str_(p.project); if(!id) throw new Error('project fehlt');
+  var name = str_(p.name); if(!name) throw new Error('Firmenname fehlt');
   return withLock_(function(){
-    var sh = ss_().getSheetByName(CONFIG.TABS.projects);
-    var row = findRow_(sh, 'Project_ID', id); if(row < 0) throw new Error('Projekt nicht gefunden: ' + id);
-    var c = ensureCols_(sh, [PROJECT_OFFER_COLS.code]).idx[PROJECT_OFFER_COLS.code];
-    var before = sh.getRange(row, c).getValue();
-    var code = str_(p.code).toUpperCase();
-    sh.getRange(row, c).setValue(code);
+    var sh = ss_().getSheetByName(CONFIG.TABS.clients);
+    ensureCols_(sh, Object.keys(CLIENT_OFFER_COLS).map(function(k){ return CLIENT_OFFER_COLS[k]; }));
+    var vals = { 'Client Name': name, 'Email': str_(p.email), 'Phone': str_(p.phone) };
+    Object.keys(CLIENT_OFFER_COLS).forEach(function(k){ vals[CLIENT_OFFER_COLS[k]] = str_(p[k]); });
+    var r = upsertRow_(sh, 'Client_ID', str_(p.id), vals);
+    logRow_(r.created ? 'createClient' : 'saveClient', [r.id], '', r.before, vals);
+    var linked = r.created && setProjectFieldIfEmpty_(str_(p.project), 'Client', r.id);
     SpreadsheetApp.flush();
-    logRow_('saveProjectInfo', [id], '', [before], [code]);
-    return { id: id, code: code };
+    vals['Client_ID'] = r.id;
+    var out = clientOut_(vals); out.created = r.created; out.linked = linked;
+    return out;
   });
 }
 
-function saveClient(p){
+/* Ansprechperson anlegen/ändern. Neue Person wird Standard-Ansprechperson des Projekts, wenn leer. */
+function saveContact(p){
   assertWriteAuth_(p);
-  var name = str_(p.name); if(!name) throw new Error('Firmen-/Kundenname fehlt');
+  var clientId = str_(p.clientId); if(!clientId) throw new Error('Firma fehlt (erst die Firma anlegen)');
+  if(!str_(p.last) && !str_(p.first)) throw new Error('Name der Ansprechperson fehlt');
   return withLock_(function(){
-    var sh = ss_().getSheetByName(CONFIG.TABS.clients);
-    var e = ensureCols_(sh, [CLIENT_OFFER_COLS.salutation, CLIENT_OFFER_COLS.first, CLIENT_OFFER_COLS.last, CLIENT_OFFER_COLS.address]);
-    var vals = {};
-    vals['Client Name'] = name;
-    vals['Email'] = str_(p.email); vals['Phone'] = str_(p.phone);
-    vals[CLIENT_OFFER_COLS.salutation] = str_(p.salutation);
-    vals[CLIENT_OFFER_COLS.first] = str_(p.first);
-    vals[CLIENT_OFFER_COLS.last] = str_(p.last);
-    vals[CLIENT_OFFER_COLS.address] = str_(p.address);
-    var id = str_(p.id), created = false, linked = false;
-    if(id){
-      var row = findRow_(sh, 'Client_ID', id); if(row < 0) throw new Error('Kunde nicht gefunden: ' + id);
-      var before = sh.getRange(row, 1, 1, e.header.length).getValues()[0];
-      Object.keys(vals).forEach(function(k){
-        var col = e.header.indexOf(k); if(col > -1) sh.getRange(row, col + 1).setValue(vals[k]);
-      });
-      logRow_('saveClient', [id], '', before, vals);
-    } else {
-      id = Utilities.getUuid().replace(/-/g, '').slice(0, 8);     // wie AppSheet UNIQUEID()
-      vals['Client_ID'] = id;
-      sh.appendRow(e.header.map(function(h){ return vals.hasOwnProperty(h) ? vals[h] : ''; }));
-      created = true;
-      logRow_('createClient', [id], '', [], vals);
-      // Mit dem Projekt verknüpfen — nur wenn das Projekt noch keinen Kunden hat.
-      var pid = str_(p.project);
-      if(pid){
-        var ps = ss_().getSheetByName(CONFIG.TABS.projects);
-        var prow = findRow_(ps, 'Project_ID', pid);
-        var ccol = ps.getRange(1, 1, 1, ps.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); }).indexOf('Client') + 1;
-        if(prow > 0 && ccol > 0 && !str_(ps.getRange(prow, ccol).getValue())){
-          ps.getRange(prow, ccol).setValue(id); linked = true;
-          logRow_('linkProjectClient', [pid], '', [''], [id]);
-        }
-      }
-    }
+    var sh = ss_().getSheetByName(CONTACTS_TAB);
+    if(!sh){ sh = ss_().insertSheet(CONTACTS_TAB); sh.appendRow(CONTACT_HEADERS); sh.setFrozenRows(1); }
+    var vals = { 'Client_ID': clientId, 'Salutation': str_(p.salutation), 'First Name': str_(p.first),
+                 'Last Name': str_(p.last), 'Email': str_(p.email), 'Phone': str_(p.phone) };
+    var r = upsertRow_(sh, 'Contact_ID', str_(p.id), vals);
+    logRow_(r.created ? 'createContact' : 'saveContact', [r.id], '', r.before, vals);
+    var linked = r.created && setProjectFieldIfEmpty_(str_(p.project), PROJECT_OFFER_COLS.contact, r.id);
     SpreadsheetApp.flush();
-    vals['Client_ID'] = id;
-    var out = clientOut_(vals); out.created = created; out.linked = linked;
+    vals['Contact_ID'] = r.id;
+    var out = contactOut_(vals); out.created = r.created; out.linked = linked;
     return out;
   });
 }
@@ -678,15 +745,20 @@ function registerOffer(p){
     var ss = ss_();
     var sh = ss.getSheetByName(OFFER_TAB);
     if(!sh){ sh = ss.insertSheet(OFFER_TAB); sh.appendRow(OFFER_HEADERS); sh.setFrozenRows(1); }
+    var e = ensureCols_(sh, OFFER_HEADERS);
     var user = (Session.getActiveUser() && Session.getActiveUser().getEmail()) || '';
+    var vals = { 'Offer_No': nr, 'Project_ID': pid, 'Seq': Math.floor(num_(p.seq)), 'Offer_Date': str_(p.date),
+                 'Client_ID': str_(p.client), 'Contact_ID': str_(p.contact), 'Net': num_(p.net), 'Gross': num_(p.gross),
+                 'Updated': new Date(), 'User': user };
     var row = findRow_(sh, 'Offer_No', nr);
-    var vals = [nr, pid, Math.floor(num_(p.seq)), str_(p.date), str_(p.client), num_(p.net), num_(p.gross)];
     if(row > 0){
-      sh.getRange(row, 1, 1, vals.length).setValues([vals]);
-      sh.getRange(row, 9, 1, 2).setValues([[new Date(), user]]);
+      Object.keys(vals).forEach(function(k){ sh.getRange(row, e.idx[k]).setValue(vals[k]); });
     } else {
-      sh.appendRow(vals.concat([new Date(), new Date(), user]));
+      vals['Created'] = new Date();
+      sh.appendRow(e.header.map(function(h){ return vals.hasOwnProperty(h) ? vals[h] : ''; }));
     }
+    setProjectFieldIfEmpty_(pid, 'Client', str_(p.client));
+    setProjectFieldIfEmpty_(pid, PROJECT_OFFER_COLS.contact, str_(p.contact));
     SpreadsheetApp.flush();
     return { nr: nr, updated: row > 0 };
   });
