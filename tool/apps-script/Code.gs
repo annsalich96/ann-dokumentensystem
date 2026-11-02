@@ -51,6 +51,7 @@ const CONFIG = {
     subTasks:            'Sub Tasks',
     users:               'Users',
     clients:             'Clients',
+    collaborators:       'Collaborators',
     companyInfo:         'Company Info'
   }
 };
@@ -74,6 +75,7 @@ function doGet(e){
       case 'saveClient':      data = saveClient(p); break;
       case 'saveContact':     data = saveContact(p); break;
       case 'registerOffer':   data = registerOffer(p); break;
+      case 'getReportContext': data = getReportContext(); break;
       case 'getTimeRecords':data = getTimeRecords({
                               project:p.project || '', phase:p.phase || '', service:p.service || '',
                               from:p.from || '', to:p.to || '', user:p.user || ''
@@ -795,6 +797,47 @@ function TEST_markBilled_dry(){
 
 /* ------------------------------------------------------------------ */
 /*  Helfer                                                            */
+/* ------------------------------------------------------------------ */
+/*  Leistungsnachweis-Editor (nur lesend): Projekte mit Adresse,      */
+/*  Kunden (= Auftraggeber) und Collaborators (= ausführendes Gewerk, */
+/*  Auftragnehmer). Collaborators sind keinem Projekt zugeordnet.     */
+/* ------------------------------------------------------------------ */
+function getReportContext(){
+  const projects = rows_(CONFIG.TABS.projects)
+    .filter(function(r){ return str_(r['Project_ID']) && str_(r['Status']) !== 'Cancelled'; })
+    .map(function(r){
+      const id = str_(r['Project_ID']);
+      return {
+        id: id, name: str_(r['Project Name']) || id,
+        code: str_(r[PROJECT_OFFER_COLS.code]), address: str_(r['Address']),
+        clientId: str_(r['Client']), contactId: str_(r[PROJECT_OFFER_COLS.contact]),
+        billName: str_(r['Bill Name']), billAddress: str_(r['Bill Address']),
+        status: str_(r['Status']), billable: bool_(r['Billable'])
+      };
+    })
+    .sort(function(a, b){ return cmpDe_(a.name, b.name); });
+  const clients = rowsSafe_(CONFIG.TABS.clients)
+    .filter(function(r){ return str_(r['Client_ID']); })
+    .map(clientOut_)
+    .sort(function(a, b){ return cmpDe_(a.name, b.name); });
+  const contacts = rowsSafe_(CONTACTS_TAB)
+    .filter(function(r){ return str_(r['Contact_ID']); })
+    .map(contactOut_);
+  const collaborators = rowsSafe_(CONFIG.TABS.collaborators)
+    .filter(function(r){ return str_(r['Collaborator_ID']); })
+    .map(function(r){
+      return {
+        id: str_(r['Collaborator_ID']), name: str_(r['Company Name']),
+        address: str_(r['Company Adress']), discipline: str_(r['Company Discipline']),
+        email: str_(r['Company Email']), phone: str_(r['Company Phone']),
+        contactName: str_(r['Contact Person Name']), contactEmail: str_(r['Contact Person Email']),
+        contactPhone: str_(r['Contact Person Phone'])
+      };
+    })
+    .sort(function(a, b){ return cmpDe_(a.name, b.name); });
+  return { projects: projects, clients: clients, contacts: contacts, collaborators: collaborators };
+}
+
 /* ------------------------------------------------------------------ */
 function ss_(){ return SpreadsheetApp.openById(CONFIG.SHEET_ID); }
 

@@ -55,6 +55,7 @@ Google-Tabelle **„Project Management NEW"** (die Mappe hinter deiner AppSheet-
 | `…/exec?action=saveClient&secret=…&name=…[&id=…&street=…&zip=…&city=…&tax=…&email=…&phone=…&project=…]` | Firma in `Clients` anlegen/ändern; neue Firma wird Kunde des Projekts, wenn dieses noch keinen hat |
 | `…/exec?action=saveContact&secret=…&clientId=…[&id=…&salutation=…&first=…&last=…&email=…&phone=…&project=…]` | Ansprechperson in `Contacts` anlegen/ändern; neue Person wird Standard-Ansprechperson des Projekts, wenn leer |
 | `…/exec?action=registerOffer&secret=…&nr=…&project=…&seq=…&date=…[&client=…&contact=…&net=…&gross=…]` | Angebot ins Register `DocSystem_Offers` (laufende Nr. je Projekt) |
+| `…/exec?action=getReportContext` | Leistungsnachweis-Editor (nur lesend): `{projects:[{id,name,code,address,clientId,contactId,billName,billAddress,status,billable}], clients:[…], contacts:[…], collaborators:[{id,name,address,discipline,email,phone,contactName,contactEmail,contactPhone}]}` |
 
 ## Abbuchen einrichten (für `markBilled` / `unmarkBilled`)
 

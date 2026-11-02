@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leistungsnachweis — ann architecture</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="pdf-fonts.js"></script>
+<style>
+/* ============================================================
+   ann architecture — Dokumenten-System · Prototyp
+   Leistungsnachweis / Zustandsfeststellung nach VOB/B §4 Abs. 10
+
+   Gleiche Grundwerte und gleiches Fluss-Layout wie angebot.html (Grid, Rota 10/8 pt,
+   Linien, Kopf, Fuß; Zeilen -> Paginator -> Bildschirm und PDF zeichnen dieselbe Seitenliste).
+   Neu: Angabenblock (3 × 2) und Fotoblöcke unter jedem Abschnitt, auf das Raster zugeschnitten.
+   Layout-Quelle: design-sources/Leistungsnachweis/Zustandsfeststellung(_grid).pdf
+   Spec: docs/templates/CONDITION_REPORT.md
+   ============================================================ */
+
+@font-face{font-family:"Rota";src:url("fonts/Rota-Light.otf") format("opentype");font-weight:300;font-style:normal;font-display:swap}
+@font-face{font-family:"Rota";src:url("fonts/Rota-Medium.otf") format("opentype");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:"Rota";src:url("fonts/Rota-Bold.otf") format("opentype");font-weight:700;font-style:normal;font-display:swap}
+
+:root{
+  --ink:#0A0A0A;
+  --line:#a7a9ac;
+  --paper:#ffffff;
+  --ui:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;
+  --doc:"Rota","Helvetica Neue",Arial,sans-serif;
+  --ui-bg:#f4f4f2; --ui-border:#dcdcd7; --ui-muted:#6b6b6b;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--ui);color:var(--ink);background:#e9e9e6;display:flex;overflow:hidden;font-size:15px}
+
+#preview{flex:1;height:100%;overflow:auto;background:#e9e9e6;padding:30px;display:flex;flex-direction:column;align-items:center;gap:24px}
+.stage{display:flex;flex-direction:column;align-items:center;gap:24px;transform-origin:top center}
+#toolbar{position:fixed;top:16px;left:24px;display:flex;gap:8px;z-index:20}
+
+#splitter{order:1;flex:0 0 6px;background:var(--ui-border);cursor:col-resize;position:relative;z-index:15}
+#splitter::after{content:"";position:absolute;top:0;bottom:0;left:-6px;right:-6px}
+#splitter:hover,#splitter.drag{background:#b8b8b2}
+body.resizing{cursor:col-resize;user-select:none}
+
+#editor{
+  width:clamp(520px, 50vw, 1040px);min-width:380px;height:100%;overflow:auto;
+  background:var(--paper);border-right:1px solid var(--ui-border);
+  padding:30px 44px 90px 36px;order:2;flex:0 0 auto
+}
+#editor h1{font-size:21px;font-weight:650;margin:0 0 3px;letter-spacing:-.01em}
+#editor .sub{font-size:13px;color:var(--ui-muted);margin:0 0 26px}
+#editor h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ui-muted);
+  margin:30px 0 14px;border-top:1px solid var(--ui-border);padding-top:20px}
+#editor .hint{font-size:12.5px;color:var(--ui-muted);margin:-6px 0 12px;line-height:1.45}
+#editor .fg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 20px}
+#editor .fg3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 20px}
+#editor .fld{display:flex;flex-direction:column;min-width:0}
+#editor .fld.wide{grid-column:1/-1}
+#editor label{font-size:12.5px;color:var(--ui-muted);margin:0 0 5px;font-weight:500}
+#editor input,#editor textarea,#editor select{
+  width:100%;font-family:var(--ui);font-size:15px;padding:10px 12px;
+  border:1px solid var(--ui-border);border-radius:7px;background:#fff;color:var(--ink)
+}
+#editor input[type=checkbox]{width:auto;margin:0}
+#editor input[type=range]{padding:0;border:0;accent-color:var(--ink)}
+#editor textarea{resize:vertical;line-height:1.4;overflow:hidden;min-height:44px}
+#editor input:focus,#editor textarea:focus,#editor select:focus{outline:2px solid var(--ink);outline-offset:-1px;border-color:var(--ink)}
+button{font-family:var(--ui);font-size:14px;padding:9px 16px;border:1px solid var(--ink);border-radius:7px;
+  background:var(--ink);color:#fff;cursor:pointer}
+button.ghost{background:#fff;color:var(--ink)}
+button.small{font-size:12.5px;padding:5px 10px}
+button.del{background:#fff;color:#B0291E;border-color:#e2c3bf}
+.btnbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+
+.card{border:1px solid var(--ui-border);border-radius:9px;padding:14px 16px;margin:0 0 14px;background:#fff}
+.card.sec{background:var(--ui-bg)}
+.card .card-head{display:flex;gap:10px;align-items:flex-end;margin-bottom:12px}
+.card .card-head .fld{flex:1}
+.card .pos-no{font-size:13px;font-weight:700;color:var(--ui-muted);min-width:30px;padding-bottom:11px}
+.lblrow{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin:0 0 5px}
+.lblrow label{margin:0!important}
+button.mini{font-size:12px;padding:3px 9px;background:#fff;color:var(--ink);border:1px solid var(--ui-border);border-radius:6px}
+button.mini:hover{border-color:var(--ink)}
+
+/* Fotoblöcke im Editor */
+.fblock{border:1px dashed #c9c9c3;border-radius:8px;padding:12px;margin:12px 0 0;background:#fff}
+.fblock .fhead{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.fblock .fhead select{flex:1}
+.fblock .fhead .swap{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--ui-muted);white-space:nowrap}
+.slots{display:flex;gap:10px}
+.slot{min-width:0;display:flex;flex-direction:column;gap:6px}
+.thumb{position:relative;overflow:hidden;background:#f0f0ec;border-radius:4px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;color:var(--ui-muted);font-size:12.5px;text-align:center}
+.thumb.drop{outline:2px solid var(--ink)}
+.thumb img{position:absolute;max-width:none;display:block;pointer-events:none}
+.slot .ctl{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;align-items:center;font-size:12px;color:var(--ui-muted)}
+.slot .btns{display:flex;gap:6px;flex-wrap:wrap}
+.addfoto{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;align-items:center;font-size:12.5px;color:var(--ui-muted)}
+
+.rt{width:100%;font-family:var(--ui);font-size:15px;line-height:1.4;padding:10px 12px;border:1px solid var(--ui-border);
+  border-radius:7px;background:#fff;color:var(--ink);min-height:44px;white-space:pre-wrap;overflow-wrap:anywhere;cursor:text}
+.rt:focus{outline:2px solid var(--ink);outline-offset:-1px;border-color:var(--ink)}
+.rt > div{min-height:1.4em}
+.rt > div.bul{padding-left:var(--bi,12px);text-indent:calc(-1 * var(--bi,12px))}
+
+/* ============================================================
+   DOKUMENT: A4 nach Design-System
+   ============================================================ */
+.doc-page{position:relative;width:210mm;height:297mm;background:var(--paper);
+  box-shadow:0 3px 18px rgba(0,0,0,.15);overflow:hidden;color:var(--ink);font-family:var(--doc)}
+:root{--tshift:0.075em;--tshift-caps:0.135em}
+.doc-page .b{position:absolute;white-space:nowrap;overflow:hidden;display:block}
+.doc-page .b>span{position:relative;top:var(--tshift,0em)}
+.doc-page .b.r{text-align:right}
+.doc-page .b.j>span{display:flex;justify-content:space-between}
+.doc-page .s-thead>span{top:var(--tshift-caps,0em)}
+.doc-page .line{position:absolute;height:0;border-top:1px solid var(--line)}
+.doc-page .monogram{position:absolute}
+.doc-page .monogram svg{display:block;width:100%;height:100%;fill:var(--ink)}
+.doc-page .ph{position:absolute;overflow:hidden}
+.doc-page .ph img{position:absolute;max-width:none;display:block}
+.doc-page .ph.empty{background:#efefeb;display:flex;align-items:center;justify-content:center;
+  font-family:var(--ui);font-size:11px;color:#9a9a94}
+
+.doc-page .grid-ov{position:absolute;inset:0;pointer-events:none;z-index:99}
+.doc-page .grid-ov .col{position:absolute;top:0;bottom:0;background:rgba(233,30,180,.06);
+  border-left:1px solid rgba(233,30,180,.5);border-right:1px solid rgba(233,30,180,.5)}
+.doc-page .grid-ov .bl{position:absolute;left:0;right:0;border-top:1px solid rgba(0,150,220,.45)}
+.doc-page .grid-ov .frame{position:absolute;border:1px solid rgba(233,30,180,.7)}
+
+.s-wordmark{font-weight:300;font-size:8pt;letter-spacing:.02em;text-transform:uppercase}
+.s-title   {font-weight:500;font-size:10pt}
+.s-body    {font-weight:500;font-size:10pt}
+.s-bodyb   {font-weight:700;font-size:10pt}
+.s-thead   {font-weight:500;font-size:8pt;text-transform:uppercase;letter-spacing:.02em}
+.s-footer  {font-weight:300;font-size:8pt}
+
+@media print{
+  html,body{height:auto!important;min-height:0!important;overflow:visible!important;margin:0!important;padding:0!important;background:#fff}
+  body{display:block!important;font-size:initial}
+  #editor,#toolbar,#splitter{display:none!important}
+  #preview{all:unset;display:block}
+  .stage{display:block!important;zoom:1!important;transform:none!important;margin:0!important;padding:0!important;gap:0!important}
+  .doc-page{position:relative;width:210mm;height:296.6mm;overflow:hidden;box-shadow:none;margin:0;padding:0}
+  .doc-page:not(:last-child){page-break-after:always}
+  .doc-page:last-child{page-break-after:avoid}
+  .doc-page .line{border-top-width:.5pt}
+  .doc-page .ph.empty{display:none}
+  .grid-ov{display:none!important}
+  @page{size:A4;margin:0}
+}
+</style>
+</head>
+<body>
+
+<div id="preview"><div class="stage" id="stage"></div></div>
+<div id="splitter" title="Breite ziehen"></div>
+
+<div id="toolbar">
+  <button class="ghost" id="btn-grid">Raster</button>
+  <button class="ghost" id="btn-zoom-out">–</button>
+  <button class="ghost" id="btn-zoom-in">+</button>
+  <button class="ghost" id="btn-zoom-fit">Fit</button>
+</div>
+
+<div id="editor">
+  <h1>Leistungsnachweis</h1>
+  <p class="sub">ann architecture · Dokumenten-System · Prototyp · Zustandsfeststellung nach VOB/B</p>
+
+  <p class="sub" id="as-status" style="margin:-14px 0 10px">AppSheet: verbinde …</p>
+
+  <h2>Projekt &amp; Kopf</h2>
+  <div class="fg">
+    <div class="fld wide"><label>Projekt (aus AppSheet)</label><select id="f-proj"><option value="">— Projekt wählen —</option></select></div>
+    <div class="fld wide"><label>Projekt im Kopf (aus AppSheet „Project Name“, hier nur für dieses Dokument änderbar)</label><input type="text" data-bind="header.projekt"></div>
+    <div class="fld"><label>Auftragsnr. (leer = Zeile bleibt leer)</label><input type="text" data-bind="header.auftragsnr"></div>
+    <div class="fld"><label>Auftrag vom</label><input type="date" data-bind="header.auftragVom"></div>
+    <div class="fld"><label>Ort</label><input type="text" data-bind="header.place"></div>
+    <div class="fld"><label>Datum</label><input type="date" data-bind="header.date"></div>
+    <div class="fld wide"><label>Titel</label><input type="text" data-bind="titel"></div>
+  </div>
+
+  <h2>Angaben</h2>
+  <p class="hint">Je Zeile eine Zeile im Dokument. Die Felder füllen sich aus AppSheet, wenn du Projekt, Auftragnehmer oder Auftraggeber wählst. Danach kannst du sie frei ändern.</p>
+  <div class="fg">
+    <div class="fld wide"><label>Bauvorhaben (aus dem Projekt: Name + Adresse)</label><textarea rows="3" data-bind="bauvorhaben"></textarea></div>
+    <div class="fld wide"><label>Auftragnehmer = ausführendes Gewerk (AppSheet „Collaborators“)</label><select id="f-collab"><option value="">— Gewerk wählen —</option></select></div>
+    <div class="fld wide"><textarea rows="3" data-bind="auftragnehmer"></textarea></div>
+    <div class="fld wide"><label>Auftraggeber (AppSheet „Clients“, vorbelegt mit dem Kunden des Projekts)</label><select id="f-client"><option value="">— Firma wählen —</option></select></div>
+    <div class="fld wide"><textarea rows="3" data-bind="auftraggeber"></textarea></div>
+    <div class="fld"><label>Termin: Datum</label><input type="date" data-bind="termin.date"></div>
+    <div class="fld"><label>Termin: Ort</label><input type="text" data-bind="termin.ort"></div>
+    <div class="fld wide"><label>Gegenstand</label><textarea rows="2" data-bind="gegenstand"></textarea></div>
+    <div class="fld wide"><label>Beteiligte (Gewerk-Zeile wird beim Wählen des Auftragnehmers ergänzt)</label><textarea rows="3" data-bind="beteiligte"></textarea></div>
+  </div>
+
+  <h2>Abschnitte</h2>
+  <p class="hint">Die Nummer (01, 02 …) entsteht automatisch. Stichpunkte: Zeile mit „- “ beginnen oder Zeilen markieren und „• Stichpunkte“ klicken.
+    Unter jedem Abschnitt kannst du Fotos einfügen: ein Foto groß, zwei nebeneinander oder hoch + quer. Die Fotos werden auf das Raster zugeschnitten. Den Ausschnitt verschiebst du mit den Reglern.</p>
+  <div id="sec-list"></div>
+  <div class="btnbar"><button class="ghost" id="btn-sec-add">+ Abschnitt</button></div>
+
+  <h2>Unterschriften</h2>
+  <p class="hint">Stehen auf der letzten Seite unten, auf der Höhe aus dem Layout.</p>
+  <div class="fg">
+    <div class="fld wide" style="flex-direction:row;gap:10px;align-items:center">
+      <input type="checkbox" id="f-sig-ag" data-bind="unterschrift.ag" data-bool>
+      <label for="f-sig-ag" style="margin:0">Unterschrift Auftraggeber</label>
+    </div>
+    <div class="fld wide" style="flex-direction:row;gap:10px;align-items:center">
+      <input type="checkbox" id="f-sig-an" data-bind="unterschrift.an" data-bool>
+      <label for="f-sig-an" style="margin:0">Unterschrift Auftragnehmer</label>
+    </div>
+  </div>
+
+  <h2>Dokument</h2>
+  <div class="btnbar">
+    <button id="btn-pdf">PDF herunterladen</button>
+    <button class="ghost" id="btn-print">Drucken</button>
+    <button class="ghost" id="btn-save">Speichern (.json)</button>
+    <button class="ghost" id="btn-open">Öffnen</button>
+    <input type="file" id="file-open" accept="application/json" hidden>
+    <input type="file" id="file-img" accept="image/*" multiple hidden>
+  </div>
+  <p class="sub" style="margin-top:18px">„Speichern“ legt Texte und Fotos zusammen in einer .json-Datei ab. Regeln &amp; Annahmen: <code>docs/templates/CONDITION_REPORT.md</code>.</p>
+</div>
+
+<script>
+/* ============================================================
+   1) DESIGN-SYSTEM (identisch zu angebot.html)
+   ============================================================ */
+const PT = p => p*25.4/72;
+const MM_PER_CSSPX = 25.4/96;
+const BL = PT(13);
+const DS = {
+  page:{w:210,h:297}, margin:15, rightEdge:195,
+  cols:12, colW:10.7957, gutter:BL,
+  colX(n){ return 15 + (n-1)*(this.colW+this.gutter); },
+  colR(n){ return this.colX(n) + this.colW; },
+  G(k){ return 15 + k*BL; },
+  header:{
+    monogram:{right:195, top:15, w:31.2, h:13.5},
+    wordmarkTop1:14.6, wordmarkTop2:19.2,
+    rowK:[5,7,9],
+    ruleK:[5,7,9,11], ruleX1:122.65, ruleX2:195
+  },
+  footer:{ k1:57, k2:58, blocks:[1,3,6,8] }
+};
+const TOP_K = 13;                  /* erster Inhalt jeder Seite (Titel bei 78,1 mm Grundlinie = K13) */
+const LIMIT_K = DS.footer.k1 - 2;  /* mind. 2 BL Luft vor dem Footer */
+const SIG_K = 53;                  /* Unterschriftslinie bei 258,1 mm = K53, gemessen in Zustandsfeststellung.pdf S. 2 */
+const X = {
+  text: DS.colX(3),                /* Textkante 45,8 mm */
+  bullet: DS.colX(3), bulletText: DS.colX(4),
+  info: [DS.colX(3), DS.colX(6), DS.colX(9)],               /* Angaben: 45,8 / 91,9 / 138,0 mm */
+  infoW: [DS.colR(5) - DS.colX(3), DS.colR(8) - DS.colX(6), DS.rightEdge - DS.colX(9)],
+  sig1: [DS.colX(3), DS.colX(8) - BL], sig2: [DS.colX(8), DS.rightEdge]
+};
+const TEXT_W = DS.rightEdge - X.text;
+
+/* Fotoformate (Ann, 2026-11-02): Spalten von–bis im 12er-Raster, Höhe in Grundlinien.
+   Gemessen in Zustandsfeststellung.pdf S. 2: hoch 45,7–86,9 mm (Sp. 3–5) + quer 91,7–194,7 (Sp. 6–12),
+   Höhe 63,6 mm ≈ 14 BL; groß 45,8–195 mm (Sp. 3–12), Höhe 83,9 mm ≈ 18 BL; Abstand dazwischen 1 BL. */
+const FOTO_LAYOUTS = {
+  gross:    { label:"Ein Foto groß",            h:18, slots:[[3,12]] },
+  paar:     { label:"Zwei Fotos nebeneinander", h:14, slots:[[3,7],[8,12]] },
+  hochquer: { label:"Hochformat + Querformat",  h:14, slots:[[3,5],[6,12]], swapped:[[3,9],[10,12]] }
+};
+function slotsOf(b){
+  const L = FOTO_LAYOUTS[b.layout] || FOTO_LAYOUTS.gross;
+  return (b.tauschen && L.swapped ? L.swapped : L.slots).map(([a, z]) => ({ x:DS.colX(a), w:DS.colR(z) - DS.colX(a), h:L.h * BL }));
+}
+
+const BUERO = { blocks:[
+  ["Wilmersdorfer Str. 108", "10627 Berlin"],
+  ["info@annarchitecture-studio.com", "annarchitecturesolution.com"],
+  ["Tel.: +49 1702828889", "USt-IdNr.: DE123456789"],
+  ["Ann-Kathrin Salich", "Freischaffende Architektin"]
+]};
+const MONOGRAM_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88.33 38.33"><path d="M 0 38.33 L 5.10 38.33 L 24.97 0 L 20.01 0 L 0 38.33 Z"/><path d="M 83.88 0 L 83.88 31.12 L 61.19 0.10 L 61.11 0 L 56.53 0 L 56.53 30.83 L 34.05 0.10 L 33.97 0 L 29.39 0 L 29.39 38.33 L 33.83 38.33 L 33.83 7.20 L 56.76 38.33 L 60.97 38.33 L 60.97 7.21 L 83.72 38.22 L 83.79 38.33 L 88.33 38.33 L 88.33 0 L 83.88 0 Z"/></svg>`;
+
+/* ============================================================
+   2) DOKUMENT-MODELL
+   ============================================================ */
+const ABSCHNITTE_STANDARD = [
+  "Besichtigte Teilleistungen",
+  "Vorgelegte Unterlagen",
+  "Festgestellte Mängel/vertragswidrige Leistungen",
+  "Festlegungen zur Mängelbeseitigung/Abrechnung"
+];
+function defaultModel(){
+  return {
+    type:"leistungsnachweis", version:1,
+    header:{ projectId:"", projekt:"Beispielprojekt – Parkhaus", code:"", auftragsnr:"", auftragVom:"", place:"Berlin", date:isoToday() },
+    titel:"Zustandsfeststellung nach VOB/B §4, Abs. 10",
+    collaboratorId:"", clientId:"",
+    bauvorhaben:"Beispielprojekt – Parkhaus\nMusterstraße 1\n10115 Berlin",
+    auftragnehmer:"Beispiel Malerbetrieb GmbH\nMusterweg 2\n10115 Berlin",
+    auftraggeber:"Beispiel Immobilien GmbH\nMusterallee 3\n10115 Berlin",
+    termin:{ date:isoToday(), ort:"Beispielprojekt, Parkhaus" },
+    gegenstand:"Malerarbeiten",
+    beteiligte:"Architekt: Ann-Kathrin Salich\nBeispiel Malerbetrieb: Herr Muster",
+    abschnitte:[
+      { titel:ABSCHNITTE_STANDARD[0], text:"Im Bereich der Wandflächen wurden folgende Leistungen besichtigt:\n- Aufbringen beziehungsweise Ergänzen der Dämmung\n- Armieren der Fläche\n- Vollständiger Anstrich des Wandbereichs", fotos:[] },
+      { titel:ABSCHNITTE_STANDARD[1], text:"", fotos:[] },
+      { titel:ABSCHNITTE_STANDARD[2], text:"", fotos:[] },
+      { titel:ABSCHNITTE_STANDARD[3], text:"", fotos:[] }
+    ],
+    unterschrift:{ ag:true, an:true }
+  };
+}
+let model = defaultModel();
+
+function isoToday(){ return new Date().toISOString().slice(0,10); }
+function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
+function secNo(i){ return String(i+1).padStart(2, "0"); }
+function lines(s){ return String(s||"").replace(/\r/g,"").split("\n").map(x=>x.trim()).filter(Boolean); }
+
+/* ============================================================
+   3) TEXT-UMBRUCH (Canvas-Messung in Rota)
+   ============================================================ */
+const _ctx = document.createElement("canvas").getContext("2d");
+function wrap(text, widthMM, weight, sizePt){
+  const maxPx = widthMM * 96/25.4;
+  _ctx.font = weight + " " + (sizePt*96/72) + 'px "Rota","Helvetica Neue",Arial,sans-serif';
+  const words = String(text||"").trim().split(/\s+/).filter(Boolean);
+  const out = []; let line = "";
+  words.forEach(w=>{
+    const cand = line ? line + " " + w : w;
+    if(_ctx.measureText(cand).width <= maxPx || !line) line = cand;
+    else { out.push(line); line = w; }
+  });
+  if(line) out.push(line);
+  return out;
+}
+function paragraphs(text){
+  return String(text||"").replace(/\r/g,"").split(/\n\s*\n/).map(p => p.split("\n").map(s=>s.trim()).filter(Boolean)).filter(p=>p.length);
+}
+
+/* ============================================================
+   4) ZEILEN (rows) — wie angebot.html
+      row = { h (BL), gap (Leerzeilen davor), keep (bleibt bei der nächsten), draw(k) -> ops[] }
+      op  = text | line | img { t:"img", k, x, w, h(mm), ph }
+   ============================================================ */
+const T = (cls, k, o, s) => Object.assign({ t:"text", cls, k, span:1, s }, o);
+const Ln = (k, x1, x2) => ({ t:"line", k, x1, x2 });
+
+const BULLET_RE = /^\s*[-•·–]\s+/;
+function textRows(text, o){
+  o = Object.assign({ x:X.text, w:TEXT_W, cls:"s-body", gap:0, paraGap:1 }, o||{});
+  const rows = [];
+  paragraphs(text).forEach((hardLines, pi)=>{
+    const ls = [];
+    hardLines.forEach(h=>{
+      if(BULLET_RE.test(h)) wrap(h.replace(BULLET_RE, ""), DS.rightEdge - X.bulletText, "500", 10).forEach((ln, i) => ls.push({ s:ln, bullet:true, dot:i===0 }));
+      else wrap(h, o.w, "500", 10).forEach((ln, i, arr) => ls.push({ s:ln, last:i===arr.length-1 }));
+    });
+    ls.forEach((ln, li)=>{
+      rows.push({ h:1, gap: li===0 ? (pi===0 ? o.gap : o.paraGap) : 0,
+        keep: (li===0 && ls.length>1) || (li===ls.length-2),
+        draw: k => {
+          if(ln.bullet){
+            const r = [T(o.cls, k, { x:X.bulletText }, ln.s)];
+            if(ln.dot) r.push(T(o.cls, k, { x:X.bullet }, "•"));
+            return r;
+          }
+          return [T(o.cls, k, { x:o.x, jw: !ln.last ? o.w : null }, ln.s)];
+        } });
+    });
+  });
+  return rows;
+}
+
+/* Angaben: zwei Reihen à drei Blöcke; Versal-Beschriftung 8 pt, darunter je Zeile 10 pt.
+   Reihe so hoch wie ihr längster Block (Ann-Layout: 1 Leerzeile zwischen den Reihen). */
+function infoRow(blocks, gap){
+  const cols = blocks.map((b, i) => b.lines.flatMap(l => wrap(l, X.infoW[i], "500", 10)));
+  const h = 1 + Math.max(1, ...cols.map(c => c.length));
+  return { h, gap, keep:true, draw:k=>{
+    const o = [];
+    blocks.forEach((b, i)=>{
+      o.push(T("s-thead", k, { x:X.info[i], w:X.infoW[i] }, b.label + ":"));
+      cols[i].forEach((s, j) => o.push(T("s-body", k+1+j, { x:X.info[i], w:X.infoW[i] }, s)));
+    });
+    return o;
+  }};
+}
+function fotoRow(b, gap){
+  const L = FOTO_LAYOUTS[b.layout] || FOTO_LAYOUTS.gross;
+  return { h:L.h, gap, keep:false, draw:k => slotsOf(b).map((s, i) => ({ t:"img", k, x:s.x, w:s.w, h:s.h, ph:(b.bilder||[])[i] || null })) };
+}
+
+function allRows(){
+  let rows = [];
+  rows.push({ h:1, gap:0, keep:true, draw:k=>[T("s-bodyb", k, { x:X.text }, model.titel || "")] });
+  rows.push(infoRow([
+    { label:"Bauvorhaben",   lines:lines(model.bauvorhaben) },
+    { label:"Auftragnehmer", lines:lines(model.auftragnehmer) },
+    { label:"Auftraggeber",  lines:lines(model.auftraggeber) }
+  ], 1));
+  rows.push(Object.assign(infoRow([
+    { label:"Termin",     lines:[deDate(model.termin.date), model.termin.ort].filter(Boolean) },
+    { label:"Gegenstand", lines:lines(model.gegenstand) },
+    { label:"Beteiligte", lines:lines(model.beteiligte) }
+  ], 1), { keep:false }));
+  model.abschnitte.forEach((a, i)=>{
+    const head = { h:1, gap: i===0 ? 2 : 1, keep:true, draw:k=>[T("s-bodyb", k, { x:X.text }, secNo(i) + ": " + (a.titel || ""))] };
+    const body = textRows(a.text);
+    const fotos = (a.fotos||[]).map(b => fotoRow(b, 1));
+    if(!body.length && !fotos.length) head.keep = false;
+    /* erstes Foto nie allein von seinem Abschnitt getrennt: die letzten Textzeilen wandern mit */
+    if(body.length && fotos.length) body[body.length-1].keep = true;
+    rows.push(head);
+    rows = rows.concat(body, fotos);
+  });
+  return rows;
+}
+
+/* ============================================================
+   5) PAGINATOR — Fluss wie angebot.html; Unterschriften fest auf K53 der letzten Seite
+   ============================================================ */
+function paginate(){
+  const rows = allRows();
+  const pages = [[]];
+  let page = pages[0], cursor = TOP_K, i = 0;
+  const newPage = () => { page = []; pages.push(page); cursor = TOP_K; };
+  const chainH = (from, to) => { let h = 0; for(let x=from; x<=to; x++) h += (x===from ? 0 : rows[x].gap) + rows[x].h; return h; };
+  while(i < rows.length){
+    let j = i;
+    while(rows[j].keep && j+1 < rows.length) j++;
+    let gap = cursor === TOP_K ? 0 : rows[i].gap;
+    if(cursor !== TOP_K && cursor + gap + chainH(i, j) > LIMIT_K){ newPage(); gap = 0; }
+    if(cursor + chainH(i, j) > LIMIT_K) j = i;
+    for(let x=i; x<=j; x++){
+      const g = x===i ? gap : rows[x].gap;
+      if(x > i && cursor + g + rows[x].h > LIMIT_K) newPage();
+      const k = cursor + (cursor===TOP_K && x>i ? 0 : g);
+      rows[x].draw(k).forEach(op => page.push(op));
+      cursor = k + rows[x].h;
+    }
+    i = j + 1;
+  }
+  const sig = [];
+  if(model.unterschrift.ag) sig.push([X.sig1[0], X.sig1[1], "Ort, Datum, Unterschrift Auftraggeber"]);
+  if(model.unterschrift.an) sig.push([X.sig2[0], X.sig2[1], "Ort, Datum, Unterschrift Auftragnehmer"]);
+  if(sig.length){
+    if(cursor !== TOP_K && cursor + 2 > SIG_K) newPage();
+    sig.forEach(([x1, x2, s]) => page.push(
+      Ln(SIG_K, x1, x2),
+      T("s-body", SIG_K,   { x:x1 }, s),
+      T("s-body", SIG_K+1, { x:x1 }, "Name & Funktion der unterzeichnenden Person")));
+  }
+  return pages;
+}
+
+function chromeOps(idx, count){
+  const o = [];
+  const h = model.header;
+  const rows = [
+    h.projekt ? "Projekt: " + h.projekt : "",
+    h.auftragsnr ? "Auftragsnr.: " + h.auftragsnr + (h.auftragVom ? " vom " + deDate(h.auftragVom) : "") : "",
+    `${h.place || ""}, ${deDate(h.date)}`
+  ];
+  DS.header.rowK.forEach((k, i) => o.push(T("s-title", k, { span:2, rx:DS.rightEdge }, rows[i])));
+  DS.header.ruleK.forEach(k => o.push(Ln(k, DS.header.ruleX1, DS.header.ruleX2)));
+  BUERO.blocks.forEach((b,i)=>{
+    o.push(T("s-footer", DS.footer.k1, { x:DS.colX(DS.footer.blocks[i]) }, b[0]));
+    o.push(T("s-footer", DS.footer.k2, { x:DS.colX(DS.footer.blocks[i]) }, b[1]));
+  });
+  o.push(T("s-footer", DS.footer.k1, { rx:DS.rightEdge }, "Page"));
+  o.push(T("s-footer", DS.footer.k2, { rx:DS.rightEdge }, `${idx}/${count}`));
+  return o;
+}
+
+/* ============================================================
+   6) FOTOS — Zuschnitt aufs Raster
+      Bild = { id, src (JPEG-DataURL, max. 2400 px), w, h, fx, fy (0–1: Lage des Ausschnitts), z (Zoom ≥ 1) }
+      Ausschnitt = größtes Rechteck im Seitenverhältnis des Rahmens, durch Zoom verkleinert,
+      per fx/fy verschoben. Bildschirm: per CSS; PDF: per Canvas herausgeschnitten.
+   ============================================================ */
+const IMG_MAX = 2400, PDF_DPI = 250;
+function cropRect(ph, aspect){
+  const iw = ph.w, ih = ph.h, z = Math.max(1, Number(ph.z) || 1);
+  let sw, sh;
+  if(iw / ih > aspect){ sh = ih; sw = ih * aspect; } else { sw = iw; sh = iw / aspect; }
+  sw /= z; sh /= z;
+  const fx = ph.fx == null ? 0.5 : ph.fx, fy = ph.fy == null ? 0.5 : ph.fy;
+  return { sx:(iw - sw) * fx, sy:(ih - sh) * fy, sw, sh };
+}
+/* Positionierung des <img> im Rahmen in Prozent des Rahmens */
+function cropCss(img, ph, aspect){
+  const c = cropRect(ph, aspect);
+  img.style.width = (ph.w / c.sw * 100) + "%";
+  img.style.height = (ph.h / c.sh * 100) + "%";
+  img.style.left = (-c.sx / c.sw * 100) + "%";
+  img.style.top = (-c.sy / c.sh * 100) + "%";
+}
+let imgSeq = 0;
+function newImgId(){ return "img" + Date.now().toString(36) + (imgSeq++); }
+function loadImageFile(file){
+  return new Promise((resolve, reject)=>{
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = ()=>{
+      const s = Math.min(1, IMG_MAX / Math.max(im.naturalWidth, im.naturalHeight));
+      const w = Math.round(im.naturalWidth * s), h = Math.round(im.naturalHeight * s);
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      c.getContext("2d").drawImage(im, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve({ id:newImgId(), src:c.toDataURL("image/jpeg", 0.85), w, h, fx:0.5, fy:0.5, z:1, name:file.name });
+    };
+    im.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error(file.name + " lässt sich nicht öffnen (HEIC bitte als JPG exportieren)")); };
+    im.src = url;
+  });
+}
+const _imgEls = {};
+function imgEl(ph){
+  let im = _imgEls[ph.id];
+  if(!im || im.src !== ph.src){ im = new Image(); im.src = ph.src; _imgEls[ph.id] = im; }
+  return im;
+}
+
+/* ============================================================
+   7) RENDERER Bildschirm
+   ============================================================ */
+const stage = document.getElementById("stage");
+function domText(op){
+  const d = document.createElement("div");
+  d.className = "b " + op.cls + (op.rx != null ? " r" : "") + (op.jw ? " j" : "");
+  const h = (op.span||1) * BL;
+  d.style.top = (op.topMM != null ? op.topMM : DS.G(op.k)) + "mm";
+  d.style.height = h + "mm"; d.style.lineHeight = h + "mm";
+  if(op.rx != null){ d.style.right = (DS.page.w - op.rx) + "mm"; d.style.left = "0mm"; }
+  else {
+    d.style.left = op.x + "mm";
+    const w = op.jw || op.w;
+    d.style.right = (DS.page.w - (w ? op.x + w : DS.rightEdge)) + "mm";
+  }
+  const s = document.createElement("span");
+  if(op.jw){ String(op.s).split(" ").forEach(wd => { const e = document.createElement("span"); e.textContent = wd; s.appendChild(e); }); }
+  else s.textContent = op.s;
+  d.appendChild(s);
+  return d;
+}
+function domLine(op){
+  const d = document.createElement("div"); d.className = "line";
+  d.dataset.topmm = DS.G(op.k);
+  d.style.top = DS.G(op.k) + "mm"; d.style.left = op.x1 + "mm"; d.style.width = (op.x2 - op.x1) + "mm";
+  return d;
+}
+function domImg(op){
+  const d = document.createElement("div");
+  d.className = "ph" + (op.ph ? "" : " empty");
+  d.style.left = op.x + "mm"; d.style.top = DS.G(op.k) + "mm";
+  d.style.width = op.w + "mm"; d.style.height = op.h + "mm";
+  if(op.ph){ const im = document.createElement("img"); im.src = op.ph.src; im.dataset.id = op.ph.id; im.dataset.aspect = op.w / op.h; cropCss(im, op.ph, op.w / op.h); d.appendChild(im); }
+  else d.textContent = "Foto";
+  return d;
+}
+function domChromeStatic(page){
+  page.appendChild(domText(T("s-wordmark", 0, { x:DS.colX(1), topMM:DS.header.wordmarkTop1 }, "AN(N) ARCHITECTURE")));
+  page.appendChild(domText(T("s-wordmark", 0, { x:DS.colX(1), topMM:DS.header.wordmarkTop2 }, "SOLUTION")));
+  const m = document.createElement("div"); m.className = "monogram";
+  const g = DS.header.monogram;
+  m.style.left = (g.right - g.w) + "mm"; m.style.top = g.top + "mm";
+  m.style.width = g.w + "mm"; m.style.height = g.h + "mm";
+  m.innerHTML = MONOGRAM_SVG; page.appendChild(m);
+}
+let showGrid = false;
+function renderGrid(page){
+  const ov = document.createElement("div"); ov.className = "grid-ov";
+  const f = document.createElement("div"); f.className = "frame";
+  f.style.left = DS.margin + "mm"; f.style.top = DS.margin + "mm";
+  f.style.width = (DS.rightEdge - DS.margin) + "mm"; f.style.height = (DS.G(61) - DS.margin) + "mm";
+  ov.appendChild(f);
+  for(let n=1;n<=DS.cols;n++){ const c = document.createElement("div"); c.className = "col"; c.style.left = DS.colX(n) + "mm"; c.style.width = DS.colW + "mm"; ov.appendChild(c); }
+  for(let k=0;k<=61;k++){ const b = document.createElement("div"); b.className = "bl"; b.style.top = DS.G(k) + "mm"; ov.appendChild(b); }
+  page.appendChild(ov);
+}
+function snapLines(){
+  const scale = zoom * (window.devicePixelRatio || 1) / MM_PER_CSSPX;
+  document.querySelectorAll(".doc-page .line").forEach(l=>{
+    l.style.top = (Math.round(parseFloat(l.dataset.topmm) * scale) / scale) + "mm";
+  });
+}
+function render(){
+  stage.innerHTML = "";
+  const pages = paginate();
+  pages.forEach((ops, i)=>{
+    const page = document.createElement("div"); page.className = "doc-page";
+    if(showGrid) renderGrid(page);
+    domChromeStatic(page);
+    ops.concat(chromeOps(i+1, pages.length)).forEach(op => page.appendChild(op.t === "line" ? domLine(op) : op.t === "img" ? domImg(op) : domText(op)));
+    stage.appendChild(page);
+  });
+  applyZoom();
+}
+
+/* ============================================================
+   8) PDF-EXPORT (jsPDF, direkter Download)
+   ============================================================ */
+const MONOGRAM_PTS = [
+  [[0,38.33],[5.10,38.33],[24.97,0],[20.01,0]],
+  [[83.88,0],[83.88,31.12],[61.19,0.10],[61.11,0],[56.53,0],[56.53,30.83],[34.05,0.10],[33.97,0],
+   [29.39,0],[29.39,38.33],[33.83,38.33],[33.83,7.20],[56.76,38.33],[60.97,38.33],[60.97,7.21],
+   [83.72,38.22],[83.79,38.33],[88.33,38.33],[88.33,0],[83.88,0]]
+];
+const LINE_RGB = [167,169,172];
+const TSHIFT_EM = 0.075, TSHIFT_CAPS_EM = 0.135;
+const PDF_STYLE = {
+  "s-wordmark":["RotaLight","normal",8,true], "s-title":["Rota","normal",10],
+  "s-body":["Rota","normal",10], "s-bodyb":["Rota","bold",10],
+  "s-thead":["Rota","normal",8,true], "s-footer":["RotaLight","normal",8]
+};
+function croppedCanvas(ph, wMM, hMM){
+  const c = cropRect(ph, wMM / hMM);
+  const s = Math.min(1, (wMM / 25.4 * PDF_DPI) / c.sw);
+  const cv = document.createElement("canvas");
+  cv.width = Math.max(1, Math.round(c.sw * s)); cv.height = Math.max(1, Math.round(c.sh * s));
+  cv.getContext("2d").drawImage(imgEl(ph), c.sx, c.sy, c.sw, c.sh, 0, 0, cv.width, cv.height);
+  return cv;
+}
+async function exportPDF(){
+  if(!window.jspdf || !window.ROTA_TTF){ alert("PDF-Bibliothek nicht geladen (Internet nötig)."); return; }
+  const pages = paginate();
+  /* alle Bilder vollständig laden, bevor sie zugeschnitten werden */
+  await Promise.all(pages.flat().filter(op => op.t === "img" && op.ph).map(op => {
+    const im = imgEl(op.ph);
+    return im.complete && im.naturalWidth ? null : new Promise(r => { im.onload = r; im.onerror = r; });
+  }));
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:"mm", format:"a4", compress:true });
+  const R = window.ROTA_TTF;
+  doc.addFileToVFS("RotaMed.ttf", R.medium);  doc.addFont("RotaMed.ttf", "Rota", "normal");
+  doc.addFileToVFS("RotaBold.ttf", R.bold);   doc.addFont("RotaBold.ttf", "Rota", "bold");
+  doc.addFileToVFS("RotaLight.ttf", R.light); doc.addFont("RotaLight.ttf", "RotaLight", "normal");
+
+  const text = op => {
+    if(op.s == null || op.s === "") return;
+    const [fam, sty, size, caps] = PDF_STYLE[op.cls];
+    doc.setFont(fam, sty); doc.setFontSize(size); doc.setTextColor(10,10,10);
+    const s = caps ? String(op.s).toUpperCase() : String(op.s);
+    doc.setCharSpace(caps ? 0.02 * size * 25.4/72 : 0);
+    const top = op.topMM != null ? op.topMM : DS.G(op.k);
+    const y = top + (op.span||1)*BL/2 + (caps ? TSHIFT_CAPS_EM : TSHIFT_EM) * size * 25.4/72;
+    if(op.jw){
+      const words = s.split(" ");
+      const sum = words.reduce((a,w)=> a + doc.getTextWidth(w), 0);
+      const gap = words.length > 1 ? (op.jw - sum) / (words.length - 1) : 0;
+      let x = op.x;
+      words.forEach(w => { doc.text(w, x, y, { baseline:"middle" }); x += doc.getTextWidth(w) + gap; });
+    } else if(op.rx != null){
+      doc.text(s, op.rx, y, { align:"right", baseline:"middle" });
+    } else {
+      doc.text(s, op.x, y, { baseline:"middle" });
+    }
+    doc.setCharSpace(0);
+  };
+  const line = op => { doc.setDrawColor(...LINE_RGB); doc.setLineWidth(PT(0.5)); const y = DS.G(op.k); doc.line(op.x1, y, op.x2, y); };
+  const image = op => { if(op.ph) doc.addImage(croppedCanvas(op.ph, op.w, op.h), "JPEG", op.x, DS.G(op.k), op.w, op.h, undefined, "FAST"); };
+  const monogram = () => {
+    const g = DS.header.monogram, sx = g.w/88.33, sy = g.h/38.33, ox = g.right - g.w, oy = g.top;
+    doc.setFillColor(10,10,10);
+    MONOGRAM_PTS.forEach(pts=>{
+      const deltas = []; let prev = pts[0];
+      for(let i=1;i<pts.length;i++){ deltas.push([(pts[i][0]-prev[0])*sx, (pts[i][1]-prev[1])*sy]); prev = pts[i]; }
+      doc.lines(deltas, ox + pts[0][0]*sx, oy + pts[0][1]*sy, [1,1], "F", true);
+    });
+  };
+  pages.forEach((ops, i)=>{
+    if(i > 0) doc.addPage();
+    text(T("s-wordmark", 0, { x:DS.colX(1), topMM:DS.header.wordmarkTop1 }, "AN(N) ARCHITECTURE"));
+    text(T("s-wordmark", 0, { x:DS.colX(1), topMM:DS.header.wordmarkTop2 }, "SOLUTION"));
+    monogram();
+    ops.concat(chromeOps(i+1, pages.length)).forEach(op => op.t === "line" ? line(op) : op.t === "img" ? image(op) : text(op));
+  });
+  doc.save(fileBase() + ".pdf");
+}
+/* Dateinamen auf Englisch (Büro-Regel): Condition_Report_<Kürzel>_<JJMMTT> */
+function fileBase(){
+  const d = (model.header.date || isoToday()).replace(/-/g, "").slice(2);
+  const code = String(model.header.code || "").trim().toUpperCase();
+  return ["Condition_Report", code, d].filter(Boolean).join("_").replace(/[^\w\-]+/g, "_");
+}
+
+/* ============================================================
+   9) EDITOR
+   ============================================================ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function getPath(path){ return path.split(".").reduce((o,k)=> o==null ? o : o[k], model); }
+function setPath(path, v){ const s = path.split("."); let o = model; for(let i=0;i<s.length-1;i++) o = o[s[i]]; o[s[s.length-1]] = v; }
+
+document.querySelectorAll("[data-bind]").forEach(el=>{
+  const ev = el.type === "checkbox" ? "change" : "input";
+  el.addEventListener(ev, ()=>{
+    setPath(el.dataset.bind, el.type === "checkbox" ? el.checked : el.value); render();
+  });
+});
+function syncBound(){
+  document.querySelectorAll("[data-bind]").forEach(el=>{
+    const v = getPath(el.dataset.bind);
+    if(el.type === "checkbox") el.checked = !!v; else el.value = v == null ? "" : v;
+  });
+  growAll();
+}
+
+/* Abschnitte + Fotoblöcke: Eingaben mit data-p="pfad.mit.indizes" schreiben direkt ins Modell */
+function onListInput(e){
+  const el = e.target; const p = el.dataset.p; if(!p) return;
+  let v = el.type === "checkbox" ? el.checked : el.value;
+  if(el.hasAttribute("data-num")) v = parseFloat(v) || 0;
+  setPath(p, v);
+  if(/\.layout$/.test(p)){ const b = getPath(p.replace(/\.layout$/, "")); b.bilder = (b.bilder||[]).slice(0, slotsOf(b).length); }
+  if(el.dataset.thumb){ updateThumb(el.dataset.thumb); updatePreviewImgs(); return; }   // Regler: nur Ausschnitt nachführen
+  if(el.dataset.rerender) renderEditor();
+  render();
+}
+function updatePreviewImgs(){
+  const all = {};
+  model.abschnitte.forEach(a => (a.fotos||[]).forEach(b => (b.bilder||[]).forEach(ph => { if(ph) all[ph.id] = ph; })));
+  document.querySelectorAll(".doc-page .ph img[data-id]").forEach(im => { const ph = all[im.dataset.id]; if(ph) cropCss(im, ph, +im.dataset.aspect); });
+}
+$("#sec-list").addEventListener("input", onListInput);
+$("#sec-list").addEventListener("change", e => { if(e.target.type === "checkbox" || e.target.tagName === "SELECT") onListInput(e); });
+
+const BUL = '<button class="mini" data-act="bul" title="Markierte Zeilen zu Stichpunkten (oder zurück zu Fließtext)">• Stichpunkte</button>';
+function fotoBlockHtml(b, si, bi){
+  const slots = slotsOf(b);
+  const base = `abschnitte.${si}.fotos.${bi}`;
+  return `<div class="fblock">
+    <div class="fhead">
+      <select data-p="${base}.layout" data-rerender="1">
+        ${Object.entries(FOTO_LAYOUTS).map(([k, L]) => `<option value="${k}"${k === b.layout ? " selected" : ""}>${L.label}</option>`).join("")}
+      </select>
+      ${b.layout === "hochquer" ? `<label class="swap"><input type="checkbox" data-p="${base}.tauschen" data-rerender="1"${b.tauschen ? " checked" : ""}> Seiten tauschen</label>` : ""}
+      <button class="small ghost" data-act="fb-up" data-s="${si}" data-b="${bi}" title="nach oben">↑</button>
+      <button class="small del" data-act="fb-del" data-s="${si}" data-b="${bi}">×</button>
+    </div>
+    <div class="slots">
+      ${slots.map((s, i) => {
+        const ph = (b.bilder||[])[i];
+        const tid = `${si}-${bi}-${i}`;
+        return `<div class="slot" style="flex:${s.w.toFixed(2)} 1 0">
+          <div class="thumb" id="th-${tid}" data-act="img-pick" data-s="${si}" data-b="${bi}" data-i="${i}" style="aspect-ratio:${s.w.toFixed(2)}/${s.h.toFixed(2)}">
+            ${ph ? `<img src="${ph.src}">` : "Foto wählen<br>oder hierher ziehen"}
+          </div>
+          ${ph ? `<div class="ctl">
+              <span>↔</span><input type="range" min="0" max="1" step="0.01" value="${ph.fx}" data-num data-thumb="${tid}" data-p="${base}.bilder.${i}.fx">
+              <span>↕</span><input type="range" min="0" max="1" step="0.01" value="${ph.fy}" data-num data-thumb="${tid}" data-p="${base}.bilder.${i}.fy">
+              <span>Zoom</span><input type="range" min="1" max="3" step="0.01" value="${ph.z}" data-num data-thumb="${tid}" data-p="${base}.bilder.${i}.z">
+            </div>
+            <div class="btns"><button class="mini" data-act="img-pick" data-s="${si}" data-b="${bi}" data-i="${i}">Ersetzen</button>
+              <button class="mini" data-act="img-del" data-s="${si}" data-b="${bi}" data-i="${i}">Entfernen</button></div>` : ""}
+        </div>`;
+      }).join("")}
+    </div>
+  </div>`;
+}
+function renderSections(){
+  $("#sec-list").innerHTML = model.abschnitte.map((a, si)=>`
+    <div class="card sec">
+      <div class="card-head">
+        <div class="pos-no">${secNo(si)}</div>
+        <div class="fld"><label>Überschrift</label><input type="text" data-p="abschnitte.${si}.titel" value="${esc(a.titel)}"></div>
+        <button class="small ghost" data-act="sec-up" data-s="${si}" title="nach oben">↑</button>
+        <button class="small del" data-act="sec-del" data-s="${si}">×</button>
+      </div>
+      <div class="fld"><div class="lblrow"><label>Text</label>${BUL}</div><textarea rows="4" data-p="abschnitte.${si}.text">${esc(a.text)}</textarea></div>
+      ${(a.fotos||[]).map((b, bi) => fotoBlockHtml(b, si, bi)).join("")}
+      <div class="addfoto">Fotos einfügen:
+        ${Object.entries(FOTO_LAYOUTS).map(([k, L]) => `<button class="mini" data-act="fb-add" data-s="${si}" data-l="${k}">+ ${L.label}</button>`).join("")}
+      </div>
+    </div>`).join("");
+  document.querySelectorAll("#sec-list .thumb").forEach(th => { const [si, bi, i] = th.id.slice(3).split("-").map(Number); updateThumb(th.id.slice(3)); bindDrop(th, si, bi, i); });
+}
+function updateThumb(tid){
+  const th = document.getElementById("th-" + tid); if(!th) return;
+  const [si, bi, i] = tid.split("-").map(Number);
+  const b = model.abschnitte[si].fotos[bi], ph = b.bilder[i], im = th.querySelector("img");
+  if(!ph || !im) return;
+  const s = slotsOf(b)[i];
+  cropCss(im, ph, s.w / s.h);
+}
+function renderEditor(){ renderSections(); enhanceAll(); growAll(); }
+
+/* ---- Fotos wählen / ziehen ---- */
+let imgTarget = null;
+async function putImages(files, si, bi, i){
+  const b = model.abschnitte[si].fotos[bi];
+  const n = slotsOf(b).length;
+  b.bilder = b.bilder || [];
+  let slot = i;
+  for(const f of files){
+    if(!/^image\//.test(f.type) && !/\.(jpe?g|png|webp|heic|heif)$/i.test(f.name)) continue;
+    if(slot >= n) break;
+    try{ b.bilder[slot] = await loadImageFile(f); }catch(err){ alert(err.message); }
+    slot++;
+    while(slot < n && b.bilder[slot]) slot++;          // weitere Dateien in die nächsten freien Felder
+  }
+  renderEditor(); render();
+}
+$("#file-img").onchange = e=>{
+  const files = [...e.target.files]; e.target.value = "";
+  if(imgTarget && files.length) putImages(files, ...imgTarget);
+};
+function bindDrop(el, si, bi, i){
+  el.addEventListener("dragover", e=>{ e.preventDefault(); el.classList.add("drop"); });
+  el.addEventListener("dragleave", ()=> el.classList.remove("drop"));
+  el.addEventListener("drop", e=>{ e.preventDefault(); el.classList.remove("drop"); putImages([...e.dataTransfer.files], si, bi, i); });
+}
+
+/* ---- Textfelder mit Stichpunkten (wie angebot.html) ---- */
+const RT_BULLET = /^\s*[-•–]\s/;
+(function(){ const c = document.createElement("canvas").getContext("2d");
+  c.font = '15px -apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif';
+  document.documentElement.style.setProperty("--bi", Math.ceil(c.measureText("- ").width) + "px"); })();
+function rtSet(rt, text){
+  rt.innerHTML = "";
+  String(text || "").split("\n").forEach(line => {
+    const d = document.createElement("div");
+    if(line) d.textContent = line; else d.appendChild(document.createElement("br"));
+    rt.appendChild(d);
+  });
+  rtMark(rt);
+}
+function rtGet(rt){ const out = []; rt.childNodes.forEach(n => out.push(n.textContent || "")); return out.join("\n").replace(/ /g, " "); }
+function rtMark(rt){ rt.querySelectorAll(":scope > div").forEach(d => d.classList.toggle("bul", RT_BULLET.test(d.textContent))); }
+function rtLineOf(rt){
+  const sel = getSelection(); if(!sel.rangeCount) return null;
+  let n = sel.anchorNode; while(n && n.parentNode !== rt) n = n.parentNode;
+  return n && n.nodeType === 1 ? n : null;
+}
+function rtSync(rt){ rtMark(rt); const ta = rt._ta; ta.value = rtGet(rt); ta.dispatchEvent(new Event("input", { bubbles:true })); }
+function enhance(ta){
+  if(ta._rt) return ta._rt;
+  const rt = document.createElement("div");
+  rt.className = "rt"; rt.contentEditable = "true"; rt.spellcheck = true;
+  rt._ta = ta; ta._rt = rt;
+  ta.style.display = "none"; ta.after(rt);
+  rtSet(rt, ta.value);
+  rt.addEventListener("input", e=>{
+    if(e.inputType === "insertParagraph"){
+      const line = rtLineOf(rt), prev = line && line.previousElementSibling;
+      if(prev && RT_BULLET.test(prev.textContent) && prev.textContent.replace(RT_BULLET, "").trim() && !line.textContent.trim()){
+        document.execCommand("insertText", false, prev.textContent.match(RT_BULLET)[0].trimStart());
+        return;
+      }
+    }
+    rtSync(rt);
+  });
+  rt.addEventListener("keydown", e=>{
+    if(e.key !== "Enter" || e.shiftKey) return;
+    const line = rtLineOf(rt);
+    if(line && RT_BULLET.test(line.textContent) && !line.textContent.replace(RT_BULLET, "").trim()){
+      e.preventDefault(); line.innerHTML = "<br>";
+      const r = document.createRange(); r.setStart(line, 0); r.collapse(true);
+      getSelection().removeAllRanges(); getSelection().addRange(r);
+      rtSync(rt);
+    }
+  });
+  rt.addEventListener("paste", e=>{
+    e.preventDefault();
+    const ls = (e.clipboardData.getData("text/plain") || "").replace(/\r/g, "").split("\n");
+    ls.forEach((l, i) => { if(i) document.execCommand("insertParagraph"); if(l) document.execCommand("insertText", false, l); });
+  });
+  return rt;
+}
+function enhanceAll(){ document.querySelectorAll("#sec-list textarea").forEach(enhance); }
+function rtToggleBullets(rt){
+  const sel = getSelection();
+  let ls = [...rt.querySelectorAll(":scope > div")];
+  if(sel.rangeCount && rt.contains(sel.anchorNode)){
+    const r = sel.getRangeAt(0);
+    const hit = ls.filter(d => r.intersectsNode(d));
+    if(hit.length) ls = hit;
+  } else ls = ls.slice(-1);
+  const filled = ls.filter(d => d.textContent.trim());
+  const allOn = filled.length && filled.every(d => RT_BULLET.test(d.textContent));
+  filled.forEach(d => { d.textContent = allOn ? d.textContent.replace(RT_BULLET, "") : (RT_BULLET.test(d.textContent) ? d.textContent : "- " + d.textContent.trim()); });
+  rtSync(rt);
+}
+
+function grow(ta){ if(ta.style.display === "none") return; ta.style.height = "auto"; ta.style.height = (ta.scrollHeight + 2) + "px"; }
+function growAll(){ document.querySelectorAll("#editor textarea").forEach(grow); }
+$("#editor").addEventListener("input", e => { if(e.target.tagName === "TEXTAREA") grow(e.target); });
+$("#editor").addEventListener("mousedown", e => { if(e.target.closest("button.mini")) e.preventDefault(); });
+window.addEventListener("resize", growAll);
+
+$("#editor").addEventListener("click", e=>{
+  const b = e.target.closest("[data-act]"); if(!b) return;
+  const a = b.dataset.act, si = +b.dataset.s, bi = +b.dataset.b, i = +b.dataset.i;
+  if(a === "bul"){ const ta = b.closest(".fld").querySelector("textarea"); if(ta && ta._rt) rtToggleBullets(ta._rt); return; }
+  if(a === "img-pick"){ imgTarget = [si, bi, i]; $("#file-img").click(); return; }
+  const sec = model.abschnitte[si];
+  if(a === "sec-del" && confirm("Abschnitt mit Text und Fotos entfernen?")) model.abschnitte.splice(si, 1);
+  if(a === "sec-up" && si > 0){ const s = model.abschnitte; [s[si-1], s[si]] = [s[si], s[si-1]]; }
+  if(a === "fb-add") sec.fotos.push({ layout:b.dataset.l, tauschen:false, bilder:[] });
+  if(a === "fb-del") sec.fotos.splice(bi, 1);
+  if(a === "fb-up" && bi > 0){ const f = sec.fotos; [f[bi-1], f[bi]] = [f[bi], f[bi-1]]; }
+  if(a === "img-del") sec.fotos[bi].bilder[i] = null;
+  renderEditor(); render();
+});
+$("#btn-sec-add").onclick = ()=>{ model.abschnitte.push({ titel:"", text:"", fotos:[] }); renderEditor(); render(); };
+
+$("#btn-save").onclick = ()=>{
+  const blob = new Blob([JSON.stringify(model)], { type:"application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = fileBase() + ".json"; a.click();
+};
+$("#btn-open").onclick = ()=> $("#file-open").click();
+$("#file-open").onchange = e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = ()=>{
+    try{
+      const d = JSON.parse(rd.result), m = defaultModel();
+      model = Object.assign(m, d, { header:Object.assign(m.header, d.header), termin:Object.assign(m.termin, d.termin), unterschrift:Object.assign(m.unterschrift, d.unterschrift) });
+      model.abschnitte.forEach(a => a.fotos = a.fotos || []);
+      syncBound(); fillSelects(); renderEditor(); render();
+    }catch(err){ alert("Datei nicht lesbar: " + err); }
+  };
+  rd.readAsText(f);
+  e.target.value = "";
+};
+$("#btn-pdf").onclick = async ()=>{
+  try{ await exportPDF(); }catch(err){ alert("PDF-Export fehlgeschlagen: " + err); console.error(err); }
+};
+$("#btn-print").onclick = ()=> window.print();
+
+/* ---- Zoom ---- */
+let zoom = 1, userZoomed = false;
+const PX_PER_MM = 1/MM_PER_CSSPX;
+function fitToWidth(){ return ($("#preview").clientWidth - 60) / (210*PX_PER_MM); }
+function fitToPage(){ const pv = $("#preview"); return Math.min((pv.clientWidth - 60)/(210*PX_PER_MM), (pv.clientHeight - 60)/(297*PX_PER_MM)); }
+function clampZoom(z){ return Math.max(Math.min(fitToPage(), 0.4), Math.min(3, z)); }
+function applyZoom(){
+  if(!userZoomed) zoom = Math.max(0.4, Math.min(1.9, fitToWidth()));
+  zoom = clampZoom(zoom);
+  stage.style.transform = "scale(" + zoom + ")";
+  const natH = stage.offsetHeight, natW = stage.offsetWidth;
+  stage.style.marginBottom = Math.max(0, (zoom - 1) * natH) + "px";
+  stage.style.marginLeft = stage.style.marginRight = Math.max(0, (zoom - 1) * natW / 2) + "px";
+  snapLines();
+}
+$("#btn-zoom-in").onclick  = ()=>{ userZoomed = true; zoom = clampZoom(zoom + 0.15); applyZoom(); };
+$("#btn-zoom-out").onclick = ()=>{ userZoomed = true; zoom = clampZoom(zoom - 0.15); applyZoom(); };
+$("#btn-zoom-fit").onclick = ()=>{ userZoomed = false; applyZoom(); };
+$("#btn-grid").onclick = ()=>{
+  showGrid = !showGrid;
+  $("#btn-grid").style.background = showGrid ? "var(--ink)" : "#fff";
+  $("#btn-grid").style.color = showGrid ? "#fff" : "var(--ink)";
+  render();
+};
+window.addEventListener("resize", ()=> applyZoom());
+
+/* ---- Splitter ---- */
+(function(){
+  const ed = $("#editor"), sp = $("#splitter"); let drag = false;
+  sp.addEventListener("mousedown", e=>{ drag = true; document.body.classList.add("resizing"); sp.classList.add("drag"); e.preventDefault(); });
+  window.addEventListener("mousemove", e=>{ if(!drag) return; ed.style.width = Math.max(360, Math.min(window.innerWidth*0.78, window.innerWidth - e.clientX)) + "px"; applyZoom(); });
+  window.addEventListener("mouseup", ()=>{ if(!drag) return; drag = false; document.body.classList.remove("resizing"); sp.classList.remove("drag");
+    try{ localStorage.setItem("an.editorW", ed.style.width); }catch(_){} });
+  try{ const w = localStorage.getItem("an.editorW"); if(w) ed.style.width = w; }catch(_){}
+})();
+
+/* ============================================================
+   10) APPSHEET-ANBINDUNG (Datenbrücke = Apps Script über „Project Management NEW", nur lesend)
+       getReportContext: Projekte (mit Adresse), Clients (= Auftraggeber), Collaborators (= Auftragnehmer).
+       Ältere Bereitstellung ohne getReportContext: Projekte + Clients aus getOfferContext,
+       Adresse je Projekt aus getProjectMeta, Collaborators fehlen dann.
+       Ohne Verbindung bleiben alle Felder von Hand ausfüllbar.
+   ============================================================ */
+const SHEET_URL = 'https://script.google.com/a/macros/annarchitecture-studio.com/s/AKfycbyXg2mbuOKDwvgVkO70eoCUjQZaVgGfOTgnKMlIeJTzzozP_RoLuSvf0Is2pS-WUfjqpw/exec';
+let ctx = null;            // { projects, clients, contacts, collaborators }
+const asSay = (msg, bad) => { const el = $("#as-status"); el.textContent = "AppSheet: " + msg; el.style.color = bad ? "#B0291E" : ""; };
+
+function jsonp(action, params, timeoutMs){
+  return new Promise((resolve, reject)=>{
+    const cb = "an_cb_" + Date.now() + "_" + Math.floor(Math.random()*1e6);
+    const q = new URLSearchParams({ action, callback:cb, ...(params||{}) });
+    const s = document.createElement("script");
+    const t = setTimeout(()=>{ done(); reject(new Error("Zeitüberschreitung")); }, timeoutMs || 20000);
+    function done(){ clearTimeout(t); try{ delete window[cb]; }catch(_){ window[cb] = undefined; } s.remove(); }
+    window[cb] = (resp)=>{ done(); (resp && resp.ok) ? resolve(resp.data) : reject(new Error(resp && resp.error || "Fehler im Skript")); };
+    s.onerror = ()=>{ done(); reject(new Error("Datenbrücke nicht erreichbar (mit @annarchitecture-studio.com angemeldet?)")); };
+    s.src = SHEET_URL + "?" + q.toString();
+    document.head.appendChild(s);
+  });
+}
+async function api(action, params){
+  for(let i=0;i<2;i++){
+    try{ return await jsonp(action, params); }
+    catch(e){ if(i === 0 && !/unknown action/.test(e.message)){ await new Promise(r=>setTimeout(r,1500)); continue; } throw e; }
+  }
+}
+const curProj   = () => ctx && ctx.projects.find(p => p.id === model.header.projectId);
+const curClient = () => ctx && ctx.clients.find(c => c.id === model.clientId);
+const curCollab = () => ctx && ctx.collaborators.find(c => c.id === model.collaboratorId);
+
+/* „Musterstraße 1, 10115 Berlin, Deutschland“ -> ["Musterstraße 1", "10115 Berlin"] */
+function addressLines(s){
+  const parts = String(s || "").replace(/\s*\n\s*/g, ", ").split(/\s*,\s*/).filter(Boolean)
+    .filter(p => !/^(deutschland|germany)$/i.test(p));
+  const i = parts.findIndex(p => /^\d{4,5}\s/.test(p) || /\b\d{2}-\d{3}\s/.test(p));
+  if(i > 0) return [parts.slice(0, i).join(", "), parts.slice(i).join(", ")];
+  return parts.length ? [parts.join(", ")] : [];
+}
+
+function fillSelects(){
+  if(!ctx) return;
+  const ps = $("#f-proj");
+  ps.innerHTML = '<option value="">— Projekt wählen —</option>' + ctx.projects.map(p =>
+    `<option value="${esc(p.id)}">${esc(p.name)}${p.code ? " · " + esc(p.code) : ""}</option>`).join("");
+  ps.value = model.header.projectId || "";
+
+  const cs = $("#f-collab"), groups = {};
+  ctx.collaborators.forEach(c => (groups[c.discipline || "Ohne Gewerk"] = groups[c.discipline || "Ohne Gewerk"] || []).push(c));
+  cs.innerHTML = '<option value="">' + (ctx.collaborators.length ? "— Gewerk wählen —" : "— Collaborators noch nicht verfügbar —") + '</option>' +
+    Object.keys(groups).sort((a, b) => a.localeCompare(b, "de")).map(g =>
+      `<optgroup label="${esc(g)}">` + groups[g].map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("") + '</optgroup>').join("");
+  cs.value = model.collaboratorId || "";
+
+  const pr = curProj(), cl = $("#f-client");
+  const own = pr && pr.clientId ? ctx.clients.filter(c => c.id === pr.clientId) : [];
+  const rest = ctx.clients.filter(c => !own.includes(c));
+  const opt = c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`;
+  cl.innerHTML = '<option value="">— Firma wählen —</option>' +
+    (own.length ? '<optgroup label="Kunde des Projekts">' + own.map(opt).join("") + '</optgroup>' : "") +
+    '<optgroup label="Alle Firmen">' + rest.map(opt).join("") + '</optgroup>';
+  cl.value = model.clientId || "";
+}
+
+function applyClient(){
+  const c = curClient(), pr = curProj();
+  if(c && (c.street || c.city)) model.auftraggeber = [c.name, c.street, [c.zip, c.city].filter(Boolean).join(" ")].filter(Boolean).join("\n");
+  else if(pr && (pr.billName || pr.billAddress)) model.auftraggeber = [pr.billName || (c && c.name) || ""].concat(addressLines(pr.billAddress)).filter(Boolean).join("\n");
+  else if(c) model.auftraggeber = c.name;
+}
+function applyCollab(){
+  const c = curCollab(); if(!c) return;
+  model.auftragnehmer = [c.name].concat(addressLines(c.address)).join("\n");
+  /* Beteiligte: Zeile des vorherigen Gewerks ersetzen, übrige Zeilen behalten */
+  const keep = lines(model.beteiligte).filter(l => !ctx.collaborators.some(x => x.name && l.startsWith(x.name + ":")));
+  if(c.contactName) keep.push(c.name + ": " + c.contactName);
+  model.beteiligte = keep.join("\n");
+}
+async function applyProject(){
+  const pr = curProj(); if(!pr) return;
+  model.header.projekt = pr.name || "";
+  model.header.code = pr.code || "";
+  model.clientId = pr.clientId || "";
+  if(model.termin.ort === defaultModel().termin.ort || !model.termin.ort) model.termin.ort = pr.name || "";
+  if(pr.address == null){                               // ältere Datenbrücke: Adresse nachladen
+    try{ pr.address = (await api("getProjectMeta", { project:pr.id })).address || ""; }catch(_){ pr.address = ""; }
+  }
+  model.bauvorhaben = [pr.name].concat(addressLines(pr.address)).join("\n");
+  applyClient();
+}
+
+$("#f-proj").addEventListener("change", async e=>{
+  model.header.projectId = e.target.value;
+  await applyProject();
+  fillSelects(); syncBound(); render();
+});
+$("#f-collab").addEventListener("change", e=>{ model.collaboratorId = e.target.value; applyCollab(); syncBound(); render(); });
+$("#f-client").addEventListener("change", e=>{ model.clientId = e.target.value; applyClient(); syncBound(); render(); });
+
+async function connectAppSheet(){
+  try{
+    try{ ctx = await api("getReportContext"); }
+    catch(err){
+      if(!/unknown action/.test(err.message)) throw err;
+      const o = await api("getOfferContext");
+      ctx = { projects:o.projects.map(p => Object.assign({}, p, { address:undefined })), clients:o.clients, contacts:o.contacts || [], collaborators:[], old:true };
+    }
+    ctx.collaborators = ctx.collaborators || [];
+    fillSelects();
+    asSay("verbunden · " + ctx.projects.length + " Projekte · " + ctx.clients.length + " Firmen · " +
+      (ctx.old ? "Collaborators erst nach Aktualisierung der Datenbrücke" : ctx.collaborators.length + " Collaborators"), !!ctx.old);
+  }catch(err){
+    asSay("nicht verbunden — Felder von Hand ausfüllen (" + err.message + ")", true);
+  }
+}
+
+/* ---- Start ---- */
+syncBound(); renderEditor(); render();
+connectAppSheet();
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ growAll(); render(); });
+</script>
+</body>
+</html>
