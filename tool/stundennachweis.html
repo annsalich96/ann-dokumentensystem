@@ -29,6 +29,7 @@
   --ui-bg:#f4f4f2; --ui-border:#dcdcd7; --ui-muted:#6b6b6b;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{margin:0;height:100%}
 body{font-family:var(--ui);color:var(--ink);background:#e9e9e6;display:flex;overflow:hidden;font-size:15px}
 
@@ -96,6 +97,15 @@ button:disabled{opacity:.4;cursor:not-allowed}
 #entries .e-over{font-size:11px;color:#B0291E;padding:2px 10px 6px}
 .e-total{display:flex;justify-content:space-between;width:max-content;min-width:100%;
   font-size:13.5px;font-weight:700;padding:11px 10px;box-sizing:border-box}
+/* Kumulativer Nachweis: Tabellen (Phase/Leistung) mit Übertrag */
+#entries .e-blk{display:flex;justify-content:space-between;align-items:center;gap:12px;width:max-content;min-width:100%;
+  background:var(--ui-bg);border-top:1px solid var(--ui-border);padding:7px 10px;font-size:12.5px;font-weight:700}
+#entries .e-blk button,.blk .blk-h button{font-size:12px;padding:3px 10px}
+.blk{border:1px solid var(--ui-border);border-radius:8px;padding:14px 16px;margin-top:14px}
+.blk .blk-h{font-size:12.5px;font-weight:700;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center}
+.blk .ok{color:#4A7C59}.blk .err{color:#B0291E}
+.chk{display:flex!important;flex-direction:row!important;align-items:center;gap:8px;font-size:13.5px!important;color:var(--ink)!important;margin:0 0 16px!important}
+.chk input{width:auto!important}
 
 /* ============================================================
    DOKUMENT: A4 nach Design-System
@@ -131,6 +141,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .s-thead    {font-weight:500;font-size:8pt;text-transform:uppercase;letter-spacing:.02em}
 .s-cell     {font-weight:500;font-size:8pt}
 .s-total    {font-weight:700;font-size:8pt}
+.s-blocktitle{font-weight:700;font-size:10pt}
 .s-footer   {font-weight:300;font-size:8pt}
 
 @media print{
@@ -169,7 +180,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
 
   <h2>Kopf</h2>
   <div class="fg">
-    <div class="fld wide"><label>Titel</label><input type="text" id="f-title" value="Anlage 01_Stundennachweis"></div>
+    <div class="fld wide"><label>Kopfzeile 1 (Projekt: Name - Kürzel)</label><input type="text" id="f-head1"></div>
+    <div class="fld wide"><label>Titel</label><input type="text" id="f-title" value="Stundennachweis_Anlage 01"></div>
     <div class="fld"><label>Ort</label><input type="text" id="f-place" value="Berlin"></div>
     <div class="fld"><label>Datum</label><input type="date" id="f-date"></div>
   </div>
@@ -188,13 +200,16 @@ button:disabled{opacity:.4;cursor:not-allowed}
   </div>
 
   <h2>Aus Time Tracking laden</h2>
+  <label class="chk"><input type="checkbox" id="f-kum"> Kumulativer Nachweis – Tabellen je Phase/Leistung mit Übertrag</label>
   <div class="fg">
     <div class="fld"><label>Projekt</label><select id="f-sel-proj" disabled></select></div>
-    <div class="fld"><label>Phase</label><select id="f-sel-phase" disabled></select></div>
-    <div class="fld"><label>Leistung</label><select id="f-sel-svc" disabled></select></div>
-    <div class="fld"><label>von</label><input type="date" id="f-von"></div>
-    <div class="fld"><label>bis</label><input type="date" id="f-bis"></div>
+    <div class="fld single-only"><label>Phase</label><select id="f-sel-phase" disabled></select></div>
+    <div class="fld single-only"><label>Leistung</label><select id="f-sel-svc" disabled></select></div>
+    <div class="fld"><label id="l-von">von</label><input type="date" id="f-von"></div>
+    <div class="fld"><label id="l-bis">bis</label><input type="date" id="f-bis"></div>
   </div>
+  <div id="blocks" hidden></div>
+  <div class="btnbar" id="blocks-bar" hidden><button class="ghost" id="btn-add-block">+ Tabelle</button></div>
   <div class="btnbar">
     <button class="ghost" id="btn-load" disabled>Einträge laden</button>
     <button class="ghost" id="btn-demo">Demodaten</button>
@@ -225,6 +240,9 @@ button:disabled{opacity:.4;cursor:not-allowed}
     <button class="ghost" id="btn-save">Speichern (.json)</button>
     <button class="ghost" id="btn-open">Öffnen</button>
     <input type="file" id="file-open" accept="application/json" hidden>
+  </div>
+  <div class="fg" style="margin-top:18px">
+    <div class="fld wide"><label>Rechnungsnr. (wird beim Abbuchen im Sheet vermerkt und später als Übertrag-Rechnung vorgeschlagen)</label><input type="text" id="f-rechnung" placeholder="z. B. INV_XXX_007"></div>
   </div>
   <div class="btnbar">
     <button class="ghost" id="btn-bill">Im Sheet abbuchen</button>
@@ -340,28 +358,40 @@ const MONOGRAM_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 88.33
    ============================================================ */
 let model = {
   type:"stundennachweis",
-  header:{ title:"Anlage 01_Stundennachweis", place:"Berlin", date:isoToday() },
+  header:{ projektzeile:"Projekt: Beispielprojekt – Parkhaus", code:"", title:"Stundennachweis_Anlage 01", place:"Berlin", date:isoToday() },
   meta:{
     auftrag:{ nr:"OFF_BPP_N_01_260301", bez:"Nachtrag 01 – Bodenmarkierungsplanung" },
     projekt:{ name:"Beispielprojekt – Parkhaus", adresse:"Musterstraße 1\n10115 Berlin" },
-    zeitraum:{ von:"", bis:"" }
+    zeitraum:{ von:"", bis:"" },
+    rechnung:""
   },
-  settings:{ einheit:"stunden", stundenProTag:8 },
+  settings:{ einheit:"stunden", stundenProTag:8, kumulativ:false },
+  /* Kumulativer Nachweis: je Tabelle Phase/Leistung + Übertrag; Einträge tragen b = Tabellen-Index */
+  blocks:[],
   items:[
     { datum:"", taetigkeit:"Erstellung von Plänen", bearbeiter:"Ann-Kathrin Salich", stunden:0.5 },
     { datum:"", taetigkeit:"Abstimmung mit Fachplanung",   bearbeiter:"Ann-Kathrin Salich", stunden:1.0 }
   ]
 };
-/* Kopfzeile 2: Bezug zum Angebot = Auftrags-Nr. */
-function headerMid(){ const nr = (model.meta && model.meta.auftrag && model.meta.auftrag.nr) || ''; return nr ? 'Angebotsnr.: ' + nr : ''; }
+/* Kopf (Ann, 2026-11-05): Zeile 1 „Projekt: Name - Kürzel", Zeile 2 Titel, Zeile 3 Ort, Datum */
+function defaultProjektzeile(){
+  const n = (model.meta && model.meta.projekt && model.meta.projekt.name) || '', c = (model.header && model.header.code) || '';
+  return n ? 'Projekt: ' + n + (c ? ' - ' + c : '') : '';
+}
 function isoToday(){ return new Date().toISOString().slice(0,10); }
 function deDate(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
+/* Tabellendatum kurz: 21.10.26 (Ann, 2026-11-05) */
+function deDateS(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}.${m}.${String(y).slice(-2)}`; }
 function hours(n){ return (Number(n)||0).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" Std."; }
 function totalHours(){ return model.items.reduce((s,r)=>s+(Number(r.stunden)||0),0); }
 
 /* Einheit Stunden/Tage (nur Darstellung; erfasst wird immer in Stunden) */
 function normalizeModel(){
-  model.settings = Object.assign({ einheit:"stunden", stundenProTag:8 }, model.settings || {});
+  model.settings = Object.assign({ einheit:"stunden", stundenProTag:8, kumulativ:false }, model.settings || {});
+  if(!Array.isArray(model.blocks)) model.blocks = [];
+  model.blocks.forEach(bl => { bl.ue = Object.assign({ von:"", bis:"", rechnung:"", stunden:0 }, bl.ue || {}); });
+  if(model.meta && model.meta.rechnung == null) model.meta.rechnung = "";
+  if(model.header.projektzeile == null) model.header.projektzeile = defaultProjektzeile();
   const pj = model.meta && model.meta.projekt;
   if(pj && pj.adresse == null) pj.adresse = [pj.strasse, pj.ort].filter(Boolean).join("\n");   // alte Modelle: Straße/PLZ -> Adressblock
 }
@@ -372,44 +402,99 @@ function fmtDays(n){ n = Number(n)||0; const s = n.toLocaleString("de-DE",{minim
 function totalDocLabel(){ return isTage() ? fmtDays(totalDays()) : hours(totalHours()); }
 function editorTotalLabel(){ return isTage() ? `${fmtDays(totalDays())} (${hours(totalHours())})` : hours(totalHours()); }
 
+/* Kumulativ: je Tabelle Übertrag + aktuell = kumuliert. Im Tage-Modus wird jeder Teil
+   für sich auf 0,25 Tage gerundet und kumuliert = Summe der gerundeten Teile. */
+function isKum(){ return !!(model.settings && model.settings.kumulativ); }
+function blockItems(bi){ return model.items.filter(it => (it.b || 0) === bi); }
+function blockTotals(bi){
+  const bl = model.blocks[bi] || {}, ue = Number(bl.ue && bl.ue.stunden) || 0;
+  const akt = blockItems(bi).reduce((s,r)=>s+(Number(r.stunden)||0),0);
+  if(!isTage()) return { ue:hours(ue), akt:hours(akt), kum:hours(ue + akt) };
+  const f = (+model.settings.stundenProTag) || 8, du = roundQuarter(ue/f), da = roundQuarter(akt/f);
+  return { ue:fmtDays(du), akt:fmtDays(da), kum:fmtDays(du + da) };
+}
+function ueRange(ue){ return ue && ue.von && ue.bis ? deDateS(ue.von) + ' - ' + deDateS(ue.bis) : (ue && (ue.von || ue.bis) ? deDateS(ue.von || ue.bis) : ''); }
+
 /* ============================================================
    3) PAGINATION-ENGINE
    ============================================================ */
-function paginate(){
-  const F = DS.footer.k1, GAP = DS.table.minGapBeforeFooter;
-  const tot = DS.total.span;
-  // Wie viele Zeilen (ab rows[0]) passen ab Tabellenkopf topK, mit min. GAP vor dem Footer
-  // (reserveTotal = Platz für die "Gesamt"-Zeile freihalten -> nur die letzte Seite).
-  // Zeilenhöhe je Zeile: 2 BL (1 Textzeile) oder 3 BL (2 Textzeilen) — nie über eine Seite geteilt.
-  const capFor = (topK, reserveTotal, rows) => {
-    let budget = F - GAP - (reserveTotal ? tot : 0) - (topK + 1), n = 0;
-    while(n < rows.length && rows[n] && rowSpanOf(rows[n]) <= budget){ budget -= rowSpanOf(rows[n]); n++; }
-    return Math.max(reserveTotal ? 0 : 1, n);
+/* Tabellenkörper als Liste von Zeichenoperationen je Seite — EINE Quelle für Vorschau
+   und PDF. Regeln:
+   - Zeile 2 BL (1 Textzeile) oder 3 BL (2 Textzeilen), nie über eine Seite geteilt.
+   - Inhalt endet mind. minGapBeforeFooter Raster über dem Footer.
+   - Die letzte Zeile bleibt beim Summenblock (keine allein stehende Summe).
+   - Folgeseiten: Tabellenkopf wiederholt auf topRuleK_cont.
+   Kumulativ (Ann, 2026-11-05, design-sources/stundennachweis/Stundennachweis_kumuliert_grid.pdf):
+   je Tabelle Titel (10 pt fett, 2 BL) → Kopf → Übertrag-Zeile (fett) → Einträge →
+   „Gesamt aktuell" + Linie → „Gesamt kumuliert" (fett, ohne Linie). */
+function layoutBody(){
+  const LIMIT = DS.footer.k1 - DS.table.minGapBeforeFooter;
+  const C = DS.table.cols, span = DS.table.rowSpan;
+  const X1 = DS.colX(1), XR = DS.rightEdge, XT = DS.colX(DS.total.labelCol);
+  const showHours = !isTage();
+  const pages = []; let ops = null, k = 0;
+  const newPage = first => { ops = []; pages.push({ first, ops }); };
+  const B = (cls, o, text) => ops.push({ t:'band', cls, o, text });
+  const L = (kk, x1, x2) => ops.push({ t:'rule', k:kk, x1, x2 });
+  const head = topK => {
+    L(topK, X1, XR);
+    B('s-thead', {leftMM:DS.colX(C.datum),      k:topK}, 'DATUM');
+    B('s-thead', {leftMM:DS.colX(C.taetigkeit), k:topK}, 'TÄTIGKEIT');
+    B('s-thead', {leftMM:DS.colX(C.bearbeiter), k:topK}, 'BEARBEITER');
+    if(showHours) B('s-thead', {right:true,     k:topK}, 'ZEITAUFWAND');
+    L(topK + 1, X1, XR);
+    k = topK + 1;
+  };
+  const contPage = () => { newPage(false); head(DS.table.topRuleK_cont); };
+  const row = r => {
+    // Alle Zellen auf Höhe der 1. Textzeile; TÄTIGKEIT-Zeile 2 genau 1 BL tiefer.
+    B('s-cell', {leftMM:DS.colX(C.datum), k, span}, deDateS(r.datum) || '—');
+    wrapTaet(r.taetigkeit).forEach((ln, j) => B('s-cell', {leftMM:DS.colX(C.taetigkeit), topMM:DS.G(k) + j*BL, span}, ln));
+    B('s-cell', {leftMM:DS.colX(C.bearbeiter), k, span}, r.bearbeiter || '');
+    if(showHours) B('s-cell', {right:true, k, span}, hours(r.stunden));
+    k += rowSpanOf(r);
+    L(k, X1, XR);
+  };
+  const rows = (list, tailSpan) => {
+    list.forEach((r, i) => {
+      const need = rowSpanOf(r) + (i === list.length - 1 ? tailSpan : 0);
+      if(k + need > LIMIT) contPage();
+      row(r);
+    });
+    if(!list.length && k + tailSpan > LIMIT) contPage();
   };
 
-  let rest = model.items.slice();
-  if(!rest.length) rest = [null];
-  const pages = [];
-  let first = true;
-  while(rest.length){
-    const topK = first ? firstTableK() : DS.table.topRuleK_cont;
-    const cap = capFor(topK, false, rest);
-    pages.push({ first, rows: rest.slice(0, cap) });
-    rest = rest.slice(cap);
-    first = false;
+  newPage(true);
+  if(!isKum()){
+    head(firstTableK());
+    rows(model.items, DS.total.span);
+    const gs = DS.total.span;
+    B('s-total', {leftMM:XT, k, span:gs}, 'Gesamt');
+    B('s-total', {right:true, k, span:gs}, totalDocLabel());
+    L(k + gs, XT, XR);                                    // Linie nur unter dem Summenblock
+  } else {
+    let titleK = Math.max(DS.table.topRuleK_first - 2, metaLastK() + DS.meta.gapK);
+    model.blocks.forEach((bl, bi) => {
+      const list = blockItems(bi), t = blockTotals(bi), ue = bl.ue || {};
+      // Titel + Kopf + Übertrag + erste Zeile (bzw. Summenblock) zusammenhalten
+      if(titleK + 2 + 1 + span + (list.length ? rowSpanOf(list[0]) : 4) > LIMIT){ newPage(false); titleK = DS.table.topRuleK_cont; }
+      B('s-blocktitle', {leftMM:X1, k:titleK, span:2}, bl.title || '');
+      head(titleK + 2);
+      B('s-total', {leftMM:DS.colX(C.datum),      k, span}, ueRange(ue));
+      B('s-total', {leftMM:DS.colX(C.taetigkeit), k, span}, ('Übertrag ' + (ue.rechnung || '')).trim());
+      B('s-total', {right:true,                   k, span}, t.ue);
+      k += span; L(k, X1, XR);
+      rows(list, 4);
+      B('s-cell',  {leftMM:XT, k, span:2}, 'Gesamt aktuell');
+      B('s-cell',  {right:true, k, span:2}, t.akt);
+      L(k + 2, XT, XR);
+      B('s-total', {leftMM:XT, k:k + 2, span:2}, 'Gesamt kumuliert');
+      B('s-total', {right:true, k:k + 2, span:2}, t.kum);
+      k += 4;
+      titleK = k + 2;
+    });
   }
-  // Letzte Seite: Platz für die Summenzeile sicherstellen
-  const last = pages[pages.length-1];
-  const lastTopK = last.first ? firstTableK() : DS.table.topRuleK_cont;
-  const capWithTotal = capFor(lastTopK, true, last.rows);
-  const lastCount = last.rows.filter(Boolean).length;
-  if(lastCount > capWithTotal){
-    const overflow = last.rows.slice(capWithTotal);
-    last.rows = last.rows.slice(0, capWithTotal);
-    if(last.rows.length === 0) last.rows = [null];
-    pages.push({ first:false, rows: overflow });
-  }
-  pages[pages.length-1].last = true;
+  pages[pages.length - 1].last = true;
   return pages;
 }
 
@@ -449,14 +534,14 @@ function renderHeader(page){
   m.style.width = DS.header.monogram.w + 'mm'; m.style.height = DS.header.monogram.h + 'mm';
   m.innerHTML = MONOGRAM_SVG; page.appendChild(m);
 
-  page.appendChild(band('s-title',     {right:true, k:DS.header.titleK,     span:2}, model.header.title || ''));
-  page.appendChild(band('s-title',     {right:true, k:DS.header.midK,       span:2}, headerMid()));
+  page.appendChild(band('s-title',     {right:true, k:DS.header.titleK,     span:2}, model.header.projektzeile || ''));
+  page.appendChild(band('s-title',     {right:true, k:DS.header.midK,       span:2}, model.header.title || ''));
   page.appendChild(band('s-placedate', {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`));
   DS.header.ruleK.forEach(k => rule(page, k, DS.header.ruleX1, DS.header.ruleX2));
 }
 
 function addrLines(s){ return String(s || '').split('\n').map(x=>x.trim()).filter(Boolean).slice(0,3); }
-/* AUFTRAG-Block, eine Leerzeile, PROJEKT-Block — alles linksbündig ab Spalte 3. */
+/* AUFTRAG-Block, zwei Leerzeilen (Ann, 2026-11-05), PROJEKT-Block — alles linksbündig ab Spalte 3. */
 function metaLayout(){
   const maxK = DS.meta.labelK + 14;   // Sicherheitsnetz gegen Endlos-Umbruch
   const rows = []; let k = DS.meta.labelK;
@@ -464,7 +549,7 @@ function metaLayout(){
   add('s-metalabel', 'AUFTRAG:');
   add('s-metaval', model.meta.auftrag.nr || '');
   addrLines(model.meta.auftrag.bez).forEach(ln => add('s-metaval', ln));
-  k++;   // Leerzeile zwischen den Blöcken
+  k += 2;   // zwei Leerzeilen zwischen den Blöcken
   add('s-metalabel', 'PROJEKT:');
   add('s-metaval', model.meta.projekt.name || '');
   addrLines(model.meta.projekt.adresse).forEach(ln => add('s-metaval', ln));
@@ -476,37 +561,6 @@ function firstTableK(){ return Math.max(DS.table.topRuleK_first, metaLastK() + 1
 function renderMeta(page){
   const L = DS.colX(3);
   metaLayout().forEach(r => page.appendChild(band(r.cls, {leftMM:L, k:r.k}, r.text)));
-}
-
-function renderTable(page, p){
-  const topK = p.first ? firstTableK() : DS.table.topRuleK_cont;
-  const C = DS.table.cols, span = DS.table.rowSpan;
-  const showHours = !isTage();
-  rule(page, topK, DS.colX(1), DS.rightEdge);
-  page.appendChild(band('s-thead', {leftMM:DS.colX(C.datum),      k:topK}, 'DATUM'));
-  page.appendChild(band('s-thead', {leftMM:DS.colX(C.taetigkeit), k:topK}, 'TÄTIGKEIT'));
-  page.appendChild(band('s-thead', {leftMM:DS.colX(C.bearbeiter), k:topK}, 'BEARBEITER'));
-  if(showHours) page.appendChild(band('s-thead', {right:true,     k:topK}, 'ZEITAUFWAND'));
-  rule(page, topK + 1, DS.colX(1), DS.rightEdge);
-  let k = topK + 1;
-  p.rows.filter(Boolean).forEach(row=>{
-    // Alle Zellen auf Höhe der 1. Textzeile; TÄTIGKEIT-Zeile 2 genau 1 BL tiefer.
-    page.appendChild(band('s-cell', {leftMM:DS.colX(C.datum),      k, span}, deDate(row.datum) || '—'));
-    wrapTaet(row.taetigkeit).forEach((ln, j)=>
-      page.appendChild(band('s-cell', {leftMM:DS.colX(C.taetigkeit), topMM:DS.G(k) + j*BL, span}, ln)));
-    page.appendChild(band('s-cell', {leftMM:DS.colX(C.bearbeiter), k, span}, row.bearbeiter || ''));
-    if(showHours) page.appendChild(band('s-cell', {right:true,     k, span}, hours(row.stunden)));
-    k += rowSpanOf(row);
-    rule(page, k, DS.colX(1), DS.rightEdge);
-  });
-  return k;
-}
-
-function renderTotal(page, k){
-  const span = DS.total.span;
-  page.appendChild(band('s-total', {leftMM:DS.colX(DS.total.labelCol), k, span}, 'Gesamt'));
-  page.appendChild(band('s-total', {right:true,                        k, span}, totalDocLabel()));
-  rule(page, k + span, DS.colX(DS.total.labelCol), DS.rightEdge);   // Linie nur unter dem Summenblock
 }
 
 function renderFooter(page, idx, count){
@@ -543,7 +597,8 @@ const PDF_STYLE = {
   's-title'    :['Rota','normal',10], 's-placedate':['Rota','normal',10],
   's-metalabel':['Rota','normal',8],  's-metaval'  :['Rota','normal',10],
   's-thead'    :['Rota','normal',8],  's-cell'     :['Rota','normal',8],
-  's-total'    :['Rota','bold',8],    's-footer'   :['RotaLight','normal',8]
+  's-total'    :['Rota','bold',8],    's-footer'   :['RotaLight','normal',8],
+  's-blocktitle':['Rota','bold',10]
 };
 
 function exportPDF(){
@@ -579,8 +634,7 @@ function exportPDF(){
     });
   };
 
-  const pages = paginate();
-  const C = DS.table.cols, span = DS.table.rowSpan;
+  const pages = layoutBody();
 
   pages.forEach((p, pi) => {
     if(pi > 0) doc.addPage();
@@ -589,8 +643,8 @@ function exportPDF(){
     put('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop1}, 'AN(N) ARCHITECTURE');
     put('s-wordmark', {leftMM:DS.colX(1), topMM:DS.header.wordmarkTop2}, 'SOLUTION');
     monogram();
-    put('s-title',     {right:true, k:DS.header.titleK,     span:2}, model.header.title || '');
-    put('s-title',     {right:true, k:DS.header.midK,       span:2}, headerMid());
+    put('s-title',     {right:true, k:DS.header.titleK,     span:2}, model.header.projektzeile || '');
+    put('s-title',     {right:true, k:DS.header.midK,       span:2}, model.header.title || '');
     put('s-placedate', {right:true, k:DS.header.placedateK, span:2}, `${model.header.place}, ${deDate(model.header.date)}`);
     DS.header.ruleK.forEach(k => hline(k, DS.header.ruleX1, DS.header.ruleX2));
 
@@ -600,32 +654,8 @@ function exportPDF(){
       metaLayout().forEach(r => put(r.cls, {leftMM:L, k:r.k}, r.text));
     }
 
-    // Tabelle
-    const showHours = !isTage();
-    const topK = p.first ? firstTableK() : DS.table.topRuleK_cont;
-    hline(topK, DS.colX(1), DS.rightEdge);
-    put('s-thead', {leftMM:DS.colX(C.datum),      k:topK}, 'DATUM');
-    put('s-thead', {leftMM:DS.colX(C.taetigkeit), k:topK}, 'TÄTIGKEIT');
-    put('s-thead', {leftMM:DS.colX(C.bearbeiter), k:topK}, 'BEARBEITER');
-    if(showHours) put('s-thead', {right:true,     k:topK}, 'ZEITAUFWAND');
-    hline(topK + 1, DS.colX(1), DS.rightEdge);
-    let bt = topK + 1;
-    p.rows.filter(Boolean).forEach(row => {
-      put('s-cell', {leftMM:DS.colX(C.datum),      k:bt, span}, deDate(row.datum) || '—');
-      wrapTaet(row.taetigkeit).forEach((ln, j) =>
-        put('s-cell', {leftMM:DS.colX(C.taetigkeit), topMM:DS.G(bt) + j*BL, span}, ln));
-      put('s-cell', {leftMM:DS.colX(C.bearbeiter), k:bt, span}, row.bearbeiter || '');
-      if(showHours) put('s-cell', {right:true,     k:bt, span}, hours(row.stunden));
-      bt += rowSpanOf(row);
-      hline(bt, DS.colX(1), DS.rightEdge);
-    });
-
-    if(p.last){
-      const gk = bt, gs = DS.total.span;
-      put('s-total', {leftMM:DS.colX(DS.total.labelCol), k:gk, span:gs}, 'Gesamt');
-      put('s-total', {right:true,                        k:gk, span:gs}, totalDocLabel());
-      hline(gk + gs, DS.colX(DS.total.labelCol), DS.rightEdge);
-    }
+    // Tabellenkörper (gleiche Operationen wie die Vorschau)
+    p.ops.forEach(op => op.t === 'band' ? put(op.cls, op.o, op.text) : hline(op.k, op.x1, op.x2));
 
     // Footer
     BUERO.blocks.forEach((b, i) => {
@@ -680,14 +710,13 @@ function snapLines(){
 
 function render(){
   stage.innerHTML = '';
-  const pages = paginate();
+  const pages = layoutBody();
   pages.forEach((p,i)=>{
     const page = document.createElement('div'); page.className = 'doc-page';
     if(showGrid) renderGrid(page);
     renderHeader(page);
     if(p.first) renderMeta(page);
-    const lastRowK = renderTable(page, p);
-    if(p.last) renderTotal(page, lastRowK);
+    p.ops.forEach(op => op.t === 'band' ? page.appendChild(band(op.cls, op.o, op.text)) : rule(page, op.k, op.x1, op.x2));
     renderFooter(page, i+1, pages.length);
     stage.appendChild(page);
   });
@@ -703,7 +732,7 @@ function setPath(path,v){ const s=path.split('.'); let o=model; for(let i=0;i<s.
 function bind(id,path){ const el=$(id); el.addEventListener('input',()=>{ setPath(path,el.value); render(); }); }
 /* Titel ist vorerst nur frei editierbar. Wie er sich später automatisch ergibt,
    hängt an der Gesamt-Datenstruktur/-Benennung (offen: docs regel-register O-003). */
-bind('#f-title','header.title');
+bind('#f-title','header.title'); bind('#f-head1','header.projektzeile'); bind('#f-rechnung','meta.rechnung');
 bind('#f-place','header.place'); bind('#f-date','header.date');
 bind('#f-auftrag-nr','meta.auftrag.nr'); bind('#f-auftrag-bez','meta.auftrag.bez');
 bind('#f-proj-name','meta.projekt.name'); bind('#f-proj-adr','meta.projekt.adresse');
@@ -722,7 +751,7 @@ function renderEntries(){
       '<div>Bearbeiter</div>'+
       '<div>Std.</div><div></div>'+
     '</div>';
-  model.items.forEach((r,i)=>{
+  const addRow = (r,i)=>{
     const row = document.createElement('div'); row.className='e-row';
     const hasOrig = r.taetigkeitOriginal != null && r.taetigkeitOriginal !== r.taetigkeit;
     const over = !taetFitsLines(r.taetigkeit);
@@ -737,9 +766,17 @@ function renderEntries(){
       `<input type="number" step="0.25" class="num" data-i="${i}" data-k="stunden" value="${r.stunden??''}">`+
       `<button class="del" data-i="${i}" title="Zeile löschen">×</button>`;
     entriesBox.appendChild(row);
-  });
+  };
+  if(isKum()){
+    model.blocks.forEach((bl,bi)=>{
+      const h = document.createElement('div'); h.className = 'e-blk';
+      h.innerHTML = `<span>${escapeHtml(bl.title || ('Tabelle ' + (bi+1)))}</span><button class="ghost" data-addb="${bi}">+ Zeile</button>`;
+      entriesBox.appendChild(h);
+      model.items.forEach((r,i)=>{ if((r.b || 0) === bi) addRow(r,i); });
+    });
+  } else model.items.forEach(addRow);
   const tot = document.createElement('div'); tot.className='e-total';
-  tot.innerHTML = `<span>Gesamt</span><span id="e-total-val">${editorTotalLabel()}</span>`;
+  tot.innerHTML = `<span>${isKum() ? 'Gesamt aktuell' : 'Gesamt'}</span><span id="e-total-val">${editorTotalLabel()}</span>`;
   entriesBox.appendChild(tot);
 }
 function updateTotal(){ const el = $('#e-total-val'); if(el) el.textContent = editorTotalLabel(); }
@@ -759,6 +796,10 @@ entriesBox.addEventListener('input', e=>{
   updateTotal(); render();
 });
 entriesBox.addEventListener('click', e=>{
+  if(e.target.dataset.addb != null){
+    model.items.push({datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0,b:+e.target.dataset.addb});
+    renderEntries(); render(); return;
+  }
   if(e.target.classList.contains('del')){
     model.items.splice(+e.target.dataset.i,1); renderEntries(); render(); return;
   }
@@ -789,8 +830,25 @@ entriesBox.addEventListener('click', e=>{
   try{ ['c1','c2'].forEach(c=>{ const w=localStorage.getItem('sn.'+c); if(w) entriesBox.style.setProperty('--'+c, w); }); }catch(_){}
 })();
 
-$('#btn-add').onclick = ()=>{ model.items.push({datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0}); renderEntries(); render(); };
+$('#btn-add').onclick = ()=>{
+  const it = {datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0};
+  if(isKum()) it.b = Math.max(0, model.blocks.length - 1);
+  model.items.push(it); renderEntries(); render();
+};
 $('#btn-demo').onclick = ()=>{
+  if(isKum()){
+    const nb = (title, ue) => ({ title, phase:"", phaseName:"", service:"", serviceName:"", ue });
+    model.blocks = [
+      nb('Beispielprojekt — Phase 02 — Entwurfsausarbeitung', {von:'2026-07-01', bis:'2026-09-30', rechnung:'INV_BSP_03', stunden:30}),
+      nb('Beispielprojekt — Phase 02 — Grafik',              {von:'2026-08-03', bis:'2026-09-27', rechnung:'INV_BSP_03', stunden:12.5})
+    ];
+    const acts=["Bearbeitung der Visualisierungen hinsichtlich Auflösung","Bearbeitung der Visualisierungen hinsichtlich Atmosphäre","Abstimmung Entwurf mit Bauherrschaft","Überarbeitung Grundrisse","Präsentationslayout","Planlayout Ansichten"];
+    model.items = Array.from({length:8},(_,k)=>({
+      datum:`2026-10-${String(1+k*3).padStart(2,'0')}`, taetigkeit:acts[k%6],
+      bearbeiter:k%2 ? "Ann-Kathrin Salich" : "Mitarbeiterin A", stunden:[7.75,1.5,2,3.25][k%4], b:k<5 ? 0 : 1
+    }));
+    renderBlocks(); renderEntries(); render(); return;
+  }
   const acts=["Erstellung von Plänen","Abstimmung mit Fachplanung","Baustellenbegehung","Abstimmung Fachplaner","Ausschreibungstext","Mengenermittlung"];
   model.items = Array.from({length:14},(_,k)=>({
     datum:`2026-08-${String(3+k).padStart(2,'0')}`, taetigkeit:acts[k%6],
@@ -802,6 +860,7 @@ $('#btn-demo').onclick = ()=>{
 /* ============================================================
    5b) TIME TRACKING — Verbindung zum Google-Sheet (Apps Script, nur lesen)
    ============================================================ */
+const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird unten von der Verbindung gefüllt
 (function(){
   const loadBtn = $('#btn-load');
   const selP = $('#f-sel-proj'), selPh = $('#f-sel-phase'), selS = $('#f-sel-svc');
@@ -848,11 +907,13 @@ $('#btn-demo').onclick = ()=>{
     el.disabled = items.length === 0;
   }
   function curProject(){ return tree ? tree.projects.find(p => p.id === selP.value) : null; }
+  TT.curProject = curProject; TT.api = (a, p, t) => api(a, p, t); TT.projectId = () => selP.value;
   function curPhase(){ const p = curProject(); return p ? p.phases.find(x => x.id === selPh.value) : null; }
 
   function applyTree(t, note){
     tree = t;
     fillSelect(selP, tree.projects, '— Projekt wählen —');
+    renderBlocks();
     selPh.innerHTML = '<option value="">—</option>'; selPh.disabled = true;
     selS.innerHTML  = '<option value="">—</option>'; selS.disabled  = true;
     loadBtn.disabled = true;
@@ -876,6 +937,8 @@ $('#btn-demo').onclick = ()=>{
     }
   }
 
+  let reportCtx = null;
+  function setProjektzeile(){ model.header.projektzeile = defaultProjektzeile(); $('#f-head1').value = model.header.projektzeile; render(); }
   function applyProjectMeta(m){
     if(m.name != null){ model.meta.projekt.name = m.name; $('#f-proj-name').value = m.name; }
     if(m.address != null){ model.meta.projekt.adresse = m.address; $('#f-proj-adr').value = m.address; }
@@ -886,8 +949,15 @@ $('#btn-demo').onclick = ()=>{
     fillSelect(selPh, p ? p.phases : [], '— alle Phasen —');
     selS.innerHTML = '<option value="">— alle Leistungen —</option>'; selS.disabled = true;
     loadBtn.disabled = !p;
+    renderBlocks();
     if(!p) return;
     applyProjectMeta({ name: p.name });                  // Name haben wir sofort
+    setProjektzeile();
+    try{                                                 // Projekt-Kürzel (Projects.Project Code), nur lesend
+      if(!reportCtx) reportCtx = await api('getReportContext');
+      const pr = (reportCtx.projects || []).find(x => x.id === p.id);
+      model.header.code = (pr && pr.code) || ''; setProjektzeile();
+    }catch(_){ /* still scheitern lassen */ }
     try{                                                 // Stammdaten (Adresse …) nachladen; still scheitern lassen
       applyProjectMeta(await api('getProjectMeta', { project: p.id }));
     }catch(_){ /* Endpunkt evtl. noch nicht bereitgestellt */ }
@@ -900,21 +970,33 @@ $('#btn-demo').onclick = ()=>{
   loadBtn.onclick = async () => {
     if(!selP.value){ say('Erst ein Projekt wählen.', 'err'); return; }
     say('Lade Zeiteinträge …'); loadBtn.disabled = true;
-    try{
-      const d = await api('getTimeRecords', {
-        project: selP.value, phase: selPh.value || '', service: selS.value || '',
-        from: $('#f-von').value || '', to: $('#f-bis').value || ''
-      });
-      let rows = d.items || [];
-      const skipped = $('#f-only-open').checked ? rows.filter(it => it.billed).length : 0;
-      if($('#f-only-open').checked) rows = rows.filter(it => !it.billed);
-      model.items = rows.map(it => ({
+    const mapIt = (it, b) => {
+      const o = {
         datum: it.datum || '',
         taetigkeit: it.billingDesc || it.taetigkeit || '',   // schon aufbereiteter Text (falls vorhanden)
         taetigkeitOriginal: it.taetigkeit || '',             // Roh-Text für Vergleich / KI-Aufbereitung
         bearbeiter: it.bearbeiter || '', stunden: Number(it.stunden) || 0,
         recordId: it.recordId || '', billed: !!it.billed
-      }));
+      };
+      if(b != null) o.b = b;
+      return o;
+    };
+    try{
+      const onlyOpen = $('#f-only-open').checked, from = $('#f-von').value || '', to = $('#f-bis').value || '';
+      // Kumulativ: je Tabelle (Phase/Leistung) laden; sonst wie bisher eine Auswahl
+      const queries = isKum()
+        ? model.blocks.map((bl, b) => ({ b, phase: bl.phase || '', service: bl.service || '' }))
+        : [{ b: null, phase: selPh.value || '', service: selS.value || '' }];
+      if(!queries.length){ say('Erst eine Tabelle anlegen (+ Tabelle).', 'err'); return; }
+      const d = { unresolved: 0 }; let skipped = 0, items = [];
+      for(const q of queries){
+        const r = await api('getTimeRecords', { project: selP.value, phase: q.phase, service: q.service, from, to });
+        let rows = r.items || [];
+        d.unresolved += r.unresolved || 0;
+        if(onlyOpen){ skipped += rows.filter(it => it.billed).length; rows = rows.filter(it => !it.billed); }
+        items = items.concat(rows.map(it => mapIt(it, q.b)));
+      }
+      model.items = items;
       $('#btn-ki-reset').hidden = true;
       $('#btn-unbill').hidden = !model.items.some(it => it.billed);   // schon abgerechnete geladen -> Rücknahme anbieten
       renderEntries(); render();
@@ -1005,7 +1087,8 @@ $('#btn-demo').onclick = ()=>{
 
   /* ---- Abbuchen: die einbezogenen Zeiteinträge im Sheet als abgerechnet markieren ---- */
   const billstatus = (m,c)=>{ const el=$('#bill-status'); if(el){ el.textContent=m||''; el.className='sub '+(c||''); } };
-  function billDocId(){ return (model.header.title || 'Stundennachweis').trim(); }
+  /* Abbuchen vermerkt die Rechnungsnr. (falls eingetragen), sonst wie bisher den Titel. */
+  function billDocId(){ return ((model.meta && model.meta.rechnung) || model.header.title || 'Stundennachweis').trim(); }
   function billEntries(){
     const note = isTage() ? ('Nachweis: ' + fmtDays(totalDays())) : '';
     return model.items
@@ -1066,6 +1149,111 @@ $('#btn-demo').onclick = ()=>{
   connect();
 })();
 
+/* ============================================================
+   5c) KUMULATIV — Tabellen je Phase/Leistung mit Übertrag
+   ============================================================ */
+const blocksBox = $('#blocks');
+function newBlock(){ return { title:"", phase:"", phaseName:"", service:"", serviceName:"", ue:{ von:"", bis:"", rechnung:"", stunden:0 } }; }
+function autoTitle(bl){ return [model.meta.projekt.name, bl.phaseName, bl.serviceName].filter(Boolean).join(' — '); }
+function optList(items, cur, curName, placeholder){
+  const list = items.slice();
+  if(cur && !list.some(x => x.id === cur)) list.unshift({ id:cur, name:curName || cur });   // z. B. aus JSON geöffnet
+  return '<option value="">' + placeholder + '</option>' +
+    list.map(x => `<option value="${escapeHtml(x.id)}"${x.id === cur ? ' selected' : ''}>${escapeHtml(x.name)}</option>`).join('');
+}
+function applyKumUI(){
+  const on = isKum();
+  document.querySelectorAll('.single-only').forEach(el => el.hidden = on);
+  blocksBox.hidden = !on; $('#blocks-bar').hidden = !on;
+  $('#l-von').textContent = on ? 'Zeitraum dieser Rechnung von' : 'von';
+  $('#l-bis').textContent = on ? 'bis' : 'bis';
+  $('#f-kum').checked = on;
+}
+function renderBlocks(){
+  const blocksBox = document.getElementById('blocks');   // kann schon vor 5c laufen (Verbindung aus dem Cache)
+  if(!isKum()){ blocksBox.innerHTML = ''; return; }
+  const p = TT.curProject();
+  blocksBox.innerHTML = '';
+  model.blocks.forEach((bl, bi)=>{
+    const ph = p ? p.phases.find(x => x.id === bl.phase) : null;
+    const d = document.createElement('div'); d.className = 'blk'; d.dataset.b = bi;
+    d.innerHTML =
+      `<div class="blk-h"><span>Tabelle ${bi+1}</span><button class="ghost" data-act="del">Entfernen</button></div>`+
+      `<div class="fg">`+
+        `<div class="fld"><label>Phase</label><select data-f="phase"${p || bl.phase ? '' : ' disabled'}>${optList(p ? p.phases : [], bl.phase, bl.phaseName, '— alle Phasen —')}</select></div>`+
+        `<div class="fld"><label>Leistung</label><select data-f="service"${ph || bl.service ? '' : ' disabled'}>${optList(ph ? ph.services : [], bl.service, bl.serviceName, '— alle Leistungen —')}</select></div>`+
+        `<div class="fld wide"><label>Tabellentitel</label><input type="text" data-f="title" value="${escapeHtml(bl.title)}"></div>`+
+        `<div class="fld"><label>Übertrag von</label><input type="date" data-f="ue.von" value="${bl.ue.von || ''}"></div>`+
+        `<div class="fld"><label>Übertrag bis</label><input type="date" data-f="ue.bis" value="${bl.ue.bis || ''}"></div>`+
+        `<div class="fld"><label>Zugehörige Rechnung</label><input type="text" data-f="ue.rechnung" list="dl-rech-${bi}" value="${escapeHtml(bl.ue.rechnung)}" placeholder="z. B. INV_XXX_006">`+
+          `<datalist id="dl-rech-${bi}">${(bl.ue.vorschlaege || []).map(v => `<option value="${escapeHtml(v)}">`).join('')}</datalist></div>`+
+        `<div class="fld"><label>Übertrag Std. (aus dem Zeitraum, änderbar)</label><input type="number" step="0.25" data-f="ue.stunden" value="${bl.ue.stunden ?? ''}"></div>`+
+      `</div>`+
+      `<p class="sub" data-st style="margin:10px 0 0">${escapeHtml(bl.ue.info || '')}</p>`;
+    blocksBox.appendChild(d);
+  });
+}
+/* Übertrag = alle gebuchten Stunden dieser Phase/Leistung im gewählten Zeitraum.
+   Rechnungs-Vorschläge = Dokumente, mit denen diese Stunden abgebucht wurden. */
+async function calcUebertrag(bi){
+  const bl = model.blocks[bi]; if(!bl) return;
+  const st = blocksBox.querySelector(`.blk[data-b="${bi}"] [data-st]`);
+  const say = (m, c) => { bl.ue.info = m; if(st){ st.textContent = m; st.className = 'sub ' + (c || ''); } };
+  if(!bl.ue.von || !bl.ue.bis) return;
+  if(!TT.api || !TT.projectId()){ say('Für die automatische Berechnung oben ein Projekt wählen – oder Stunden von Hand eintragen.', 'err'); return; }
+  say('Berechne Übertrag …');
+  try{
+    const d = await TT.api('getTimeRecords', { project: TT.projectId(), phase: bl.phase || '', service: bl.service || '', from: bl.ue.von, to: bl.ue.bis });
+    const items = d.items || [];
+    bl.ue.stunden = Math.round(items.reduce((s, it) => s + (Number(it.stunden) || 0), 0) * 100) / 100;
+    bl.ue.vorschlaege = [...new Set(items.map(it => it.billedDoc).filter(Boolean))];
+    if(!bl.ue.rechnung && bl.ue.vorschlaege.length === 1) bl.ue.rechnung = bl.ue.vorschlaege[0];
+    const open = items.filter(it => !it.billed).length;
+    renderBlocks(); render();
+    say(items.length + ' Einträge · ' + hours(bl.ue.stunden) + (open ? '  ·  davon ' + open + ' noch nicht abgebucht' : ''), open ? 'err' : 'ok');
+  }catch(e){ say('Übertrag nicht berechnet: ' + e.message, 'err'); }
+}
+blocksBox.addEventListener('input', e=>{
+  const f = e.target.dataset.f, card = e.target.closest('.blk'); if(!f || !card || e.target.tagName === 'SELECT') return;
+  const bl = model.blocks[+card.dataset.b];
+  if(f === 'title') bl.title = e.target.value;
+  else if(f === 'ue.rechnung') bl.ue.rechnung = e.target.value;
+  else if(f === 'ue.stunden') bl.ue.stunden = parseFloat(e.target.value) || 0;
+  else if(f === 'ue.von' || f === 'ue.bis') bl.ue[f.slice(3)] = e.target.value;
+  if(f === 'title') renderEntries();
+  render();
+});
+blocksBox.addEventListener('change', e=>{
+  const f = e.target.dataset.f, card = e.target.closest('.blk'); if(!f || !card) return;
+  const bi = +card.dataset.b, bl = model.blocks[bi];
+  if(f === 'phase' || f === 'service'){
+    const name = e.target.value ? e.target.selectedOptions[0].textContent : '';
+    if(f === 'phase'){ bl.phase = e.target.value; bl.phaseName = name; bl.service = ''; bl.serviceName = ''; }
+    else { bl.service = e.target.value; bl.serviceName = name; }
+    const t = autoTitle(bl);
+    if(!bl.title || bl.title === bl._auto) bl.title = t;
+    bl._auto = t;
+    renderBlocks(); renderEntries(); render(); calcUebertrag(bi);
+  } else if(f === 'ue.von' || f === 'ue.bis') calcUebertrag(bi);
+});
+blocksBox.addEventListener('click', e=>{
+  if(e.target.dataset.act !== 'del') return;
+  const bi = +e.target.closest('.blk').dataset.b;
+  if(blockItems(bi).length && !confirm('Tabelle ' + (bi+1) + ' mit ' + blockItems(bi).length + ' Einträgen entfernen?')) return;
+  model.blocks.splice(bi, 1);
+  model.items = model.items.filter(it => (it.b || 0) !== bi).map(it => ((it.b || 0) > bi ? Object.assign(it, { b: it.b - 1 }) : it));
+  renderBlocks(); renderEntries(); render();
+});
+$('#btn-add-block').onclick = ()=>{ model.blocks.push(newBlock()); renderBlocks(); renderEntries(); render(); };
+$('#f-kum').addEventListener('change', e=>{
+  model.settings.kumulativ = e.target.checked;
+  if(isKum()){
+    if(!model.blocks.length) model.blocks.push(newBlock());
+    model.items.forEach(it => { if(it.b == null || it.b >= model.blocks.length) it.b = 0; });
+  }
+  applyKumUI(); renderBlocks(); renderEntries(); render();
+});
+
 $('#btn-save').onclick = ()=>{
   const blob = new Blob([JSON.stringify(model,null,2)],{type:'application/json'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
@@ -1084,12 +1272,13 @@ $('#btn-print').onclick = ()=> window.print();
 function syncForm(){
   normalizeModel();
   const g=(id,v)=>{ $(id).value = v||''; };
-  g('#f-title',model.header.title);
+  g('#f-title',model.header.title); g('#f-head1',model.header.projektzeile); g('#f-rechnung',model.meta.rechnung);
   g('#f-place',model.header.place); g('#f-date',model.header.date);
   g('#f-auftrag-nr',model.meta.auftrag.nr); g('#f-auftrag-bez',model.meta.auftrag.bez);
   g('#f-proj-name',model.meta.projekt.name); g('#f-proj-adr',model.meta.projekt.adresse);
   g('#f-von',model.meta.zeitraum.von); g('#f-bis',model.meta.zeitraum.bis);
   $('#f-einheit').value = model.settings.einheit; $('#f-stdtag').value = model.settings.stundenProTag;
+  applyKumUI(); renderBlocks();
 }
 
 /* ---- Zoom ---- */
