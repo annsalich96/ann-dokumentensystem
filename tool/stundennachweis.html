@@ -178,9 +178,12 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <h1>Stundennachweis</h1>
   <p class="sub">ann architecture · Dokumenten-System · Prototyp</p>
 
-  <h2>Kopf</h2>
+  <h2>Projekt &amp; Kopf</h2>
   <div class="fg">
-    <div class="fld wide"><label>Kopfzeile 1 (Projekt: Name - Kürzel)</label><input type="text" id="f-head1"></div>
+    <div class="fld wide"><label>Projekt (aus AppSheet)</label><select id="f-sel-proj" disabled><option value="">— Projekt wählen —</option></select></div>
+    <div class="fld wide"><label>Projekt im Kopf (aus AppSheet „Project Name“ + Kürzel, hier nur für diesen Nachweis änderbar)</label><input type="text" id="f-head1"></div>
+    <div class="fld"><label>Projekt-Kürzel (automatisch aus AppSheet)</label><input type="text" id="f-code" disabled></div>
+    <div class="fld"></div>
     <div class="fld wide"><label>Titel</label><input type="text" id="f-title" value="Stundennachweis_Anlage 01"></div>
     <div class="fld"><label>Ort</label><input type="text" id="f-place" value="Berlin"></div>
     <div class="fld"><label>Datum</label><input type="date" id="f-date"></div>
@@ -194,15 +197,14 @@ button:disabled{opacity:.4;cursor:not-allowed}
 
   <h2>Projekt</h2>
   <div class="fg">
-    <div class="fld wide"><label>Projektname</label><input type="text" id="f-proj-name" value="Beispielprojekt – Parkhaus"></div>
-    <div class="fld wide"><label>Projekt-Adresse</label><textarea id="f-proj-adr" rows="2" style="resize:vertical">Musterstraße 1
+    <div class="fld wide"><label>Projektname (aus AppSheet, änderbar)</label><input type="text" id="f-proj-name" value="Beispielprojekt – Parkhaus"></div>
+    <div class="fld wide"><label>Projekt-Adresse (aus AppSheet, änderbar)</label><textarea id="f-proj-adr" rows="2" style="resize:vertical">Musterstraße 1
 10115 Berlin</textarea></div>
   </div>
 
   <h2>Aus Time Tracking laden</h2>
   <label class="chk"><input type="checkbox" id="f-kum"> Kumulativer Nachweis – Tabellen je Phase/Leistung mit Übertrag</label>
   <div class="fg">
-    <div class="fld"><label>Projekt</label><select id="f-sel-proj" disabled></select></div>
     <div class="fld single-only"><label>Phase</label><select id="f-sel-phase" disabled></select></div>
     <div class="fld single-only"><label>Leistung</label><select id="f-sel-svc" disabled></select></div>
     <div class="fld"><label id="l-von">von</label><input type="date" id="f-von"></div>
@@ -938,7 +940,7 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
   }
 
   let reportCtx = null;
-  function setProjektzeile(){ model.header.projektzeile = defaultProjektzeile(); $('#f-head1').value = model.header.projektzeile; render(); }
+  function setProjektzeile(){ model.header.projektzeile = defaultProjektzeile(); $('#f-head1').value = model.header.projektzeile; $('#f-code').value = model.header.code || ''; render(); }
   function applyProjectMeta(m){
     if(m.name != null){ model.meta.projekt.name = m.name; $('#f-proj-name').value = m.name; }
     if(m.address != null){ model.meta.projekt.adresse = m.address; $('#f-proj-adr').value = m.address; }
@@ -952,7 +954,7 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
     renderBlocks();
     if(!p) return;
     applyProjectMeta({ name: p.name });                  // Name haben wir sofort
-    setProjektzeile();
+    model.header.code = ''; setProjektzeile();
     try{                                                 // Projekt-Kürzel (Projects.Project Code), nur lesend
       if(!reportCtx) reportCtx = await api('getReportContext');
       const pr = (reportCtx.projects || []).find(x => x.id === p.id);
@@ -1272,7 +1274,7 @@ $('#btn-print').onclick = ()=> window.print();
 function syncForm(){
   normalizeModel();
   const g=(id,v)=>{ $(id).value = v||''; };
-  g('#f-title',model.header.title); g('#f-head1',model.header.projektzeile); g('#f-rechnung',model.meta.rechnung);
+  g('#f-title',model.header.title); g('#f-head1',model.header.projektzeile); g('#f-code',model.header.code); g('#f-rechnung',model.meta.rechnung);
   g('#f-place',model.header.place); g('#f-date',model.header.date);
   g('#f-auftrag-nr',model.meta.auftrag.nr); g('#f-auftrag-bez',model.meta.auftrag.bez);
   g('#f-proj-name',model.meta.projekt.name); g('#f-proj-adr',model.meta.projekt.adresse);
