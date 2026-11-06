@@ -74,6 +74,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .btnbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
 
 /* Zeiteinträge — innerhalb der Box horizontal scrollbar */
+#entries-wrap>summary{cursor:pointer;font-size:13px;color:var(--ui-muted);padding:6px 0;list-style:none}
+#entries-wrap>summary::before{content:"▸ ";color:var(--ink)}#entries-wrap[open]>summary::before{content:"▾ "}
 #entries{margin-top:8px;border:1px solid var(--ui-border);border-radius:8px;overflow-x:auto;overflow-y:visible}
 #entries .e-head,#entries .e-row{display:grid;
   grid-template-columns:var(--c1,120px) var(--c2,240px) var(--c3,175px) 82px 34px;
@@ -254,9 +256,12 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <p class="sub" id="sheet-status" style="margin-top:10px"></p>
 
   <h2>Zeiteinträge</h2>
-  <div id="entries"></div>
+  <details id="entries-wrap">
+    <summary><span id="entries-sum">Einzelne Einträge bearbeiten</span></summary>
+    <div id="entries"></div>
+    <div class="btnbar"><button class="ghost" id="btn-add">+ Zeile</button></div>
+  </details>
   <div class="btnbar">
-    <button class="ghost" id="btn-add">+ Zeile</button>
     <button class="ghost" id="btn-ki">Beschreibungen aufbereiten</button>
     <button class="ghost" id="btn-ki-reset" hidden>Alle Originaltexte</button>
   </div>
@@ -831,6 +836,10 @@ function renderEntries(){
     });
   } else model.items.forEach(addRow);
   const tf = document.getElementById('tabtitle-row'); if(tf) tf.hidden = hasGroups();   // bei Gruppen: Titel je Tabelle oben in der Liste
+  const es = document.getElementById('entries-sum');
+  if(es) es.textContent = model.items.length
+    ? model.items.length + ' Einträge' + (hasGroups() ? ' in ' + model.groups.length + (model.groups.length === 1 ? ' Tabelle' : ' Tabellen') : '') + ' · ' + editorTotalLabel() + ' – stehen im Dokument; hier aufklappen, um Texte, Stunden oder Titel zu ändern'
+    : 'Noch keine Einträge – oben Phasen & Leistungen wählen';
   const tot = document.createElement('div'); tot.className='e-total';
   tot.innerHTML = `<span>${isKum() ? 'Gesamt aktuell' : 'Gesamt'}</span><span id="e-total-val">${editorTotalLabel()}</span>`;
   entriesBox.appendChild(tot);
@@ -971,10 +980,13 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
 
   function applyTree(t, note){
     tree = t;
+    const keep = selP.value;                             // gewähltes Projekt beim Nachladen behalten
     fillSelect(selP, tree.projects, '— Projekt wählen —');
+    if(keep && tree.projects.some(p => p.id === keep)) selP.value = keep;
     renderUe();
     renderSingleScope();
-    loadBtn.disabled = true;
+    loadBtn.disabled = !selP.value;
+    if(keep && selP.value) loadSel();                    // frische Kennzahlen übernehmen
     say('Verbunden · ' + tree.projects.length + ' Projekte' + (note || ''), 'ok');
   }
   async function connect(){
