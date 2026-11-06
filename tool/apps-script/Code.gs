@@ -16,6 +16,10 @@
  *   cleanDescriptions&items=<JSON>[&project=…&phase=…&maxChars=…]  -> KI-bereinigte Texte
  *   markBilled&entries=<JSON>&document=…&date=…&secret=…[&dryRun=1]   -> Einträge abrechnen
  *   unmarkBilled&document=…&secret=…[&ids=<JSON>]                     -> Abbuchung zurücknehmen
+ *   getBookingContext&project=…            -> Mitarbeiter + Tasks des Projekts (zum Nachtragen)
+ *   addBooking&secret=…&project=…&phase=…&service=…&date=yyyy-MM-dd&email=…&hours=…
+ *            (&task=<Task_ID> | &taskName=…)[&force=1][&dryRun=1]
+ *                                          -> Buchung direkt ins Sheet nachtragen (Arbeitstag/Task bei Bedarf neu)
  *   getOfferContext                        -> Angebot-Editor: Projekte (Kürzel automatisch, nächste
  *                                             Angebots-Nr.), Firmen, Ansprechpersonen
  *   saveClient&secret=…&name=…[&id=…&street=…&zip=…&city=…&tax=…&email=…&phone=…&project=…]
@@ -71,6 +75,8 @@ function doGet(e){
       case 'cleanDescriptions': data = cleanDescriptions(p); break;
       case 'markBilled':    data = markBilled(p); break;
       case 'unmarkBilled':  data = unmarkBilled(p); break;
+      case 'getBookingContext': data = getBookingContext(p.project || ''); break;
+      case 'addBooking':    data = addBooking(p); break;
       case 'getOfferContext': data = getOfferContext(); break;
       case 'saveClient':      data = saveClient(p); break;
       case 'saveContact':     data = saveContact(p); break;
@@ -470,14 +476,23 @@ function markBilled(p){
     var want = {};
     entries.forEach(function(e){ if(e && e.id != null) want[String(e.id).trim()] = e; });
 
-    var before = [], after = [], writes = [];
+    var before = [], after = [], writes = [], found = 0, fresh = 0, changed = 0, same = 0, other = [];
     for(var r = 1; r < values.length; r++){
       var rid = String(values[r][recCol]).trim();
       var e = want[rid]; if(!e) continue;
+      found++;
       var cur = {};
       BILLING_COLS.forEach(function(n){ cur[n] = values[r][idx[n] - 1]; });
       var desc = (e.desc != null && String(e.desc).trim()) ? String(e.desc).trim() : cur['Billing_Description'];
       var note = (e.note != null) ? String(e.note) : cur['Billing_Note'];
+      // Erneutes Abbuchen (Ann, 2026-11-06): schon abgebuchte Einträge nicht noch einmal schreiben.
+      // Gleiches Dokument + gleicher Text = unverändert; gleiches Dokument + anderer Text = Korrektur;
+      // anderes Dokument = bleibt dort (nicht umhängen, sonst stünde er auf zwei Rechnungen).
+      if(bool_(cur['Billed'])){
+        if(str_(cur['Billed_Document']) !== doc){ other.push({ id: rid, doc: str_(cur['Billed_Document']) }); continue; }
+        if(str_(cur['Billing_Description']) === str_(desc) && str_(cur['Billing_Note']) === str_(note)){ same++; continue; }
+        changed++;
+      } else fresh++;
       var original = cur['Original_Description'];
       if(!str_(original)){
         if(typeof e.original !== 'string') throw new Error('Bitte Editor neu laden, damit der Originaltext mitgespeichert wird.');
@@ -498,7 +513,8 @@ function markBilled(p){
       SpreadsheetApp.flush();
       logRow_('markBilled', after.map(function(x){ return x.id; }), doc, before, after);
     }
-    return { updated: writes.length, notFound: entries.length - writes.length, dryRun: dry, date: on };
+    return { updated: writes.length, fresh: fresh, changed: changed, same: same, other: other,
+             notFound: entries.length - found, dryRun: dry, date: on };
   } finally { lock.releaseLock(); }
 }
 
@@ -560,6 +576,137 @@ const CONTACTS_TAB = 'Contacts';
 const CONTACT_HEADERS = ['Contact_ID', 'Client_ID', 'Salutation', 'First Name', 'Last Name', 'Email', 'Phone'];
 const PROJECT_OFFER_COLS = { code:'Project Code', contact:'Contact' };
 const CLIENT_OFFER_COLS = { street:'Company Street', zip:'Company Postal Code', city:'Company City', tax:'Tax Number' };
+
+/* ------------------------------------------------------------------ */
+/*  Buchung nachtragen (Ann, 2026-11-06): direkt ins Sheet, wie eine    */
+/*  Buchung aus der App: Arbeitstag (TimeTracking) → Buchung            */
+/*  (TimeTrackingRecords), Task bei Bedarf neu (Tasks).                 */
+/* ------------------------------------------------------------------ */
+function getBookingContext(projectId){
+  if(!projectId) throw new Error('project fehlt');
+  const users = rows_(CONFIG.TABS.users).filter(function(u){ return str_(u['Email']); })
+    .map(function(u){ return { email: str_(u['Email']), name: str_(u['Name']) || str_(u['Email']) }; })
+    .sort(function(a, b){ return cmpDe_(a.name, b.name); });
+  const tasks = rows_(CONFIG.TABS.tasks).filter(function(t){ return str_(t['Project_ID']) === projectId && str_(t['Task']); })
+    .map(function(t){ return { id: str_(t['Task_ID']), name: str_(t['Task']), phase: str_(t['Phase_ID']), service: str_(t['Service_ID']), status: str_(t['Status']) }; })
+    .sort(function(a, b){ return cmpDe_(a.name, b.name); });
+  return { users: users, tasks: tasks };
+}
+
+/* Kopfzeile + letzte belegte Zeile (nach ID-Spalte, nicht getLastRow: ARRAYFORMULA-Spalten
+   würden das verfälschen). */
+function sheetInfo_(tab, idCol){
+  const sh = ss_().getSheetByName(tab); if(!sh) throw new Error('Tab nicht gefunden: ' + tab);
+  const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function(h){ return String(h).trim(); });
+  const c = head.indexOf(idCol); if(c < 0) throw new Error('Spalte fehlt: ' + idCol + ' in ' + tab);
+  const ids = sh.getRange(1, c + 1, Math.max(1, sh.getLastRow()), 1).getValues();
+  let last = 1; const taken = {};
+  for(let i = 1; i < ids.length; i++){ const v = str_(ids[i][0]); if(v){ last = i + 1; taken[v] = true; } }
+  return { sh: sh, head: head, last: last, taken: taken };
+}
+// keine IDs, die Sheets als Zahl liest (nur Ziffern oder z. B. 12e45678)
+function uniqueId_(info){ let id; do { id = newId_(); } while(info.taken[id] || /^\d+(e\d+)?$/i.test(id)); info.taken[id] = true; return id; }
+/* Neue Zeile direkt unter der letzten: Format der Vorzeile übernehmen, Formeln der Vorzeile
+   (falls eine Spalte Zeilenformeln hat) fortschreiben, sonst die Werte aus vals. */
+function appendLike_(info, vals){
+  const sh = info.sh, n = info.head.length, row = info.last + 1;
+  if(row > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), 1);
+  const target = sh.getRange(row, 1, 1, n);
+  let formulas = [];
+  if(info.last > 1){
+    const prev = sh.getRange(info.last, 1, 1, n);
+    prev.copyTo(target, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    formulas = prev.getFormulasR1C1()[0];
+  }
+  target.setValues([info.head.map(function(h, i){ return formulas[i] ? '' : (vals.hasOwnProperty(h) ? vals[h] : ''); })]);
+  formulas.forEach(function(f, i){ if(f) sh.getRange(row, i + 1).setFormulaR1C1(f); });
+  info.last = row;
+  return row;
+}
+function hhmm_(h){ const m = Math.round(h * 60); return String(Math.floor(m / 60) % 24).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0') + ':00'; }
+
+function addBooking(p){
+  assertWriteAuth_(p);
+  const dry = str_(p.dryRun) === '1', force = str_(p.force) === '1';
+  const project = str_(p.project), phase = str_(p.phase), service = str_(p.service);
+  const email = str_(p.email).toLowerCase(), hours = num_(p.hours);
+  const m = str_(p.date).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!project || !phase || !service) throw new Error('Projekt, Phase und Leistung angeben.');
+  if(!m) throw new Error('Datum fehlt oder ist ungültig.');
+  if(!(hours > 0 && hours <= 16)) throw new Error('Stunden zwischen 0,25 und 16 angeben.');
+  const day = new Date(+m[1], +m[2] - 1, +m[3]), iso = m[0];
+
+  const user = rows_(CONFIG.TABS.users).find(function(u){ return str_(u['Email']).toLowerCase() === email; });
+  if(!user) throw new Error('Mitarbeiter nicht gefunden: ' + email);
+  const svc = rows_(CONFIG.TABS.services).find(function(x){ return str_(x['Service_ID']) === service; });
+  if(!svc) throw new Error('Leistung nicht gefunden.');
+  let task = null; const taskName = str_(p.taskName);
+  if(str_(p.task)){
+    task = rows_(CONFIG.TABS.tasks).find(function(t){ return str_(t['Task_ID']) === str_(p.task); });
+    if(!task) throw new Error('Task nicht gefunden.');
+  } else if(!taskName) throw new Error('Task wählen oder neuen Task-Namen eingeben.');
+  const name = str_(user['Name']) || email;
+  const by = str_(Session.getActiveUser() && Session.getActiveUser().getEmail()) || email;
+
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try{
+    const tt = sheetInfo_(CONFIG.TABS.timeTracking, 'Record_ID');
+    const rec = sheetInfo_(CONFIG.TABS.timeTrackingRecords, 'Record_ID');
+    const tk = sheetInfo_(CONFIG.TABS.tasks, 'Task_ID');
+
+    // Arbeitstag der Person an diesem Datum suchen
+    const ttRows = rows_(CONFIG.TABS.timeTracking);
+    const head = ttRows.find(function(r){ const d = toDate_(r['Date']); return d && d.getTime() === day.getTime() && str_(r['User']).toLowerCase() === email; });
+    const trackerId = head ? str_(head['Record_ID']) : '';
+
+    // Doppelte erkennen: gleiche Person, gleicher Tag, gleiche Leistung, gleiche Stunden (+ gleicher Task)
+    const ttById = indexBy_(ttRows, 'Record_ID');
+    const dups = rows_(CONFIG.TABS.timeTrackingRecords).filter(function(r){
+      if(str_(r['Service_ID']) !== service || Math.abs(num_(r['Spent Time']) - hours) > 0.001) return false;
+      const h = ttById[str_(r['Tracker_ID'])] || {};
+      const d = toDate_(h['Date'] || r['Record Date']);
+      const who = str_(h['User']).toLowerCase() || '';
+      return d && d.getTime() === day.getTime() && (who === email || normKey_(r['User']) === normKey_(name))
+        && (!task || str_(r['Task_ID']) === str_(task['Task_ID']));
+    }).map(function(r){ return str_(r['Record_ID']); });
+
+    const plan = { date: iso, person: name, hours: hours, newDay: !head, newTask: !task, task: task ? str_(task['Task']) : taskName, duplicates: dups };
+    if(dups.length && !force) return Object.assign({ duplicate: true, dryRun: true }, plan);
+    if(dry){
+      // Nur lesen: Typen/Formate/Formeln der letzten Zeile je Tab (zur Kontrolle beim Einrichten)
+      const look = function(info){ const r = info.sh.getRange(info.last, 1, 1, info.head.length);
+        const v = r.getValues()[0], f = r.getFormulasR1C1()[0], nf = r.getNumberFormats()[0], o = {};
+        info.head.forEach(function(h, i){ if(h) o[h] = (v[i] instanceof Date ? 'Date' : typeof v[i]) + '|' + nf[i] + (f[i] ? '|F' : ''); }); return o; };
+      return Object.assign({ dryRun: true, sheet: { records: look(rec), tracking: look(tt), tasks: look(tk) } }, plan);
+    }
+
+    let taskId = task ? str_(task['Task_ID']) : '';
+    if(!task){
+      taskId = uniqueId_(tk);
+      appendLike_(tk, { Task_ID: taskId, Project_ID: project, Phase_ID: phase, Service_ID: service, Task: taskName,
+        Status: 'Done', StartDate: day, DueDate: day, 'Team Member': email,
+        Notes: 'Angelegt beim Nachtragen im Stundennachweis', 'Completed On': new Date(), 'Completed By': by });
+    }
+    let tid = trackerId;
+    if(!tid){
+      tid = uniqueId_(tt);
+      appendLike_(tt, { Record_ID: tid, Date: day, 'Start of Work': '09:00:00', Break: '00:00:00', 'End of Work': hhmm_(9 + hours),
+        User: email, CreatedBy: by, CreatedAt: new Date(),
+        Notes: 'Nachgetragen aus dem Stundennachweis (' + Utilities.formatDate(new Date(), CONFIG.TZ, 'dd.MM.yyyy') + '): Beginn/Ende rechnerischer Rahmen, keine tatsächlichen Uhrzeiten.' });
+    }
+    const rid = uniqueId_(rec);
+    appendLike_(rec, { Record_ID: rid, Tracker_ID: tid, Project_ID: project, Phase_ID: phase, Service_ID: service,
+      Task_ID: taskId, Sub_Task_ID: '', 'Spent Time': hours, Month: "'" + Utilities.formatDate(day, CONFIG.TZ, 'yyyy-MM'),   // als Text, sonst macht Sheets ein Datum daraus
+      User: name, 'Record Date': day });
+    SpreadsheetApp.flush();
+    try{ CacheService.getScriptCache().remove('filterTree3'); }catch(_){}
+    logRow_('addBooking', [rid], '', [], [Object.assign({ recordId: rid, trackerId: tid, taskId: taskId, project: project, phase: phase, service: service }, plan)]);
+    return Object.assign({ added: true, item: {
+      datum: iso, taetigkeit: task ? str_(task['Task']) : taskName, bearbeiter: name, stunden: hours,
+      recordId: rid, phaseId: phase, serviceId: service, quelle: 'task', billed: false, billedDoc: '', billingDesc: ''
+    } }, plan);
+  } finally { lock.releaseLock(); }
+}
 
 function getOfferContext(){
   ensureOfferColumns_();

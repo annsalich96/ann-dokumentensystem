@@ -113,7 +113,14 @@ button:disabled{opacity:.4;cursor:not-allowed}
 #entries .e-blk{display:flex;justify-content:space-between;align-items:center;gap:12px;width:max-content;min-width:100%;
   background:var(--ui-bg);border-top:1px solid var(--ui-border);padding:7px 10px;font-size:12.5px;font-weight:700}
 #entries .e-blk button,.blk .blk-h button{font-size:12px;padding:3px 10px}
-#entries .e-blk button{white-space:nowrap;flex:0 0 auto}#editor #entries .e-blk input{flex:1;font-weight:700;font-size:13px;padding:6px 10px}
+#entries .e-blk button{white-space:nowrap;flex:0 0 auto}
+/* Buchung nachtragen (direkt ins Sheet) */
+#entries .e-book{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:10px;border-top:1px solid var(--ui-border);background:#FAFAF8;width:100%;min-width:100%;box-sizing:border-box}
+#entries .e-book label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--ui-muted);text-transform:none;letter-spacing:0;margin:0}
+#entries .e-book input,#entries .e-book select{border:1px solid var(--ui-border);border-radius:6px;padding:6px 8px;font-size:13px;width:auto;background:#fff}
+#entries .e-book .bk-task{min-width:200px;max-width:320px}#entries .e-book input[data-bk=hours]{width:72px}
+#entries .e-book button{font-size:12.5px;padding:6px 12px}
+#entries .e-book .bk-msg{flex-basis:100%;font-size:12px;color:var(--ui-muted)}#entries .e-book .bk-msg.err{color:#B0291E}#editor #entries .e-blk input{flex:1;font-weight:700;font-size:13px;padding:6px 10px}
 .blk{border:1px solid var(--ui-border);border-radius:8px;padding:14px 16px;margin-top:14px}
 .blk .blk-h{font-size:12.5px;font-weight:700;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center}
 .blk .ok{color:#4A7C59}.blk .err{color:#B0291E}
@@ -848,9 +855,13 @@ function renderEntries(){
   if(hasGroups()){
     model.groups.forEach((gr,gi)=>{
       const h = document.createElement('div'); h.className = 'e-blk';
-      h.innerHTML = `<input type="text" data-gt="${gi}" value="${escapeHtml(gr.title || '')}" title="Tabellentitel"><button class="ghost" data-addg="${gi}">+ Zeile</button>`;
+      const canBook = typeof bookable === 'function' && bookable(gr.key);
+      h.innerHTML = `<input type="text" data-gt="${gi}" value="${escapeHtml(gr.title || '')}" title="Tabellentitel">`
+        + (canBook ? `<button class="ghost" data-book="${gi}" title="Fehlende Buchung direkt in AppSheet/Sheet eintragen">+ Buchung</button>` : '')
+        + `<button class="ghost" data-addg="${gi}" title="Zeile nur im Dokument, ohne Buchung">+ Zeile</button>`;
       entriesBox.appendChild(h);
       model.items.forEach((r,i)=>{ if((r.g || 0) === gi) addRow(r,i); });
+      if(canBook && BOOK && BOOK.key === gr.key) entriesBox.appendChild(bookForm());
     });
   } else model.items.forEach(addRow);
   const tf = document.getElementById('tabtitle-row'); if(tf) tf.hidden = hasGroups();   // bei Gruppen: Titel je Tabelle oben in der Liste
@@ -1006,7 +1017,7 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
     el.disabled = items.length === 0;
   }
   function curProject(){ return tree ? tree.projects.find(p => p.id === selP.value) : null; }
-  TT.curProject = curProject; TT.api = (a, p, t) => api(a, p, t); TT.projectId = () => selP.value;
+  TT.curProject = curProject; TT.api = (a, p, t) => api(a, p, t); TT.projectId = () => selP.value; TT.secret = WRITE_SECRET; TT.refresh = () => refreshTreeQuiet();
 
   function applyTree(t, note){
     tree = t;
@@ -1168,7 +1179,7 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
   async function billApi(action, extra){
     REC.map = {}; PREC.pid = '';                        // Abrechnungsstand ändert sich → neu lesen
     setTimeout(refreshTreeQuiet, 1500);
-    const CH = 12, ents = billEntries(); let updated = 0, notFound = 0;
+    const CH = 12, ents = billEntries(); let updated = 0, notFound = 0, fresh = 0, changed = 0, same = 0, other = [];
     if(action === 'unmarkBilled'){
       const r = await api('unmarkBilled', Object.assign({ document: billDocId(), secret: WRITE_SECRET }, extra||{}), 45000);
       return r || {};
@@ -1179,8 +1190,9 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
         document: billDocId(), date: model.header.date || isoToday(), secret: WRITE_SECRET
       }, extra||{}), 45000);
       updated += (r && r.updated) || 0; notFound += (r && r.notFound) || 0;
+      fresh += (r && r.fresh) || 0; changed += (r && r.changed) || 0; same += (r && r.same) || 0; other = other.concat((r && r.other) || []);
     }
-    return { updated, notFound };
+    return { updated, notFound, fresh, changed, same, other };
   }
   $('#btn-bill').onclick = async ()=>{
     const ents = billEntries();
@@ -1189,17 +1201,29 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
     billstatus('Prüfe (Testlauf, noch kein Schreiben) …');
     try{
       const dry = await billApi('markBilled', { dryRun:'1' });
-      if(!dry.updated){ billstatus('Keiner der ' + ents.length + ' Einträge im Sheet gefunden – nichts abgebucht.', 'err'); return; }
-      if(!confirm(dry.updated + ' Einträge im Google-Sheet als abgerechnet markieren?\n\nDokument: ' + billDocId()
-        + (dry.notFound ? '\n(' + dry.notFound + ' nicht im Sheet gefunden, werden übersprungen)' : ''))){
+      // Erneutes Abbuchen: schon Abgebuchtes wird erkannt und nicht noch einmal geschrieben
+      const otherDocs = [...new Set(dry.other.map(o => o.doc || 'ohne Nr.'))].join(', ');
+      const info = [
+        dry.same ? dry.same + ' schon abgebucht (bleiben unverändert)' : '',
+        dry.other.length ? dry.other.length + ' schon auf anderem Dokument abgebucht (' + otherDocs + ') – werden nicht umgehängt' : '',
+        dry.notFound ? dry.notFound + ' nicht im Sheet gefunden' : ''
+      ].filter(Boolean);
+      if(!dry.updated){
+        billstatus('Nichts Neues abzubuchen.' + (info.length ? '  ' + info.join(' · ') + '.' : ''), dry.notFound && !dry.same ? 'err' : 'ok');
+        return;
+      }
+      const what = [dry.fresh ? dry.fresh + ' neu abbuchen' : '', dry.changed ? dry.changed + ' korrigieren (Text geändert)' : ''].filter(Boolean).join('\n');
+      if(!confirm('Dokument: ' + billDocId() + '\n\n' + what + (info.length ? '\n\n' + info.join('\n') : '') + '\n\nIm Google-Sheet speichern?')){
         billstatus('Abgebrochen.'); return;
       }
       billstatus('Buche ab …');
       const res = await billApi('markBilled', {});
-      model.items.forEach(it=>{ if(it.recordId) it.billed = true; });
+      const skip = new Set(res.other.map(o => o.id));
+      model.items.forEach(it=>{ if(it.recordId && !skip.has(it.recordId)) it.billed = true; });
       $('#btn-unbill').hidden = false;
-      billstatus(res.updated + ' Einträge im Sheet abgebucht (Dokument „' + billDocId() + '").'
-        + (res.notFound ? '  ' + res.notFound + ' nicht gefunden.' : ''), 'ok');
+      billstatus([res.fresh ? res.fresh + ' neu abgebucht' : '', res.changed ? res.changed + ' korrigiert' : '',
+        res.same ? res.same + ' waren schon abgebucht' : '', res.other.length ? res.other.length + ' auf anderem Dokument (nicht geändert)' : '',
+        res.notFound ? res.notFound + ' nicht gefunden' : ''].filter(Boolean).join(' · ') + ' — Dokument „' + billDocId() + '".', 'ok');
     }catch(e){
       billstatus('Abbuchen fehlgeschlagen: ' + e.message, 'err');
     }finally{ $('#btn-bill').disabled = false; }
@@ -1584,6 +1608,102 @@ $('#lst-box').addEventListener('click', e => {
 
 /* Einträge + Tabellen automatisch aus Auswahl, Zeitraum und Übertrag bilden.
    Von Hand geänderte Zeilen (Text, Stunden …), eigene Zeilen und geänderte Titel bleiben erhalten. */
+/* ---- Buchung nachtragen (Ann, 2026-11-06): direkt ins Sheet, wie eine Buchung aus der App ----
+   Je Tabelle „+ Buchung“: Datum, Mitarbeiter, (Leistung,) Task oder neuer Task, Stunden.
+   Fehlt der Arbeitstag der Person, legt die Datenbrücke ihn mit rechnerischem Rahmen an. */
+var BOOK = null, BCTX = { pid:'', p:null, data:null };
+function keyParts(key){ const a = String(key || '').split('|'); return { phase: a[0] || '', svc: a[1] || '', rest: +a[2] || 0 }; }
+function bookable(key){ const k = keyParts(key); return !!(TT.api && TT.curProject() && k.phase && k.rest !== 2); }
+function bookCtx(){
+  const pid = TT.projectId();
+  if(BCTX.pid !== pid || !BCTX.p){ BCTX = { pid, data:null, p:null }; const me = BCTX;
+    me.p = TT.api('getBookingContext', { project: pid }, 60000).then(d => { me.data = d; return d; }).catch(e => { me.p = null; throw e; }); }
+  return BCTX.p;
+}
+function bookServices(key){
+  const k = keyParts(key), p = TT.curProject(), ph = p && p.phases.find(x => x.id === k.phase); if(!ph) return [];
+  if(k.svc && k.svc !== '*') return ph.services.filter(x => x.id === k.svc);
+  const v = model.settings.scope && model.settings.scope[k.phase];
+  return Array.isArray(v) ? ph.services.filter(x => v.includes(x.id)) : ph.services;
+}
+function openBook(gi){
+  const gr = model.groups[gi]; if(!gr) return;
+  let last = ''; try{ last = localStorage.getItem('sn.bookUser') || ''; }catch(_){}
+  const svcs = bookServices(gr.key);
+  BOOK = { key: gr.key, v: { date: todayIso(), email: last, service: svcs.length === 1 ? svcs[0].id : '', task: '', taskName: '', hours: '' }, msg: 'Lade Mitarbeiter und Tasks …' };
+  renderEntries();
+  bookCtx().then(() => { if(BOOK){ BOOK.msg = ''; renderEntries(); } })
+           .catch(e => { if(BOOK){ BOOK.msg = 'Nicht geladen: ' + e.message; BOOK.err = true; renderEntries(); } });
+}
+function bookForm(){
+  const v = BOOK.v, d = BCTX.pid === TT.projectId() && BCTX.data, svcs = bookServices(BOOK.key);
+  const el = document.createElement('div'); el.className = 'e-book';
+  const users = d ? d.users : [];
+  if(d && !v.email){ const me = users.find(u => /salich@/i.test(u.email)) || users[0]; v.email = me ? me.email : ''; }
+  const tasks = d ? d.tasks.filter(t => t.phase === keyParts(BOOK.key).phase && (!v.service || t.service === v.service)) : [];
+  const opt = (val, txt, sel) => `<option value="${escapeHtml(val)}"${sel ? ' selected' : ''}>${escapeHtml(txt)}</option>`;
+  el.innerHTML =
+    `<label>Datum<input type="date" data-bk="date" value="${escapeHtml(v.date)}"></label>` +
+    `<label>Mitarbeiter<select data-bk="email">${users.map(u => opt(u.email, u.name, u.email === v.email)).join('') || '<option>…</option>'}</select></label>` +
+    (svcs.length > 1 ? `<label>Leistung<select data-bk="service">${opt('', '– wählen –', !v.service)}${svcs.map(x => opt(x.id, x.name, x.id === v.service)).join('')}</select></label>` : '') +
+    `<label>Task<select class="bk-task" data-bk="task">${opt('', tasks.length ? '– wählen –' : '– kein Task vorhanden –', !v.task)}${tasks.map(t => opt(t.id, t.name, t.id === v.task)).join('')}${opt('new', '+ Neuer Task …', v.task === 'new')}</select></label>` +
+    (v.task === 'new' ? `<label>Neuer Task<input type="text" class="bk-task" data-bk="taskName" value="${escapeHtml(v.taskName)}" placeholder="z. B. Abstimmung Grundrisse"></label>` : '') +
+    `<label>Std.<input type="number" step="0.25" min="0.25" data-bk="hours" value="${escapeHtml(String(v.hours))}"></label>` +
+    `<button data-bk-go${d ? '' : ' disabled'}>In AppSheet buchen</button><button class="ghost" data-bk-x>Abbrechen</button>` +
+    (BOOK.msg ? `<div class="bk-msg${BOOK.err ? ' err' : ''}">${escapeHtml(BOOK.msg)}</div>` : '');
+  return el;
+}
+async function submitBook(btn){
+  const v = BOOK.v, k = keyParts(BOOK.key), d = BCTX.data;
+  const fail = m => { BOOK.msg = m; BOOK.err = true; renderEntries(); };
+  if(!v.date) return fail('Datum wählen.');
+  if(!v.service) return fail('Leistung wählen.');
+  if(!v.task || (v.task === 'new' && !v.taskName.trim())) return fail('Task wählen oder neuen Task-Namen eingeben.');
+  const h = parseFloat(String(v.hours).replace(',', '.')); if(!(h > 0 && h <= 16)) return fail('Stunden eingeben (0,25 bis 16).');
+  const params = { project: TT.projectId(), phase: k.phase, service: v.service, date: v.date, email: v.email, hours: String(h),
+                   secret: TT.secret, ...(v.task === 'new' ? { taskName: v.taskName.trim() } : { task: v.task }) };
+  btn.disabled = true; BOOK.err = false; BOOK.msg = 'Prüfe …'; renderEntries();
+  try{
+    const dry = await TT.api('addBooking', Object.assign({ dryRun: '1' }, params), 60000);
+    let force = false;
+    if(dry.duplicate){
+      if(!confirm('Diese Buchung gibt es schon:\n' + dry.person + ', ' + deDateS(v.date) + ', ' + hours(h) + ', gleiche Leistung/Task.\n\nTrotzdem zusätzlich buchen?')){ BOOK.msg = 'Nicht gebucht – gibt es schon.'; renderEntries(); return; }
+      force = true;
+    } else {
+      const u = (d.users.find(x => x.email === v.email) || {}).name || v.email;
+      if(!confirm('Buchung direkt ins Sheet nachtragen?\n\n' + deDateS(v.date) + ' · ' + u + ' · ' + hours(h) + '\nTask: ' + dry.task + (dry.newTask ? ' (wird neu angelegt)' : '')
+        + (dry.newDay ? '\n\nFür diesen Tag gibt es noch keinen Arbeitstag – er wird mit rechnerischem Rahmen (ab 09:00) angelegt.' : ''))){ BOOK.msg = ''; renderEntries(); return; }
+    }
+    BOOK.msg = 'Buche …'; renderEntries();
+    const r = await TT.api('addBooking', Object.assign(force ? { force: '1' } : {}, params), 60000);
+    try{ localStorage.setItem('sn.bookUser', v.email); }catch(_){}
+    if(r.newTask && d) d.tasks.push({ id: '', name: r.task, phase: k.phase, service: v.service });
+    // sofort im Dokument zeigen: in die Projekteinträge aufnehmen, Zeitraum der Tabelle ggf. erweitern
+    if(PREC.pid === TT.projectId() && PREC.items) PREC.items.push(r.item);
+    const rg = model.ranges[BOOK.key];
+    if(rg){ if(rg.von && v.date < rg.von) rg.von = v.date; if(rg.bis && v.date > rg.bis) rg.bis = v.date; if(typeof renderRanges === 'function') renderRanges(); }
+    const ub = isKum() ? ueOf(BOOK.key).bis : '';
+    BOOK = null;
+    ttStatus('Buchung nachgetragen: ' + deDateS(v.date) + ', ' + r.person + ', ' + hours(h)
+      + (ub && v.date <= ub ? ' – liegt vor dem Übertrag-Ende und steckt deshalb nicht in dieser Tabelle.' : '.'), 'ok');
+    scheduleRebuild();
+    setTimeout(() => { try{ TT.refresh(); }catch(_){ } }, 1500);
+  }catch(e){ btn.disabled = false; fail('Nicht gebucht: ' + e.message); }
+}
+entriesBox.addEventListener('click', e => {
+  const t = e.target;
+  if(t.dataset.book != null){ openBook(+t.dataset.book); return; }
+  if(t.hasAttribute('data-bk-x')){ BOOK = null; renderEntries(); return; }
+  if(t.hasAttribute('data-bk-go') && BOOK){ submitBook(t); }
+});
+entriesBox.addEventListener('change', e => {
+  const f = e.target.dataset.bk; if(!f || !BOOK) return;
+  BOOK.v[f] = e.target.value; BOOK.err = false; BOOK.msg = '';
+  if(f === 'service') BOOK.v.task = '';
+  if(f === 'service' || f === 'task') renderEntries();
+});
+entriesBox.addEventListener('input', e => { const f = e.target.dataset.bk; if(f && BOOK) BOOK.v[f] = e.target.value; });
+
 var rbTimer = null, rbTok = null;
 function ttStatus(m, c){ const el = document.getElementById('sheet-status'); if(el){ el.textContent = m || ''; el.className = 'sub ' + (c || ''); } }
 function scheduleRebuild(){ clearTimeout(rbTimer); rbTimer = setTimeout(rebuildEntries, 150); }
