@@ -1331,6 +1331,9 @@ function dayAfter(iso){ const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDa
 
 /* Plan „eine Tabelle je Leistung“: ganze Phasen werden in ihre Leistungen aufgeteilt;
    Einträge der Phase ohne Leistung (rest 1) bzw. des Projekts ohne Phase (rest 2) extra. */
+/* Tabellentitel kurz (Ann, 2026-11-06): „PH02 — Entwurfsausarbeitung“ bzw. bei ganzer Phase „PH02 — Vorplanung“ */
+function phCode(ph){ const m = (ph.name + ' ' + ph.id).match(/\b(?:LP|PH|Phase)\s*0*(\d{1,2})\b/i); return m ? 'PH' + m[1].padStart(2, '0') : ''; }
+function phBare(ph){ return ph.name.replace(/^\s*(?:LP|PH|Phase)\s*\d+\s*[—–-]\s*/i, ''); }
 function buildPlan(sel, p, name){
   const T = (...a) => a.filter(Boolean).join(' — '), plan = [];
   const split = (model.settings && model.settings.split) || {};
@@ -1339,11 +1342,11 @@ function buildPlan(sel, p, name){
     const svs = v === true ? ph.services : ph.services.filter(x => v.includes(x.id));
     if(split[ph.id] === 'phase'){                       // eine Tabelle für die ganze Phase
       plan.push({ phase: ph.id, service: '', whole: true, svcs: v === true ? null : svs.map(x => x.id),
-                  title: T(name, ph.name), short: ph.name });
+                  title: T(phCode(ph), phBare(ph)), short: ph.name });
       return;
     }
-    svs.forEach(sv => plan.push({ phase: ph.id, service: sv.id, title: T(name, ph.name, sv.name), short: T(ph.name, sv.name) }));
-    if(v === true) plan.push({ phase: ph.id, service: '', rest: 1, title: T(name, ph.name), short: T(ph.name, 'ohne Leistung') });
+    svs.forEach(sv => plan.push({ phase: ph.id, service: sv.id, title: T(phCode(ph) || phBare(ph), sv.name), short: T(ph.name, sv.name) }));
+    if(v === true) plan.push({ phase: ph.id, service: '', rest: 1, title: T(phCode(ph), phBare(ph)), short: T(ph.name, 'ohne Leistung') });
   });
   if(!sel) plan.push({ phase: '', service: '', rest: 2, title: name, short: 'ohne Phase' });
   return plan;
