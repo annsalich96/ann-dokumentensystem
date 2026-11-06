@@ -254,7 +254,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <div id="ue-box" hidden></div>
   <div class="fg" id="tabtitle-row"><div class="fld wide"><label>Tabellentitel</label><input type="text" id="f-tabtitle"></div></div>
   <div class="btnbar">
-    <button class="ghost" id="btn-load" disabled>Einträge laden</button>
+    <button class="ghost" id="btn-load" disabled title="Zeiteinträge frisch aus AppSheet holen">Neu aus AppSheet laden</button>
     <button class="ghost" id="btn-demo">Demodaten</button>
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ui-muted)"><input type="checkbox" id="f-only-open" checked style="width:auto"> nur nicht abgerechnete</label>
   </div>
@@ -847,8 +847,9 @@ function updateTotal(){ const el = $('#e-total-val'); if(el) el.textContent = ed
 /* Tippen: nur Modell + Vorschau + Summe aktualisieren — NICHT die Eingabefelder neu bauen
    (sonst verliert das Feld den Fokus mitten im Satz). */
 entriesBox.addEventListener('input', e=>{
-  if(e.target.dataset.gt != null){ model.groups[+e.target.dataset.gt].title = e.target.value; render(); return; }
+  if(e.target.dataset.gt != null){ const gr = model.groups[+e.target.dataset.gt]; gr.title = e.target.value; gr._custom = true; render(); return; }
   const i=+e.target.dataset.i, k=e.target.dataset.k; if(k==null) return;
+  model.items[i]._edit = true;
   model.items[i][k] = k==='stunden' ? parseFloat(e.target.value)||0 : e.target.value;
   if(k==='taetigkeit'){
     const cell = e.target.closest('.e-taet'); let ov = cell && cell.querySelector('.e-over');
@@ -861,7 +862,8 @@ entriesBox.addEventListener('input', e=>{
 });
 entriesBox.addEventListener('click', e=>{
   if(e.target.dataset.addg != null){
-    model.items.push({datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0,g:+e.target.dataset.addg});
+    const gi = +e.target.dataset.addg;
+    model.items.push({datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0,g:gi,gk:(model.groups[gi]||{}).key});
     renderEntries(); render(); return;
   }
   if(e.target.classList.contains('del')){
@@ -1034,59 +1036,11 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
     }catch(_){ /* Endpunkt evtl. noch nicht bereitgestellt */ }
   };
 
-  loadBtn.onclick = async () => {
+  loadBtn.onclick = () => {
     if(!selP.value){ say('Erst ein Projekt wählen.', 'err'); return; }
-    say('Lade Zeiteinträge …'); loadBtn.disabled = true;
-    const mapIt = (it, b) => {
-      const o = {
-        datum: it.datum || '',
-        taetigkeit: it.billingDesc || it.taetigkeit || '',   // schon aufbereiteter Text (falls vorhanden)
-        taetigkeitOriginal: it.taetigkeit || '',             // Roh-Text für Vergleich / KI-Aufbereitung
-        bearbeiter: it.bearbeiter || '', stunden: Number(it.stunden) || 0,
-        recordId: it.recordId || '', billed: !!it.billed
-      };
-      if(b != null) o.b = b;
-      return o;
-    };
-    try{
-      const onlyOpen = $('#f-only-open').checked, from = model.meta.zeitraum.von || '', to = model.meta.zeitraum.bis || '';
-      await loadGroups(onlyOpen, from, to, mapIt);
-    }catch(e){
-      say('Laden fehlgeschlagen: ' + e.message, 'err');
-    }finally{ loadBtn.disabled = false; }
+    PREC.pid = ''; REC.map = {};                          // frisch holen
+    rebuildEntries();
   };
-
-  /* Normaler Modus: je Leistung eine Tabelle. Ganze Phasen werden in ihre Leistungen
-     aufgeteilt; Einträge der Phase ohne Leistung (bzw. des Projekts ohne Phase) bekommen
-     eine eigene Tabelle. Abfragen laufen parallel (max. 6 gleichzeitig). */
-  async function loadGroups(onlyOpen, from, to, mapIt){
-    const p = curProject(), plan = buildPlan(model.settings.scope, p, model.meta.projekt.name || p.name);
-    say('Lade Zeiteinträge …');
-    const rec = await loadProjectRecords();
-    const r = rec && rec.items && rec.ids ? { lists: assignPlan(plan, rec.items), unresolved: rec.unresolved || 0 }
-      : await fetchPlan(plan, { maxAge: 600000, progress: (d, n) => { if(n) say('Lade Zeiteinträge … ' + d + ' von ' + n + ' Leistungen'); } });
-    const inRange = it => (!from || it.datum >= from) && (!to || it.datum <= to);
-    const lists = r.lists.map(l => l.filter(inRange).sort((a, b) => a.datum === b.datum ? String(a.bearbeiter).localeCompare(b.bearbeiter) : a.datum.localeCompare(b.datum)));
-    const unresolved = r.unresolved;
-    let skipped = 0;
-    model.groups = []; model.items = [];
-    plan.forEach((pl, i) => {
-      let rows = lists[i];
-      if(onlyOpen){ skipped += rows.filter(it => it.billed).length; rows = rows.filter(it => !it.billed); }
-      const key = planKey(pl), ub = isKum() ? ueOf(key).bis : '';
-      if(ub) rows = rows.filter(it => it.datum > ub);                     // schon im Übertrag enthalten
-      if(!rows.length && !(isKum() && Number(ueOf(key).stunden))) return;   // kumulativ: auch nur mit Übertrag
-      const gi = model.groups.length;
-      model.groups.push({ title: pl.title, key });
-      rows.forEach(it => { const o = mapIt(it); o.g = gi; model.items.push(o); });
-    });
-    $('#btn-ki-reset').hidden = true;
-    $('#btn-unbill').hidden = !model.items.some(it => it.billed);
-    renderEntries(); render();
-    const warn = unresolved ? '  ·  ' + unresolved + ' ohne Tätigkeitsname' : '';
-    const sk = skipped ? '  ·  ' + skipped + ' bereits abgerechnet ausgeblendet' : '';
-    say(model.items.length + ' Einträge in ' + model.groups.length + ' Tabellen · ' + hours(totalHours()) + warn + sk, unresolved ? 'err' : 'ok');
-  }
 
   /* ---- KI: Tätigkeitsbeschreibungen aufbereiten ---- */
   const kistatus = (m,c)=>{ const el=$('#ki-status'); if(el){ el.textContent=m||''; el.className='sub '+(c||''); } };
@@ -1112,6 +1066,7 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
       const it = model.items[o.i];
       if(!it || o.text == null || !String(o.text).trim()) return;
       if(it.taetigkeitOriginal == null) it.taetigkeitOriginal = it.taetigkeit;
+      it._edit = true;
       const t = String(o.text).trim();
       if(t !== it.taetigkeit){ it.taetigkeit = t; n++; }
     });
@@ -1459,14 +1414,14 @@ function loadSel(){
   shTok = {};
   const plan = buildPlan(model.settings.scope, p, '');
   const parts = plan.map(pl => Object.assign({ key: planKey(pl), h: histFromStat(statFor(pl, p)) }, pl)).filter(x => !x.h.empty);
-  if(!parts.length){ SH = { empty:true }; autoZeitraum(); renderUe(); render(); return; }
+  if(!parts.length){ SH = { empty:true }; autoZeitraum(); renderUe(); model.groups = []; model.items = model.items.filter(it => !it.recordId); renderEntries(); render(); return; }
   const edges = {};
   parts.forEach(pt => [['Beginn', pt.h.all.von], ['Ende', pt.h.all.bis]].forEach(([w, d]) => (edges[d] = edges[d] || []).push(w + ': ' + pt.short)));
   const von = parts.map(pt => pt.h.all.von).sort()[0], bis = parts.map(pt => pt.h.all.bis).sort().pop();
   const std = Math.round(parts.reduce((a, pt) => a + pt.h.all.std, 0) * 100) / 100;
   SH = { all:{ von, bis, std }, parts, edges, booked:new Set(), billed:new Set() };
   parts.forEach(pt => { const cur = model.uebertrag[pt.key]; if(!cur || cur.auto) model.uebertrag[pt.key] = defaultUe(pt.h); });
-  autoZeitraum(); renderUe(); render();
+  autoZeitraum(); renderUe(); render(); scheduleRebuild();
   // Einträge für Kalender-Punkte und Warnhinweis im Hintergrund
   const sh = SH;
   loadProjectRecords().then(rec => {
@@ -1500,7 +1455,7 @@ function loadSelSlow(){
         model.uebertrag[pt.key] = defaultUe(pt.h);
       });
     }catch(e){ if(shTok !== tok) return; SH = { error: e.message }; }
-    autoZeitraum(); renderUe(); render();
+    autoZeitraum(); renderUe(); render(); scheduleRebuild();
   }, 400);
 }
 /* Vorauswahl: alles bis einschließlich der letzten Abrechnung */
@@ -1545,6 +1500,59 @@ function autoZeitraum(){
   zrNote((zrAuto ? note : note + ' · Zeitraum von Hand gesetzt') + (miss.length ? '  ·  Achtung: ' + hours(ms) + ' noch nicht abgerechnet liegen vor diesem Zeitraum (' + miss.length + (miss.length === 1 ? ' Leistung)' : ' Leistungen)') : ''), miss.length ? 'err' : '');
 }
 
+/* Einträge + Tabellen automatisch aus Auswahl, Zeitraum und Übertrag bilden.
+   Von Hand geänderte Zeilen (Text, Stunden …), eigene Zeilen und geänderte Titel bleiben erhalten. */
+var rbTimer = null, rbTok = null;
+function ttStatus(m, c){ const el = document.getElementById('sheet-status'); if(el){ el.textContent = m || ''; el.className = 'sub ' + (c || ''); } }
+function scheduleRebuild(){ clearTimeout(rbTimer); rbTimer = setTimeout(rebuildEntries, 150); }
+function mapRecord(it){
+  return { datum: it.datum || '', taetigkeit: it.billingDesc || it.taetigkeit || '', taetigkeitOriginal: it.taetigkeit || '',
+           bearbeiter: it.bearbeiter || '', stunden: Number(it.stunden) || 0, recordId: it.recordId || '', billed: !!it.billed };
+}
+async function rebuildEntries(){
+  const p = TT.curProject(); if(!p || !TT.api) return;
+  const tok = {}; rbTok = tok;
+  const name = model.meta.projekt.name || p.name, plan = buildPlan(model.settings.scope, p, name);
+  const from = model.meta.zeitraum.von || '', to = model.meta.zeitraum.bis || '', onlyOpen = $('#f-only-open').checked;
+  // was der Nutzer angepasst hat, merken
+  const edited = {}, manual = [], titles = {};
+  model.items.forEach(it => { if(it.recordId && it._edit) edited[it.recordId] = it; else if(!it.recordId && (it.taetigkeit || it.stunden)) manual.push(it); });
+  model.groups.forEach(gr => { if(gr._custom && gr.key) titles[gr.key] = gr.title; });
+  const build = (lists) => {
+    const groups = [], items = []; let skipped = 0;
+    plan.forEach((pl, i) => {
+      const key = planKey(pl), ub = isKum() ? ueOf(key).bis : '';
+      let rows = lists ? lists[i].filter(it => (!from || it.datum >= from) && (!to || it.datum <= to)) : [];
+      if(onlyOpen){ skipped += rows.filter(it => it.billed).length; rows = rows.filter(it => !it.billed); }
+      if(ub) rows = rows.filter(it => it.datum > ub);                     // schon im Übertrag enthalten
+      const own = manual.filter(it => it.gk === key);
+      const has = lists ? rows.length || own.length || (isKum() && Number(ueOf(key).stunden)) : SH && SH.parts && SH.parts.some(pt => pt.key === key);
+      if(!has) return;
+      const gi = groups.length;
+      groups.push(titles[key] != null ? { title: titles[key], key, _custom: true } : { title: pl.title, key });
+      rows.sort((a, b) => a.datum === b.datum ? String(a.bearbeiter).localeCompare(b.bearbeiter) : a.datum.localeCompare(b.datum))
+          .forEach(it => items.push(Object.assign(edited[it.recordId] || mapRecord(it), { g: gi })));
+      own.forEach(it => items.push(Object.assign(it, { g: gi })));
+    });
+    model.groups = groups; model.items = items;
+    renderEntries(); render();
+    return skipped;
+  };
+  if(!(PREC.pid === TT.projectId() && PREC.items)){ build(null); ttStatus('Lade Zeiteinträge aus AppSheet …'); }
+  try{
+    const rec = await loadProjectRecords();
+    if(rbTok !== tok) return;
+    let lists, unresolved = 0;
+    if(rec && rec.items && rec.ids){ lists = assignPlan(plan, rec.items); unresolved = rec.unresolved || 0; }
+    else { const r = await fetchPlan(plan, { maxAge: 600000 }); if(rbTok !== tok) return; lists = r.lists; unresolved = r.unresolved; }
+    const skipped = build(lists);
+    $('#btn-ki-reset').hidden = true;
+    $('#btn-unbill').hidden = !model.items.some(it => it.billed);
+    const sk = skipped ? '  ·  ' + skipped + ' bereits abgerechnet ausgeblendet' : '';
+    ttStatus(model.items.length + ' Einträge in ' + model.groups.length + (model.groups.length === 1 ? ' Tabelle' : ' Tabellen') + ' · ' + hours(totalHours()) + sk, 'ok');
+  }catch(e){ if(rbTok === tok) ttStatus('Zeiteinträge nicht geladen: ' + e.message + ' – „Neu aus AppSheet laden“ versuchen.', 'err'); }
+}
+
 /* Schritt 4: Übertrag je Leistung */
 function renderUe(){
   const box = document.getElementById('ue-box'); if(!box) return;
@@ -1587,12 +1595,12 @@ $('#ue-box').addEventListener('change', e => {
     e.target.classList.remove('bad'); e.target.value = deDateS(iso);
     ueSet(key, { [f]: iso });
   } else return;
-  autoZeitraum(); render();
+  autoZeitraum(); render(); scheduleRebuild();
 });
 $('#ue-box').addEventListener('input', e => {
   const key = ueCard(e), f = e.target.dataset.u; if(key == null || (f !== 'rechnung' && f !== 'stunden')) return;
   ueSet(key, { [f]: f === 'stunden' ? (parseFloat(e.target.value) || 0) : e.target.value });
-  render();
+  render(); if(f === 'stunden') scheduleRebuild();
 });
 $('#ue-box').addEventListener('click', e => {
   if(!('hand' in e.target.dataset)) return;
@@ -1660,14 +1668,15 @@ document.addEventListener('scroll', e => { if(DP.el && !DP.el.hidden && !DP.el.c
   const iso = parseDateDE(e.target.value);
   if(iso === null){ e.target.classList.add('bad'); return; }
   e.target.classList.remove('bad'); e.target.value = deDateS(iso);
-  model.meta.zeitraum[f] = iso; zrAuto = false; autoZeitraum(); render();
+  model.meta.zeitraum[f] = iso; zrAuto = false; autoZeitraum(); render(); scheduleRebuild();
 }));
-$('#zr-reset').onclick = () => { zrAuto = true; autoZeitraum(); render(); };
+$('#zr-reset').onclick = () => { zrAuto = true; autoZeitraum(); render(); scheduleRebuild(); };
+$('#f-only-open').addEventListener('change', scheduleRebuild);
 $('#zr-retry').onclick = () => { $('#zr-retry').hidden = true; loadSel(); };
 
 $('#f-kum').addEventListener('change', e=>{
   model.settings.kumulativ = e.target.checked;
-  applyKumUI(); renderUe(); renderEntries(); autoZeitraum(); render();
+  applyKumUI(); renderUe(); renderEntries(); autoZeitraum(); render(); scheduleRebuild();
 });
 $('#f-tabtitle').addEventListener('input', e => { model.settings.title = e.target.value; render(); });
 $('#f-proj-name').addEventListener('input', () => { refreshAutoTitles(); render(); });
