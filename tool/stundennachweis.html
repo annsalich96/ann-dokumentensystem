@@ -1062,25 +1062,29 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
   async function kiCall(list){                         // list: [{i,text,max?}]
     const CH = 10, out = [];
     for(let s=0; s<list.length; s+=CH){
+      const targets = list.slice(s,s+CH).map(x => ({i:x.i, row:model.items[x.i], before:model.items[x.i].taetigkeit}));
       const r = await api('cleanDescriptions', {
-        items: JSON.stringify(list.slice(s, s+CH)),
+        items: JSON.stringify(list.slice(s, s+CH).map(x => ({...x, recordId:model.items[x.i].recordId || '', original:model.items[x.i].taetigkeitOriginal ?? model.items[x.i].taetigkeit}))),
+        runId: crypto.randomUUID(), secret: WRITE_SECRET,
         project: model.meta.projekt.name || '',
         phase: kiPhase(),
         maxChars: String(TAET_MAX_CHARS * TAET_MAX_LINES),   // Obergrenze = 2 Zeilen
         lineChars: String(TAET_MAX_CHARS),                   // 1 Zeile — bevorzugt, aber nicht auf Kosten von Inhalt
         lines: String(TAET_MAX_LINES)
       }, 45000);
-      (r && r.items || []).forEach(o=> out.push(o));
+      (r && r.items || []).forEach(o=> out.push({...o, target:targets.find(t=>t.i===o.i)}));
     }
     return out;
   }
   function applyKi(res){                               // schreibt {i,text} ins Modell
     let n = 0;
     res.forEach(o=>{
-      const it = model.items[o.i];
+      const it = o.target ? o.target.row : model.items[o.i];
+      if(o.target && (!model.items.includes(it) || it.taetigkeit !== o.target.before)) throw new Error('Eintrag während der Aufbereitung geändert. Bitte erneut aufbereiten.');
       if(!it || o.text == null || !String(o.text).trim()) return;
       if(it.taetigkeitOriginal == null) it.taetigkeitOriginal = it.taetigkeit;
       it._edit = true;
+      it.learningId = o.learningId || '';
       const t = String(o.text).trim();
       if(t !== it.taetigkeit){ it.taetigkeit = t; n++; }
     });
@@ -1140,61 +1144,70 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
   function billDocId(){ return ((model.meta && model.meta.rechnung) || model.header.title || 'Stundennachweis').trim(); }
   function billEntries(){
     const note = isTage() ? ('Nachweis: ' + fmtDays(totalDays())) : '';
-    return model.items
-      .filter(it => it.recordId)
-      .map(it => ({ id: it.recordId, desc: (it.taetigkeit || '').trim(), note }));
+    return model.items.filter(it => it.recordId).map(it => ({
+      id:it.recordId, desc:(it.taetigkeit||'').trim(), original:it.taetigkeitOriginal ?? it.taetigkeit ?? '',
+      learningId:it.learningId||'', note
+    }));
   }
-  async function billApi(action, extra){
-    REC.map = {}; PREC.pid = '';                        // Abrechnungsstand ändert sich → neu lesen
-    setTimeout(refreshTreeQuiet, 1500);
-    const CH = 12, ents = billEntries(); let updated = 0, notFound = 0;
-    if(action === 'unmarkBilled'){
-      const r = await api('unmarkBilled', Object.assign({ document: billDocId(), secret: WRITE_SECRET }, extra||{}), 45000);
-      return r || {};
-    }
-    for(let s=0; s<ents.length; s+=CH){
-      const r = await api('markBilled', Object.assign({
-        entries: JSON.stringify(ents.slice(s, s+CH)),
-        document: billDocId(), date: model.header.date || isoToday(), secret: WRITE_SECRET
-      }, extra||{}), 45000);
-      updated += (r && r.updated) || 0; notFound += (r && r.notFound) || 0;
-    }
-    return { updated, notFound };
+  const pendingKey = 'sn.description.pending.v1';
+  let pending = null;
+  try { pending = JSON.parse(localStorage.getItem(pendingKey)||'null'); } catch(_){}
+  const resume = document.createElement('button');
+  resume.textContent = 'Offene Speicherung fortsetzen'; resume.className = 'ghost';
+  $('#btn-bill').parentNode.appendChild(resume);
+  function pendingUI(){
+    resume.hidden = !pending;
+    if(pending) billstatus('Speicherung für „'+pending.document+'“ noch offen. Bitte fortsetzen.', 'err');
   }
-  $('#btn-bill').onclick = async ()=>{
-    const ents = billEntries();
-    if(!ents.length){ billstatus('Keine Einträge mit Sheet-Bezug (aus Time Tracking geladen).', 'err'); return; }
-    $('#btn-bill').disabled = true;
-    billstatus('Prüfe (Testlauf, noch kein Schreiben) …');
+  pendingUI();
+  async function billApi(job, dry){
+    let updated=0;
+    // One record per request keeps JSONP URLs short; the immutable job survives reloads.
+    for(let s=0;s<job.entries.length;s++){
+      const r=await api(job.action, {
+        entries:JSON.stringify([job.entries[s]]), operationId:job.operationId,
+        document:job.document, date:job.date, project:job.project,
+        secret:WRITE_SECRET, dryRun:dry?'1':'0'
+      },45000);
+      updated+=(r&&r.updated)||0;
+    }
+    return {updated};
+  }
+  async function executePending(){
+    if(!pending) return;
+    const job=pending;
+    $('#btn-bill').disabled=true; $('#btn-unbill').disabled=true; resume.disabled=true;
+    billstatus('Speichere Buchung und Textarchiv …');
+    try {
+      const res=await billApi(job,false);
+      model.items.forEach(it=>{if(job.entries.some(e=>e.id===it.recordId)) it.billed=job.action==='markBilled';});
+      localStorage.removeItem(pendingKey); pending=null; pendingUI();
+      $('#btn-unbill').hidden=job.action==='unmarkBilled';
+      billstatus(res.updated+' Einträge '+(job.action==='markBilled'?'gebucht; Original, finale Fassung und Lernarchiv gespeichert.':'zurückgenommen; Textverlauf bleibt erhalten.'),'ok');
+      REC.map={}; PREC.pid=''; await refreshTreeQuiet();
+    } catch(e) {
+      billstatus('Speicherung noch nicht vollständig: '+e.message+' Bitte „Offene Speicherung fortsetzen“ verwenden.','err');
+      resume.hidden=false;
+    } finally { $('#btn-bill').disabled=false; $('#btn-unbill').disabled=false; resume.disabled=false; }
+  }
+  async function beginBilling(action){
+    if(pending){ pendingUI(); return; }
+    const entries=billEntries();
+    if(!entries.length){billstatus('Keine Einträge mit Sheet-Bezug vorhanden.','err');return;}
+    const job={action,entries,operationId:crypto.randomUUID(),document:billDocId(),date:model.header.date||isoToday(),project:model.meta.projekt.name||''};
+    $('#btn-bill').disabled=true; $('#btn-unbill').disabled=true;
     try{
-      const dry = await billApi('markBilled', { dryRun:'1' });
-      if(!dry.updated){ billstatus('Keiner der ' + ents.length + ' Einträge im Sheet gefunden – nichts abgebucht.', 'err'); return; }
-      if(!confirm(dry.updated + ' Einträge im Google-Sheet als abgerechnet markieren?\n\nDokument: ' + billDocId()
-        + (dry.notFound ? '\n(' + dry.notFound + ' nicht im Sheet gefunden, werden übersprungen)' : ''))){
-        billstatus('Abgebrochen.'); return;
-      }
-      billstatus('Buche ab …');
-      const res = await billApi('markBilled', {});
-      model.items.forEach(it=>{ if(it.recordId) it.billed = true; });
-      $('#btn-unbill').hidden = false;
-      billstatus(res.updated + ' Einträge im Sheet abgebucht (Dokument „' + billDocId() + '").'
-        + (res.notFound ? '  ' + res.notFound + ' nicht gefunden.' : ''), 'ok');
-    }catch(e){
-      billstatus('Abbuchen fehlgeschlagen: ' + e.message, 'err');
-    }finally{ $('#btn-bill').disabled = false; }
-  };
-  $('#btn-unbill').onclick = async ()=>{
-    if(!confirm('Abbuchung für „' + billDocId() + '" im Sheet zurücknehmen?')) return;
-    $('#btn-unbill').disabled = true; billstatus('Nehme Abbuchung zurück …');
-    try{
-      const r = await billApi('unmarkBilled', {});
-      model.items.forEach(it=>{ it.billed = false; });
-      $('#btn-unbill').hidden = true;
-      billstatus((r.cleared || 0) + ' Einträge wieder freigegeben.', 'ok');
-    }catch(e){
-      billstatus('Rücknahme fehlgeschlagen: ' + e.message, 'err');
-    }finally{ $('#btn-unbill').disabled = false; }
-  };
+      await billApi(job,true);
+      if(!confirm(entries.length+' ausgewählte Einträge für „'+job.document+'“ '+(action==='markBilled'?'buchen und im Lernarchiv speichern?':'zurücknehmen?'))) return;
+      // Fail before writing remotely if recovery cannot be persisted on this device.
+      localStorage.setItem(pendingKey,JSON.stringify(job)); pending=job; pendingUI();
+      await executePending();
+    }catch(e){billstatus('Speicherung fehlgeschlagen: '+e.message,'err');}
+    finally{$('#btn-bill').disabled=false;$('#btn-unbill').disabled=false;}
+  }
+  resume.onclick=executePending;
+  $('#btn-bill').onclick=()=>beginBilling('markBilled');
+  $('#btn-unbill').onclick=()=>beginBilling('unmarkBilled');
 
   // Beim Laden automatisch verbinden (URL ist fest hinterlegt) — leise scheitern lassen.
   connect();
