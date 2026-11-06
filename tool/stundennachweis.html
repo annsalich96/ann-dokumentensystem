@@ -104,6 +104,16 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .blk{border:1px solid var(--ui-border);border-radius:8px;padding:14px 16px;margin-top:14px}
 .blk .blk-h{font-size:12.5px;font-weight:700;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center}
 .blk .ok{color:#4A7C59}.blk .err{color:#B0291E}
+.blk .hist{background:#F7F6F3;border-radius:6px;padding:10px 12px;font-size:12.5px;line-height:1.55}
+.scope details{border:1px solid var(--ui-border);border-radius:6px;background:#fff}
+.scope summary{cursor:pointer;padding:7px 10px;font-size:13px;list-style:none}
+.scope summary::after{content:"▾";float:right;color:var(--ui-muted)}
+.scope .scope-panel{border-top:1px solid var(--ui-border);padding:8px 10px;max-height:320px;overflow:auto;font-size:13px}
+.scope .scope-btns{display:flex;gap:6px;margin-bottom:6px}.scope .scope-btns button{font-size:12px;padding:2px 10px}
+#editor .scope label{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;gap:8px;margin:4px 0;font-weight:400;font-size:13px;color:var(--ink)}
+#editor .scope label.ph{font-weight:700;margin-top:8px}#editor .scope .svcs{padding-left:24px}
+#editor .scope input[type=checkbox]{width:auto;flex:0 0 auto;margin:0;padding:0}
+.blk .hist b{font-weight:700}.blk .hist ul{margin:4px 0 0;padding-left:16px}
 .chk{display:flex!important;flex-direction:row!important;align-items:center;gap:8px;font-size:13.5px!important;color:var(--ink)!important;margin:0 0 16px!important}
 .chk input{width:auto!important}
 
@@ -205,8 +215,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <h2>Aus Time Tracking laden</h2>
   <label class="chk"><input type="checkbox" id="f-kum"> Kumulativer Nachweis – Tabellen je Phase/Leistung mit Übertrag</label>
   <div class="fg">
-    <div class="fld single-only"><label>Phase</label><select id="f-sel-phase" disabled></select></div>
-    <div class="fld single-only"><label>Leistung</label><select id="f-sel-svc" disabled></select></div>
+    <div class="fld wide single-only" id="scope-single"></div>
+    <div class="fld wide single-only"><label>Tabellentitel (automatisch: Projekt — Phase — Leistung, änderbar)</label><input type="text" id="f-tabtitle"></div>
     <div class="fld"><label id="l-von">von</label><input type="date" id="f-von"></div>
     <div class="fld"><label id="l-bis">bis</label><input type="date" id="f-bis"></div>
   </div>
@@ -367,7 +377,7 @@ let model = {
     zeitraum:{ von:"", bis:"" },
     rechnung:""
   },
-  settings:{ einheit:"stunden", stundenProTag:8, kumulativ:false },
+  settings:{ einheit:"stunden", stundenProTag:8, kumulativ:false, scope:null, title:"" },
   /* Kumulativer Nachweis: je Tabelle Phase/Leistung + Übertrag; Einträge tragen b = Tabellen-Index */
   blocks:[],
   items:[
@@ -468,7 +478,12 @@ function layoutBody(){
 
   newPage(true);
   if(!isKum()){
-    head(firstTableK());
+    const tt = (model.settings.title || '').trim();
+    if(tt){
+      const titleK = Math.max(DS.table.topRuleK_first - 2, metaLastK() + DS.meta.gapK);
+      B('s-blocktitle', {leftMM:X1, k:titleK, span:2}, tt);
+      head(titleK + 2);
+    } else head(firstTableK());
     rows(model.items, DS.total.span);
     const gs = DS.total.span;
     B('s-total', {leftMM:XT, k, span:gs}, 'Gesamt');
@@ -839,7 +854,7 @@ $('#btn-add').onclick = ()=>{
 };
 $('#btn-demo').onclick = ()=>{
   if(isKum()){
-    const nb = (title, ue) => ({ title, phase:"", phaseName:"", service:"", serviceName:"", ue });
+    const nb = (title, ue) => ({ title, sel:null, ue });
     model.blocks = [
       nb('Beispielprojekt — Phase 02 — Entwurfsausarbeitung', {von:'2026-07-01', bis:'2026-09-30', rechnung:'INV_BSP_03', stunden:30}),
       nb('Beispielprojekt — Phase 02 — Grafik',              {von:'2026-08-03', bis:'2026-09-27', rechnung:'INV_BSP_03', stunden:12.5})
@@ -856,6 +871,7 @@ $('#btn-demo').onclick = ()=>{
     datum:`2026-08-${String(3+k).padStart(2,'0')}`, taetigkeit:acts[k%6],
     bearbeiter:"Ann-Kathrin Salich", stunden:[0.5,1,2,1.5,3,0.75][k%6]
   }));
+  if(!model.settings.title){ model.settings.title = 'Beispielprojekt — Phase 05 — Ausführungsplanung'; $('#f-tabtitle').value = model.settings.title; }
   renderEntries(); render();
 };
 
@@ -865,7 +881,7 @@ $('#btn-demo').onclick = ()=>{
 const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird unten von der Verbindung gefüllt
 (function(){
   const loadBtn = $('#btn-load');
-  const selP = $('#f-sel-proj'), selPh = $('#f-sel-phase'), selS = $('#f-sel-svc');
+  const selP = $('#f-sel-proj');
   const statusEl = $('#sheet-status');
   let tree = null;   // { projects:[{id,name,phases:[{id,name,services:[{id,name}]}]}] }
 
@@ -910,14 +926,12 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
   }
   function curProject(){ return tree ? tree.projects.find(p => p.id === selP.value) : null; }
   TT.curProject = curProject; TT.api = (a, p, t) => api(a, p, t); TT.projectId = () => selP.value;
-  function curPhase(){ const p = curProject(); return p ? p.phases.find(x => x.id === selPh.value) : null; }
 
   function applyTree(t, note){
     tree = t;
     fillSelect(selP, tree.projects, '— Projekt wählen —');
     renderBlocks();
-    selPh.innerHTML = '<option value="">—</option>'; selPh.disabled = true;
-    selS.innerHTML  = '<option value="">—</option>'; selS.disabled  = true;
+    renderSingleScope();
     loadBtn.disabled = true;
     say('Verbunden · ' + tree.projects.length + ' Projekte' + (note || ''), 'ok');
   }
@@ -942,17 +956,17 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
   let reportCtx = null;
   function setProjektzeile(){ model.header.projektzeile = defaultProjektzeile(); $('#f-head1').value = model.header.projektzeile; $('#f-code').value = model.header.code || ''; render(); }
   function applyProjectMeta(m){
-    if(m.name != null){ model.meta.projekt.name = m.name; $('#f-proj-name').value = m.name; }
+    if(m.name != null){ model.meta.projekt.name = m.name; $('#f-proj-name').value = m.name; refreshAutoTitles(); if(isKum()) renderBlocks(); }
     if(m.address != null){ model.meta.projekt.adresse = m.address; $('#f-proj-adr').value = m.address; }
     render();
   }
   selP.onchange = async () => {
     const p = curProject();
-    fillSelect(selPh, p ? p.phases : [], '— alle Phasen —');
-    selS.innerHTML = '<option value="">— alle Leistungen —</option>'; selS.disabled = true;
+    model.settings.scope = null; renderSingleScope(); refreshAutoTitles();
     loadBtn.disabled = !p;
     renderBlocks();
     if(!p) return;
+    if(isKum()) loadAllHistories();
     applyProjectMeta({ name: p.name });                  // Name haben wir sofort
     model.header.code = ''; setProjektzeile();
     try{                                                 // Projekt-Kürzel (Projects.Project Code), nur lesend
@@ -963,10 +977,6 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
     try{                                                 // Stammdaten (Adresse …) nachladen; still scheitern lassen
       applyProjectMeta(await api('getProjectMeta', { project: p.id }));
     }catch(_){ /* Endpunkt evtl. noch nicht bereitgestellt */ }
-  };
-  selPh.onchange = () => {
-    const ph = curPhase();
-    fillSelect(selS, ph ? ph.services : [], '— alle Leistungen —');
   };
 
   loadBtn.onclick = async () => {
@@ -987,12 +997,12 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
       const onlyOpen = $('#f-only-open').checked, from = $('#f-von').value || '', to = $('#f-bis').value || '';
       // Kumulativ: je Tabelle (Phase/Leistung) laden; sonst wie bisher eine Auswahl
       const queries = isKum()
-        ? model.blocks.map((bl, b) => ({ b, phase: bl.phase || '', service: bl.service || '' }))
-        : [{ b: null, phase: selPh.value || '', service: selS.value || '' }];
+        ? model.blocks.map((bl, b) => ({ b, sel: blockSel(bl) }))
+        : [{ b: null, sel: model.settings.scope }];
       if(!queries.length){ say('Erst eine Tabelle anlegen (+ Tabelle).', 'err'); return; }
       const d = { unresolved: 0 }; let skipped = 0, items = [];
       for(const q of queries){
-        const r = await api('getTimeRecords', { project: selP.value, phase: q.phase, service: q.service, from, to });
+        const r = await fetchScope({ from, to }, q.sel);
         let rows = r.items || [];
         d.unresolved += r.unresolved || 0;
         if(onlyOpen){ skipped += rows.filter(it => it.billed).length; rows = rows.filter(it => !it.billed); }
@@ -1012,7 +1022,7 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
 
   /* ---- KI: Tätigkeitsbeschreibungen aufbereiten ---- */
   const kistatus = (m,c)=>{ const el=$('#ki-status'); if(el){ el.textContent=m||''; el.className='sub '+(c||''); } };
-  const kiPhase = () => (selPh && selPh.value && selPh.selectedOptions[0]) ? selPh.selectedOptions[0].textContent : '';
+  const kiPhase = () => scopeTitle(model.settings.scope, curProject());
   async function kiCall(list){                         // list: [{i,text,max?}]
     const CH = 10, out = [];
     for(let s=0; s<list.length; s+=CH){
@@ -1152,17 +1162,137 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
 })();
 
 /* ============================================================
+   5b2) AUSWAHL PHASEN & LEISTUNGEN — alle, mehrere oder „alle außer“
+   sel = null → alles; sonst { Phase_ID: true (ganze Phase) | [Service_ID, …] }
+   ============================================================ */
+var SCOPE_OPEN = new Set();
+function scopeLabel(sel, p){
+  if(!sel) return 'Alle Phasen & Leistungen';
+  if(!p) return scopeTitle(sel, p) || 'Auswahl';
+  const inc = [], exc = [];
+  p.phases.forEach(ph => {
+    const v = sel[ph.id], svN = ids => ph.services.filter(x => ids.includes(x.id)).map(x => x.name).join(', ');
+    if(v === true) inc.push(ph.name);
+    else if(Array.isArray(v) && v.length){
+      inc.push(ph.name + ': ' + svN(v));
+      exc.push(ph.name + ': ' + svN(ph.services.map(x => x.id).filter(id => !v.includes(id))));
+    } else exc.push(ph.name);
+  });
+  if(!inc.length) return 'Nichts ausgewählt';
+  return exc.length < inc.length ? 'Alle außer ' + exc.join(' · ') : inc.join(' · ');
+}
+/* Titel fürs Dokument: was enthalten ist, z. B. „Phase 02 — Grafik, Render“ */
+function scopeTitle(sel, p){
+  if(!sel) return '';
+  return Object.keys(sel).map(id => {
+    const ph = p ? p.phases.find(x => x.id === id) : null, v = sel[id];
+    const nm = ph ? ph.name : id;
+    if(v === true) return nm;
+    const sv = (v || []).map(sid => { const x = ph && ph.services.find(y => y.id === sid); return x ? x.name : sid; });
+    return sv.length ? nm + ' — ' + sv.join(', ') : '';
+  }).filter(Boolean).join(' · ');
+}
+function scopeQueries(sel){
+  if(!sel) return [{ phase:'', service:'' }];
+  const out = [];
+  Object.keys(sel).forEach(ph => { const v = sel[ph];
+    if(v === true) out.push({ phase: ph, service: '' });
+    else (v || []).forEach(sv => out.push({ phase: ph, service: sv })); });
+  return out;
+}
+/* Holt die Zeiteinträge für eine Auswahl (je Phase/Leistung eine Abfrage) und führt sie zusammen. */
+async function fetchScope(params, sel){
+  const seen = new Set(); let items = [], unresolved = 0;
+  for(const q of scopeQueries(sel)){
+    const r = await TT.api('getTimeRecords', Object.assign({ project: TT.projectId(), phase: q.phase, service: q.service }, params));
+    unresolved += r.unresolved || 0;
+    (r.items || []).forEach(it => { if(it.recordId && seen.has(it.recordId)) return; seen.add(it.recordId); items.push(it); });
+  }
+  items.sort((a, b) => a.datum === b.datum ? String(a.bearbeiter).localeCompare(b.bearbeiter) : String(a.datum).localeCompare(b.datum));
+  return { items, unresolved };
+}
+function normScope(sel, p){
+  if(!sel || !p) return sel;
+  Object.keys(sel).forEach(k => { if(Array.isArray(sel[k]) && !sel[k].length) delete sel[k]; });
+  return p.phases.every(ph => sel[ph.id] === true) ? null : sel;
+}
+function scopeHtml(key, sel, p){
+  if(!p) return `<div class="scope"><details><summary>${escapeHtml(sel ? scopeTitle(sel, null) || 'Auswahl' : 'Oben ein Projekt wählen')}</summary></details></div>`;
+  const rows = p.phases.map(ph => {
+    const v = sel ? sel[ph.id] : true, full = v === true, part = Array.isArray(v) && v.length > 0;
+    const svs = ph.services.map(sv => {
+      const on = full || (part && v.includes(sv.id));
+      return `<label><input type="checkbox" data-sv="${escapeHtml(sv.id)}" data-ph="${escapeHtml(ph.id)}"${on ? ' checked' : ''}> ${escapeHtml(sv.name)}</label>`;
+    }).join('');
+    return `<label class="ph"><input type="checkbox" data-ph="${escapeHtml(ph.id)}"${full ? ' checked' : ''}${part ? ' data-indet' : ''}> ${escapeHtml(ph.name)}</label>` +
+      (svs ? `<div class="svcs">${svs}</div>` : '');
+  }).join('');
+  return `<div class="scope" data-scope="${key}"><details${SCOPE_OPEN && SCOPE_OPEN.has(String(key)) ? ' open' : ''}><summary>${escapeHtml(scopeLabel(sel, p))}</summary>` +
+    `<div class="scope-panel"><div class="scope-btns"><button class="ghost" data-sa="all">Alle</button><button class="ghost" data-sa="none">Keine</button></div>${rows}</div></details></div>`;
+}
+function fixIndet(root){ root.querySelectorAll('input[data-indet]').forEach(el => el.indeterminate = true); }
+function renderSingleScope(){
+  const box = document.getElementById('scope-single');
+  box.innerHTML = '<label>Phasen &amp; Leistungen</label>' + scopeHtml('single', model.settings.scope, TT.curProject());
+  fixIndet(box);
+}
+/* neue Auswahl aus einem Klick berechnen */
+function scopeToggle(sel, p, el){
+  sel = sel ? JSON.parse(JSON.stringify(sel)) : Object.fromEntries(p.phases.map(ph => [ph.id, true]));
+  const ph = p.phases.find(x => x.id === el.dataset.ph); if(!ph) return sel;
+  if(el.dataset.sv == null){                         // ganze Phase an/aus
+    if(el.checked) sel[ph.id] = true; else delete sel[ph.id];
+  } else {
+    let v = sel[ph.id] === true ? ph.services.map(x => x.id) : (sel[ph.id] || []).slice();
+    v = el.checked ? v.concat(el.dataset.sv) : v.filter(id => id !== el.dataset.sv);
+    sel[ph.id] = ph.services.every(x => v.includes(x.id)) ? true : v;
+  }
+  return normScope(sel, p);
+}
+/* Automatische Titel nachziehen – nur solange sie nicht von Hand geändert wurden */
+function refreshAutoTitles(){
+  const st = model.settings, t = [model.meta.projekt.name, scopeTitle(st.scope, TT.curProject())].filter(Boolean).join(' — ');
+  if(!st.title || st.title === st._titleAuto) st.title = t;
+  st._titleAuto = t;
+  const el = document.getElementById('f-tabtitle'); if(el) el.value = st.title || '';
+  (model.blocks || []).forEach(bl => { const a = autoTitle(bl); if(!bl.title || bl.title === bl._auto) bl.title = a; bl._auto = a; });
+}
+function onScopeChange(key, sel){
+  if(key === 'single'){ model.settings.scope = sel; renderSingleScope(); refreshAutoTitles(); render(); return; }
+  const bi = +key, bl = model.blocks[bi]; if(!bl) return;
+  bl.sel = sel;
+  const t = autoTitle(bl);
+  if(!bl.title || bl.title === bl._auto) bl.title = t;
+  bl._auto = t;
+  renderBlocks(); renderEntries(); render(); calcUebertrag(bi); loadHistory(bi);
+}
+document.addEventListener('toggle', e => {
+  const sc = e.target.closest && e.target.closest('.scope'); if(!sc) return;
+  e.target.open ? SCOPE_OPEN.add(sc.dataset.scope) : SCOPE_OPEN.delete(sc.dataset.scope);
+}, true);
+document.addEventListener('change', e => {
+  const sc = e.target.closest('.scope'); if(!sc || !e.target.dataset.ph) return;
+  const key = sc.dataset.scope, p = TT.curProject(); if(!p) return;
+  const cur = key === 'single' ? model.settings.scope : blockSel(model.blocks[+key]);
+  onScopeChange(key, scopeToggle(cur, p, e.target));
+});
+document.addEventListener('click', e => {
+  const a = e.target.dataset && e.target.dataset.sa, sc = a && e.target.closest('.scope'); if(!sc) return;
+  e.preventDefault();
+  onScopeChange(sc.dataset.scope, a === 'all' ? null : {});
+});
+
+/* ============================================================
    5c) KUMULATIV — Tabellen je Phase/Leistung mit Übertrag
    ============================================================ */
 const blocksBox = $('#blocks');
-function newBlock(){ return { title:"", phase:"", phaseName:"", service:"", serviceName:"", ue:{ von:"", bis:"", rechnung:"", stunden:0 } }; }
-function autoTitle(bl){ return [model.meta.projekt.name, bl.phaseName, bl.serviceName].filter(Boolean).join(' — '); }
-function optList(items, cur, curName, placeholder){
-  const list = items.slice();
-  if(cur && !list.some(x => x.id === cur)) list.unshift({ id:cur, name:curName || cur });   // z. B. aus JSON geöffnet
-  return '<option value="">' + placeholder + '</option>' +
-    list.map(x => `<option value="${escapeHtml(x.id)}"${x.id === cur ? ' selected' : ''}>${escapeHtml(x.name)}</option>`).join('');
+function newBlock(){ return { title:"", sel:null, ue:{ von:"", bis:"", rechnung:"", stunden:0 } }; }
+/* ältere Dateien: einzelne Phase/Leistung → Auswahl */
+function blockSel(bl){
+  if(bl.sel === undefined) bl.sel = bl.phase ? { [bl.phase]: bl.service ? [bl.service] : true } : null;
+  return bl.sel;
 }
+function autoTitle(bl){ return [model.meta.projekt.name, scopeTitle(blockSel(bl), TT.curProject())].filter(Boolean).join(' — '); }
 function applyKumUI(){
   const on = isKum();
   document.querySelectorAll('.single-only').forEach(el => el.hidden = on);
@@ -1177,14 +1307,13 @@ function renderBlocks(){
   const p = TT.curProject();
   blocksBox.innerHTML = '';
   model.blocks.forEach((bl, bi)=>{
-    const ph = p ? p.phases.find(x => x.id === bl.phase) : null;
     const d = document.createElement('div'); d.className = 'blk'; d.dataset.b = bi;
     d.innerHTML =
       `<div class="blk-h"><span>Tabelle ${bi+1}</span><button class="ghost" data-act="del">Entfernen</button></div>`+
       `<div class="fg">`+
-        `<div class="fld"><label>Phase</label><select data-f="phase"${p || bl.phase ? '' : ' disabled'}>${optList(p ? p.phases : [], bl.phase, bl.phaseName, '— alle Phasen —')}</select></div>`+
-        `<div class="fld"><label>Leistung</label><select data-f="service"${ph || bl.service ? '' : ' disabled'}>${optList(ph ? ph.services : [], bl.service, bl.serviceName, '— alle Leistungen —')}</select></div>`+
+        `<div class="fld wide"><label>Phasen &amp; Leistungen</label>${scopeHtml(bi, blockSel(bl), p)}</div>`+
         `<div class="fld wide"><label>Tabellentitel</label><input type="text" data-f="title" value="${escapeHtml(bl.title)}"></div>`+
+        histHtml(bl, bi)+
         `<div class="fld"><label>Übertrag von</label><input type="date" data-f="ue.von" value="${bl.ue.von || ''}"></div>`+
         `<div class="fld"><label>Übertrag bis</label><input type="date" data-f="ue.bis" value="${bl.ue.bis || ''}"></div>`+
         `<div class="fld"><label>Zugehörige Rechnung</label><input type="text" data-f="ue.rechnung" list="dl-rech-${bi}" value="${escapeHtml(bl.ue.rechnung)}" placeholder="z. B. INV_XXX_006">`+
@@ -1194,7 +1323,57 @@ function renderBlocks(){
       `<p class="sub" data-st style="margin:10px 0 0">${escapeHtml(bl.ue.info || '')}</p>`;
     blocksBox.appendChild(d);
   });
+  fixIndet(blocksBox);
 }
+/* Verlauf je Tabelle: alle Zeiteinträge dieser Phase/Leistung (ohne Zeitraum), nur lesend.
+   Zeigt Beginn, letzten Eintrag und die Stunden je Rechnung – und bietet sie als Übertrag an. */
+var HIST = new WeakMap();
+async function loadHistory(bi){
+  const bl = model.blocks[bi]; if(!bl || !TT.api || !TT.projectId()) return;
+  const tok = {}; bl._hTok = tok;                      // nur die letzte Anfrage zählt
+  HIST.set(bl, { loading:true }); renderBlocks();
+  try{
+    const d = await fetchScope({}, blockSel(bl));
+    if(bl._hTok !== tok) return;
+    const items = (d.items || []).filter(it => it.datum);
+    const sum = l => Math.round(l.reduce((s, it) => s + (Number(it.stunden) || 0), 0) * 100) / 100;
+    const range = l => ({ von: l[0].datum, bis: l[l.length-1].datum, std: sum(l), n: l.length });
+    const byDoc = {};
+    items.filter(it => it.billed).forEach(it => (byDoc[it.billedDoc || ''] = byDoc[it.billedDoc || ''] || []).push(it));
+    const docs = Object.keys(byDoc).map(k => Object.assign({ doc:k }, range(byDoc[k]))).sort((a, b) => a.bis.localeCompare(b.bis));
+    let kum = 0; docs.forEach(g => { kum += g.std; g.kum = Math.round(kum * 100) / 100; });
+    const open = items.filter(it => !it.billed);
+    HIST.set(bl, items.length ? { all: range(items), docs, open: open.length ? range(open) : null } : { empty:true });
+  }catch(e){ if(bl._hTok !== tok) return; HIST.set(bl, { error: e.message }); }
+  renderBlocks();
+}
+function loadAllHistories(){ model.blocks.forEach((_, bi) => loadHistory(bi)); }
+function histHtml(bl, bi){
+  const h = HIST && HIST.get(bl);
+  if(!h) return TT.projectId() ? '' : `<div class="fld wide"><div class="hist">Oben ein Projekt wählen – dann steht hier, seit wann gearbeitet und was schon abgerechnet wurde.</div></div>`;
+  if(h.loading) return `<div class="fld wide"><div class="hist">Lade Verlauf aus AppSheet …</div></div>`;
+  if(h.error) return `<div class="fld wide"><div class="hist err">Verlauf nicht geladen: ${escapeHtml(h.error)}</div></div>`;
+  if(h.empty) return `<div class="fld wide"><div class="hist">In AppSheet gibt es für diese Auswahl noch keine Zeiteinträge.</div></div>`;
+  const rg = g => deDateS(g.von) + ' – ' + deDateS(g.bis);
+  const lines = h.docs.map(g => `<li>${escapeHtml(g.doc || 'abgebucht ohne Rechnungsnr.')}: ${rg(g)} · ${hours(g.std)}</li>`);
+  if(h.open) lines.push(`<li>noch nicht abgebucht: ${rg(h.open)} · ${hours(h.open.std)}</li>`);
+  const vonR = $('#f-von').value;
+  const opts = ['<option value="">— Übertrag übernehmen … —</option>'].concat(
+    h.docs.map((g, i) => `<option value="doc:${i}">bis einschl. ${escapeHtml(g.doc || 'Abbuchung ohne Nr.')} (${deDateS(h.all.von)} – ${deDateS(g.bis)} · ${hours(g.kum)})</option>`),
+    vonR && vonR > h.all.von ? [`<option value="before">alles vor diesem Rechnungszeitraum (${deDateS(h.all.von)} – ${deDateS(dayBefore(vonR))})</option>`] : []);
+  return `<div class="fld wide"><label>Bisher in AppSheet</label><div class="hist">`+
+      `Beginn (erster Eintrag): <b>${deDateS(h.all.von)}</b> · letzter Eintrag: ${deDateS(h.all.bis)} · gesamt ${hours(h.all.std)}`+
+      `<ul>${lines.join('')}</ul></div></div>`+
+    `<div class="fld wide"><label>Übertrag aus dem Verlauf</label><select data-f="ue.preset">${opts.join('')}</select></div>`;
+}
+function dayBefore(iso){ const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); }
+function applyPreset(bi, v){
+  const bl = model.blocks[bi], h = HIST.get(bl); if(!v || !h || !h.all) return;
+  if(v === 'before'){ bl.ue.von = h.all.von; bl.ue.bis = dayBefore($('#f-von').value); }
+  else { const g = h.docs[+v.slice(4)]; bl.ue.von = h.all.von; bl.ue.bis = g.bis; bl.ue.rechnung = g.doc; }
+  renderBlocks(); render(); calcUebertrag(bi);
+}
+
 /* Übertrag = alle gebuchten Stunden dieser Phase/Leistung im gewählten Zeitraum.
    Rechnungs-Vorschläge = Dokumente, mit denen diese Stunden abgebucht wurden. */
 async function calcUebertrag(bi){
@@ -1204,8 +1383,10 @@ async function calcUebertrag(bi){
   if(!bl.ue.von || !bl.ue.bis) return;
   if(!TT.api || !TT.projectId()){ say('Für die automatische Berechnung oben ein Projekt wählen – oder Stunden von Hand eintragen.', 'err'); return; }
   say('Berechne Übertrag …');
+  const tok = {}; bl._uTok = tok;
   try{
-    const d = await TT.api('getTimeRecords', { project: TT.projectId(), phase: bl.phase || '', service: bl.service || '', from: bl.ue.von, to: bl.ue.bis });
+    const d = await fetchScope({ from: bl.ue.von, to: bl.ue.bis }, blockSel(bl));
+    if(bl._uTok !== tok) return;
     const items = d.items || [];
     bl.ue.stunden = Math.round(items.reduce((s, it) => s + (Number(it.stunden) || 0), 0) * 100) / 100;
     bl.ue.vorschlaege = [...new Set(items.map(it => it.billedDoc).filter(Boolean))];
@@ -1228,15 +1409,8 @@ blocksBox.addEventListener('input', e=>{
 blocksBox.addEventListener('change', e=>{
   const f = e.target.dataset.f, card = e.target.closest('.blk'); if(!f || !card) return;
   const bi = +card.dataset.b, bl = model.blocks[bi];
-  if(f === 'phase' || f === 'service'){
-    const name = e.target.value ? e.target.selectedOptions[0].textContent : '';
-    if(f === 'phase'){ bl.phase = e.target.value; bl.phaseName = name; bl.service = ''; bl.serviceName = ''; }
-    else { bl.service = e.target.value; bl.serviceName = name; }
-    const t = autoTitle(bl);
-    if(!bl.title || bl.title === bl._auto) bl.title = t;
-    bl._auto = t;
-    renderBlocks(); renderEntries(); render(); calcUebertrag(bi);
-  } else if(f === 'ue.von' || f === 'ue.bis') calcUebertrag(bi);
+  if(f === 'ue.preset') applyPreset(bi, e.target.value);
+  else if(f === 'ue.von' || f === 'ue.bis') calcUebertrag(bi);
 });
 blocksBox.addEventListener('click', e=>{
   if(e.target.dataset.act !== 'del') return;
@@ -1246,7 +1420,7 @@ blocksBox.addEventListener('click', e=>{
   model.items = model.items.filter(it => (it.b || 0) !== bi).map(it => ((it.b || 0) > bi ? Object.assign(it, { b: it.b - 1 }) : it));
   renderBlocks(); renderEntries(); render();
 });
-$('#btn-add-block').onclick = ()=>{ model.blocks.push(newBlock()); renderBlocks(); renderEntries(); render(); };
+$('#btn-add-block').onclick = ()=>{ model.blocks.push(newBlock()); renderBlocks(); renderEntries(); render(); loadHistory(model.blocks.length - 1); };
 $('#f-kum').addEventListener('change', e=>{
   model.settings.kumulativ = e.target.checked;
   if(isKum()){
@@ -1254,7 +1428,11 @@ $('#f-kum').addEventListener('change', e=>{
     model.items.forEach(it => { if(it.b == null || it.b >= model.blocks.length) it.b = 0; });
   }
   applyKumUI(); renderBlocks(); renderEntries(); render();
+  if(isKum()) loadAllHistories();
 });
+$('#f-von').addEventListener('change', () => { if(isKum()) renderBlocks(); });
+$('#f-tabtitle').addEventListener('input', e => { model.settings.title = e.target.value; render(); });
+$('#f-proj-name').addEventListener('input', () => { refreshAutoTitles(); if(isKum()) renderBlocks(); render(); });   // Option „alles vor diesem Zeitraum“
 
 $('#btn-save').onclick = ()=>{
   const blob = new Blob([JSON.stringify(model,null,2)],{type:'application/json'});
@@ -1280,7 +1458,8 @@ function syncForm(){
   g('#f-proj-name',model.meta.projekt.name); g('#f-proj-adr',model.meta.projekt.adresse);
   g('#f-von',model.meta.zeitraum.von); g('#f-bis',model.meta.zeitraum.bis);
   $('#f-einheit').value = model.settings.einheit; $('#f-stdtag').value = model.settings.stundenProTag;
-  applyKumUI(); renderBlocks();
+  $('#f-tabtitle').value = model.settings.title || '';
+  applyKumUI(); renderBlocks(); renderSingleScope();
 }
 
 /* ---- Zoom ---- */
@@ -1346,7 +1525,7 @@ window.addEventListener('resize', ()=> fitZoom(true));
 
 /* ---- Start ---- */
 model.header.date = isoToday();
-syncForm(); renderEntries(); calibrateText(); render(); fitZoom(true);
+refreshAutoTitles(); syncForm(); renderEntries(); calibrateText(); render(); fitZoom(true);
 if(document.fonts && document.fonts.ready){
   document.fonts.ready.then(()=>{ calibrateText(); render(); });
 }
