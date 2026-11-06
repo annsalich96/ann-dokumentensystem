@@ -110,6 +110,13 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .blk .ok{color:#4A7C59}.blk .err{color:#B0291E}
 .zr-row{flex-direction:row!important;align-items:center;gap:10px}.zr-row .sub{margin:0}.zr-row button{font-size:12px;padding:3px 10px}
 .ue-lbl{display:block;margin:14px 0 2px}
+.zr-line{display:grid;grid-template-columns:1fr 110px 110px 34px;gap:6px;align-items:center;margin-top:6px}
+.zr-name{font-size:13px;line-height:1.3;padding-left:12px}
+.zr-ph{display:flex;justify-content:space-between;align-items:center;margin:14px 0 2px;font-size:13px}
+.seg{display:inline-flex;border:1px solid var(--ink);border-radius:6px;overflow:hidden}
+#editor .seg button{border:0;border-radius:0;background:#fff;color:var(--ink);font-size:12px;padding:3px 10px;cursor:pointer}
+#editor .seg button.on{background:var(--ink);color:#fff}
+#editor .zr-line input{font-size:13px;padding:6px 8px}#editor .zr-line button{font-size:13px;padding:4px 0}
 .ue-card{border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;margin-top:8px}
 .ue-h{font-weight:700;font-size:13px;margin-bottom:6px}
 .ue-none{font-size:12.5px;color:var(--ui-muted);display:flex;align-items:center;gap:10px}.ue-none button{font-size:12px;padding:2px 10px}
@@ -241,9 +248,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <h2>Aus Time Tracking laden</h2>
   <div class="fg">
     <div class="fld wide" id="scope-single"></div>
-    <div class="fld"><label id="l-von">von</label><input type="text" class="dp" id="f-von" placeholder="TT.MM.JJ" autocomplete="off"></div>
-    <div class="fld"><label id="l-bis">bis</label><input type="text" class="dp" id="f-bis" placeholder="TT.MM.JJ" autocomplete="off"></div>
-    <div class="fld wide zr-row"><p class="sub" id="zr-note"></p><button class="ghost" id="zr-reset" hidden>Automatisch</button><button class="ghost" id="zr-retry" hidden>Erneut laden</button></div>
+    <div class="fld wide" id="lst-box"></div>
+    <div class="fld wide zr-row"><p class="sub" id="zr-note"></p><button class="ghost" id="zr-retry" hidden>Erneut laden</button></div>
   </div>
   <label class="chk"><input type="checkbox" id="f-kum"> Kumulativ – mit Übertrag aus früheren Rechnungen</label>
   <div id="ue-box" hidden></div>
@@ -438,6 +444,8 @@ function normalizeModel(){
     model.items.forEach(it => { if(it.b != null){ it.g = it.b; delete it.b; } });
   }
   model.blocks = [];
+  if(!model.ranges || typeof model.ranges !== 'object') model.ranges = {};
+  if(!model.settings.split || typeof model.settings.split !== 'object') model.settings.split = {};   // Phase_ID -> 'phase' | 'leistung'
   if(model.meta && model.meta.rechnung == null) model.meta.rechnung = "";
   if(model.header.projektzeile == null) model.header.projektzeile = defaultProjektzeile();
   const pj = model.meta && model.meta.projekt;
@@ -1300,12 +1308,11 @@ document.addEventListener('click', e => {
    Eintrag (Kalender markiert Beginn/Ende) → 3. kumulativ ja/nein → 4. Übertrag je Leistung
    mit Vorauswahl der bisher abgerechneten Stunden. Liest nur, schreibt nichts.
    ============================================================ */
-function planKey(pl){ return [pl.phase, pl.service, pl.rest || 0].join('|'); }
+function planKey(pl){ return [pl.phase, pl.whole ? '*' : pl.service, pl.rest || 0].join('|'); }
 function applyKumUI(){
   const on = isKum();
   $('#f-kum').checked = on;
   $('#ue-box').hidden = !on;
-  $('#l-von').textContent = on ? 'Zeitraum dieser Rechnung von' : 'von';
 }
 /* Verlauf aus Zeiteinträgen: Beginn/Ende, Stunden je Abrechnungsdokument, noch offen */
 function histOf(list){
@@ -1326,10 +1333,16 @@ function dayAfter(iso){ const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDa
    Einträge der Phase ohne Leistung (rest 1) bzw. des Projekts ohne Phase (rest 2) extra. */
 function buildPlan(sel, p, name){
   const T = (...a) => a.filter(Boolean).join(' — '), plan = [];
+  const split = (model.settings && model.settings.split) || {};
   p.phases.forEach(ph => {
     const v = sel ? sel[ph.id] : true; if(!v) return;
-    (v === true ? ph.services : ph.services.filter(x => v.includes(x.id)))
-      .forEach(sv => plan.push({ phase: ph.id, service: sv.id, title: T(name, ph.name, sv.name), short: T(ph.name, sv.name) }));
+    const svs = v === true ? ph.services : ph.services.filter(x => v.includes(x.id));
+    if(split[ph.id] === 'phase'){                       // eine Tabelle für die ganze Phase
+      plan.push({ phase: ph.id, service: '', whole: true, svcs: v === true ? null : svs.map(x => x.id),
+                  title: T(name, ph.name), short: ph.name });
+      return;
+    }
+    svs.forEach(sv => plan.push({ phase: ph.id, service: sv.id, title: T(name, ph.name, sv.name), short: T(ph.name, sv.name) }));
     if(v === true) plan.push({ phase: ph.id, service: '', rest: 1, title: T(name, ph.name), short: T(ph.name, 'ohne Leistung') });
   });
   if(!sel) plan.push({ phase: '', service: '', rest: 2, title: name, short: 'ohne Phase' });
@@ -1387,10 +1400,12 @@ function loadProjectRecords(){
 }
 /* Einträge den Tabellen des Plans zuordnen (wie die Einzelabfragen: Leistung, Rest der Phase, Rest Projekt) */
 function assignPlan(plan, items){
-  const i0 = {}, i1 = {}; let i2 = -1;
-  plan.forEach((pl, i) => { if(!pl.rest) i0[pl.phase + '|' + pl.service] = i; else if(pl.rest === 1) i1[pl.phase] = i; else i2 = i; });
+  const i0 = {}, i1 = {}, iw = {}; let i2 = -1;
+  plan.forEach((pl, i) => { if(pl.whole) iw[pl.phase] = { i, svcs: pl.svcs && new Set(pl.svcs) }; else if(!pl.rest) i0[pl.phase + '|' + pl.service] = i; else if(pl.rest === 1) i1[pl.phase] = i; else i2 = i; });
   const lists = plan.map(() => []);
   items.forEach(it => {
+    const w = iw[it.phaseId || ''];
+    if(w){ if(!w.svcs || w.svcs.has(it.serviceId)) lists[w.i].push(it); return; }
     let i = i0[(it.phaseId || '') + '|' + (it.serviceId || '')];
     if(i == null && !it.serviceId) i = i1[it.phaseId || ''];
     if(i == null && i2 >= 0) i = i2;
@@ -1398,9 +1413,20 @@ function assignPlan(plan, items){
   });
   return lists;
 }
+function mergeStats(list){
+  list = list.filter(Boolean); if(!list.length) return null;
+  const docs = {}, out = { von: list.map(x => x.von).sort()[0], bis: list.map(x => x.bis).sort().pop(), h: 0, open: 0, docs: [] };
+  list.forEach(st => { out.h += st.h; out.open += st.open; (st.docs || []).forEach(d => {
+    const o = docs[d.doc] || (docs[d.doc] = { doc: d.doc, von: d.von, bis: d.bis, h: 0 });
+    if(d.von < o.von) o.von = d.von; if(d.bis > o.bis) o.bis = d.bis; o.h += d.h; }); });
+  out.h = Math.round(out.h * 100) / 100; out.open = Math.round(out.open * 100) / 100;
+  out.docs = Object.values(docs).map(d => Object.assign(d, { h: Math.round(d.h * 100) / 100 })).sort((a, b) => a.bis.localeCompare(b.bis));
+  return out;
+}
 function statFor(pl, p){
   if(pl.rest === 2) return null;
   const ph = p.phases.find(x => x.id === pl.phase); if(!ph) return null;
+  if(pl.whole) return mergeStats(ph.services.filter(x => !pl.svcs || pl.svcs.includes(x.id)).map(x => x.stats).concat(pl.svcs ? [] : [ph.rest]));
   if(pl.rest === 1) return ph.rest;
   const sv = ph.services.find(x => x.id === pl.service); return sv && sv.stats;
 }
@@ -1435,7 +1461,6 @@ function loadSel(){
     plan.forEach((pl, i) => keyIdx[planKey(pl)] = i);
     parts.forEach(pt => pt.items = lists[keyIdx[pt.key]] || []);
     [].concat(...lists).forEach(it => { if(!it.datum) return; sh.booked.add(it.datum); if(it.billed) sh.billed.add(it.datum); });
-    autoZeitraum();
     if(DP.el && !DP.el.hidden) dpRender();
   });
 }
@@ -1470,40 +1495,67 @@ function defaultUe(h){
            : { von: '', bis: '', rechnung: '', stunden: 0, choice: 'none', auto: true };
 }
 function zrNote(m, c){ const el = document.getElementById('zr-note'); if(el){ el.textContent = m || ''; el.className = 'sub ' + (c || ''); } }
-function setZR(von, bis){
-  model.meta.zeitraum.von = von || ''; model.meta.zeitraum.bis = bis || '';
-  $('#f-von').value = deDateS(von); $('#f-bis').value = deDateS(bis);
-}
+/* Zeitraum je Leistung: automatisch Beginn der Leistung (kumulativ: Tag nach dem Übertrag)
+   bis heute – bis man ihn von Hand ändert (↺ setzt zurück). */
 function autoZeitraum(){
-  const h = SH; $('#zr-reset').hidden = zrAuto || !h || !h.all;
-  if(!h || h.loading) return;
+  const h = SH, box = document.getElementById('lst-box');
+  if(!h){ box.innerHTML = ''; zrNote(''); return; }
+  if(h.loading) return;
   if(h.error){ zrNote('Zeiträume nicht geladen – AppSheet hat zu langsam geantwortet. Bitte „Erneut laden“.', 'err'); $('#zr-retry').hidden = false; return; }
   $('#zr-retry').hidden = true;
-  if(h.empty){ zrNote('Für diese Auswahl gibt es noch keine Zeiteinträge.', 'err'); return; }
-  let von = h.all.von, note = 'Aus AppSheet: erster Eintrag ' + deDateS(h.all.von) + ' · letzter Eintrag ' + deDateS(h.all.bis);
-  if(isKum()){
-    // je Leistung beginnt „neu“ nach ihrem Übertrag; der Zeitraum startet beim frühesten neuen Eintrag
-    const starts = h.parts.map(pt => {
-      const ub = ueOf(pt.key).bis || '';
-      if(!pt.items) return !ub ? pt.h.all.von : (pt.h.all.bis > ub ? dayAfter(ub) : null);
-      const it = pt.items.filter(x => x.datum > ub).sort((a, b) => a.datum.localeCompare(b.datum))[0]; return it && it.datum;
-    }).filter(Boolean).sort();
-    const ends = h.parts.map(pt => ueOf(pt.key).bis).filter(Boolean).sort();
-    if(starts.length) von = starts[0]; else if(ends.length) von = dayAfter(ends[ends.length - 1]);
-    if(ends.length) note += ' · neu seit dem Übertrag ab ' + deDateS(von);
-    else note += ' · noch nichts abgerechnet';
-  }
-  if(zrAuto) setZR(von, todayIso() > h.all.bis ? todayIso() : h.all.bis);   // bis heute
-  // Warnung: offene (nicht abgerechnete) Stunden vor dem Zeitraum, die auch nicht im Übertrag stecken
-  const zv = model.meta.zeitraum.von, miss = [];
-  if(zv) h.parts.forEach(pt => {
-    if(!pt.items) return;
-    const u = isKum() ? ueOf(pt.key) : {}, lost = pt.items.filter(it => !it.billed && it.datum < zv && !(u.von && u.bis && it.datum >= u.von && it.datum <= u.bis));
-    if(lost.length) miss.push(lost.reduce((a, it) => a + (Number(it.stunden) || 0), 0));
+  if(h.empty || !h.parts){ box.innerHTML = ''; zrNote('Für diese Auswahl gibt es noch keine Zeiteinträge.', 'err'); return; }
+  zrNote('');
+  const today = todayIso();
+  h.parts.forEach(pt => {
+    const cur = model.ranges[pt.key]; if(cur && !cur.auto) return;
+    const ub = isKum() ? ueOf(pt.key).bis : '';
+    model.ranges[pt.key] = { von: ub ? dayAfter(ub) : pt.h.all.von, bis: today > pt.h.all.bis ? today : pt.h.all.bis, auto: true };
   });
-  const ms = miss.reduce((a, b) => a + b, 0);
-  zrNote((zrAuto ? note : note + ' · Zeitraum von Hand gesetzt') + (miss.length ? '  ·  Achtung: ' + hours(ms) + ' noch nicht abgerechnet liegen vor diesem Zeitraum (' + miss.length + (miss.length === 1 ? ' Leistung)' : ' Leistungen)') : ''), miss.length ? 'err' : '');
+  const rs = h.parts.map(pt => model.ranges[pt.key]);
+  model.meta.zeitraum = { von: rs.map(r => r.von).sort()[0] || '', bis: rs.map(r => r.bis).sort().pop() || '' };
+  renderRanges();
 }
+function renderRanges(){
+  const box = document.getElementById('lst-box'), h = SH;
+  if(!h || !h.parts){ box.innerHTML = ''; return; }
+  const p = TT.curProject(), split = model.settings.split, phases = [];
+  h.parts.forEach(pt => { if(!phases.includes(pt.phase)) phases.push(pt.phase); });
+  box.innerHTML = '<label class="ue-lbl">Tabellen und Zeiträume</label>' + phases.map(phId => {
+    const ph = p && p.phases.find(x => x.id === phId), mode = split[phId] === 'phase' ? 'phase' : 'leistung';
+    const head = `<div class="zr-ph"><b>${escapeHtml(ph ? ph.name : phId || 'ohne Phase')}</b>` +
+      `<span class="seg" data-ph="${escapeHtml(phId)}"><button class="${mode === 'phase' ? 'on' : ''}" data-split="phase">Ganze Phase</button>` +
+      `<button class="${mode === 'leistung' ? 'on' : ''}" data-split="leistung">Je Leistung</button></span></div>`;
+    return head + h.parts.filter(pt => pt.phase === phId).map(rangeLine).join('');
+  }).join('');
+}
+function rangeLine(pt){
+    const r = model.ranges[pt.key] || {};
+    const label = pt.whole ? 'eine Tabelle für die ganze Phase' : (pt.rest === 1 ? 'ohne Leistung' : pt.short.split(' — ').slice(-1)[0]);
+    return `<div class="zr-line" data-key="${escapeHtml(pt.key)}"><span class="zr-name">${escapeHtml(label)}</span>` +
+      `<input type="text" class="dp" data-r="von" value="${deDateS(r.von)}" placeholder="von" autocomplete="off">` +
+      `<input type="text" class="dp" data-r="bis" value="${deDateS(r.bis)}" placeholder="bis" autocomplete="off">` +
+      `<button class="ghost" data-rr title="Wieder automatisch (Beginn bis heute)"${r.auto ? ' hidden' : ''}>↺</button></div>`;
+}
+$('#lst-box').addEventListener('change', e => {
+  const f = e.target.dataset.r, line = e.target.closest('.zr-line'); if(!f || !line) return;
+  const iso = parseDateDE(e.target.value);
+  if(iso === null){ e.target.classList.add('bad'); return; }
+  e.target.classList.remove('bad'); e.target.value = deDateS(iso);
+  const key = line.dataset.key;
+  model.ranges[key] = Object.assign({}, model.ranges[key], { [f]: iso, auto: false });
+  line.querySelector('[data-rr]').hidden = false;
+  scheduleRebuild();
+});
+$('#lst-box').addEventListener('click', e => {
+  if(e.target.dataset.split){
+    const ph = e.target.closest('.seg').dataset.ph;
+    model.settings.split[ph] = e.target.dataset.split; loadSel(); return;
+  }
+  if(!('rr' in e.target.dataset)) return;
+  const key = e.target.closest('.zr-line').dataset.key;
+  if(model.ranges[key]) model.ranges[key].auto = true;
+  autoZeitraum(); scheduleRebuild();
+});
 
 /* Einträge + Tabellen automatisch aus Auswahl, Zeitraum und Übertrag bilden.
    Von Hand geänderte Zeilen (Text, Stunden …), eigene Zeilen und geänderte Titel bleiben erhalten. */
@@ -1518,7 +1570,7 @@ async function rebuildEntries(){
   const p = TT.curProject(); if(!p || !TT.api) return;
   const tok = {}; rbTok = tok;
   const name = model.meta.projekt.name || p.name, plan = buildPlan(model.settings.scope, p, name);
-  const from = model.meta.zeitraum.von || '', to = model.meta.zeitraum.bis || '', onlyOpen = $('#f-only-open').checked;
+  const onlyOpen = $('#f-only-open').checked;
   // was der Nutzer angepasst hat, merken
   const edited = {}, manual = [], titles = {};
   model.items.forEach(it => { if(it.recordId && it._edit) edited[it.recordId] = it; else if(!it.recordId && (it.taetigkeit || it.stunden)) manual.push(it); });
@@ -1527,7 +1579,8 @@ async function rebuildEntries(){
     const groups = [], items = []; let skipped = 0;
     plan.forEach((pl, i) => {
       const key = planKey(pl), ub = isKum() ? ueOf(key).bis : '';
-      let rows = lists ? lists[i].filter(it => (!from || it.datum >= from) && (!to || it.datum <= to)) : [];
+      const rg = model.ranges[key] || {};
+      let rows = lists ? lists[i].filter(it => (!rg.von || it.datum >= rg.von) && (!rg.bis || it.datum <= rg.bis)) : [];
       if(onlyOpen){ skipped += rows.filter(it => it.billed).length; rows = rows.filter(it => !it.billed); }
       if(ub) rows = rows.filter(it => it.datum > ub);                     // schon im Übertrag enthalten
       const own = manual.filter(it => it.gk === key);
@@ -1634,7 +1687,9 @@ function dpOpen(input){
     });
   }
   DP.input = input;
-  const iso = parseDateDE(input.value) || (SH && SH.all && SH.all.bis) || new Date().toISOString().slice(0, 10);
+  const host = input.closest('[data-key]'); DP.key = host ? host.dataset.key : '';
+  const pt0 = DP.key && SH && SH.parts ? SH.parts.find(x => x.key === DP.key) : null;
+  const iso = parseDateDE(input.value) || (pt0 && pt0.h.all.von) || (SH && SH.all && SH.all.bis) || todayIso();
   DP.y = +iso.slice(0, 4); DP.m = +iso.slice(5, 7) - 1;
   dpRender(); DP.el.hidden = false;
   const r = input.getBoundingClientRect(), h = DP.el.offsetHeight;
@@ -1645,19 +1700,26 @@ function dpClose(){ if(DP.el) DP.el.hidden = true; DP.input = null; }
 function dpRender(){
   const first = new Date(DP.y, DP.m, 1), lead = (first.getDay() + 6) % 7, days = new Date(DP.y, DP.m + 1, 0).getDate();
   const cur = parseDateDE(DP.input.value), kum = isKum();
+  // Markierungen: nur die Leistung dieses Feldes, sonst die ganze Auswahl
+  const pt = DP.key && SH && SH.parts ? SH.parts.find(x => x.key === DP.key) : null;
+  let edges = SH && SH.edges, booked = SH && SH.booked, billed = SH && SH.billed;
+  if(pt){
+    edges = {}; [['Beginn', pt.h.all.von], ['Ende (letzter Eintrag)', pt.h.all.bis]].forEach(([w, d]) => (edges[d] = edges[d] || []).push(w));
+    if(pt.items){ booked = new Set(pt.items.map(it => it.datum)); billed = new Set(pt.items.filter(it => it.billed).map(it => it.datum)); }
+  }
   let cells = '<span></span>'.repeat(lead);
   for(let d = 1; d <= days; d++){
     const iso = `${DP.y}-${String(DP.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`, cls = [];
-    const edge = SH && SH.edges && SH.edges[iso];
+    const edge = edges && edges[iso];
     if(edge) cls.push('edge');
-    if(SH && SH.booked && SH.booked.has(iso)) cls.push(kum && SH.billed.has(iso) ? 'bl' : 'bk');
+    if(booked && booked.has(iso)) cls.push(kum && billed && billed.has(iso) ? 'bl' : 'bk');
     if(iso === cur) cls.push('cur');
     cells += `<button type="button" data-d="${iso}" class="${cls.join(' ')}"${edge ? ` title="${escapeHtml(edge.join('\n'))}"` : ''}>${d}</button>`;
   }
   const mon = first.toLocaleDateString('de-DE', { month:'long', year:'numeric' });
   DP.el.innerHTML = `<div class="dp-h"><button type="button" data-nav="-1">‹</button><span>${mon}</span><button type="button" data-nav="1">›</button></div>` +
     `<div class="dp-g">${['Mo','Di','Mi','Do','Fr','Sa','So'].map(x => `<i>${x}</i>`).join('')}${cells}</div>` +
-    (SH && SH.all ? `<div class="dp-l"><b><i class="edge"></i>Beginn/Ende einer Leistung</b> <b><i class="bk"></i>Buchung</b>${kum ? ' <b><i class="bl"></i>abgerechnet</b>' : ''}</div>` : '');
+    (SH && SH.all ? `<div class="dp-l"><b><i class="edge"></i>${pt ? 'Beginn/Ende dieser Leistung' : 'Beginn/Ende einer Leistung'}</b> <b><i class="bk"></i>Buchung</b>${kum ? ' <b><i class="bl"></i>abgerechnet</b>' : ''}</div>` : '');
 }
 document.addEventListener('focusin', e => { if(e.target.classList && e.target.classList.contains('dp')) dpOpen(e.target); });
 document.addEventListener('mousedown', e => { if(DP.el && !DP.el.hidden && e.target !== DP.input && !DP.el.contains(e.target)) dpClose(); });
@@ -1668,16 +1730,8 @@ document.addEventListener('input', e => {                 // beim Tippen mitblä
 });
 document.addEventListener('scroll', e => { if(DP.el && !DP.el.hidden && !DP.el.contains(e.target)) dpClose(); }, true);
 
-/* Hauptzeitraum von/bis */
-['von', 'bis'].forEach(f => $('#f-' + f).addEventListener('change', e => {
-  const iso = parseDateDE(e.target.value);
-  if(iso === null){ e.target.classList.add('bad'); return; }
-  e.target.classList.remove('bad'); e.target.value = deDateS(iso);
-  model.meta.zeitraum[f] = iso; zrAuto = false; autoZeitraum(); render(); scheduleRebuild();
-}));
-$('#zr-reset').onclick = () => { zrAuto = true; autoZeitraum(); render(); scheduleRebuild(); };
-$('#f-only-open').addEventListener('change', scheduleRebuild);
 $('#zr-retry').onclick = () => { $('#zr-retry').hidden = true; loadSel(); };
+$('#f-only-open').addEventListener('change', scheduleRebuild);
 
 $('#f-kum').addEventListener('change', e=>{
   model.settings.kumulativ = e.target.checked;
@@ -1695,7 +1749,7 @@ $('#btn-open').onclick = ()=> $('#file-open').click();
 $('#file-open').onchange = e=>{
   const f=e.target.files[0]; if(!f) return;
   const rd=new FileReader();
-  rd.onload=()=>{ try{ model=JSON.parse(rd.result); zrAuto = false; syncForm(); renderEntries(); render(); }catch(err){ alert('Datei nicht lesbar: '+err); } };
+  rd.onload=()=>{ try{ model=JSON.parse(rd.result); syncForm(); renderEntries(); render(); }catch(err){ alert('Datei nicht lesbar: '+err); } };
   rd.readAsText(f);
 };
 $('#btn-pdf').onclick   = ()=>{ try{ exportPDF(); }catch(err){ alert('PDF-Export fehlgeschlagen: '+err); console.error(err); } };
@@ -1708,7 +1762,6 @@ function syncForm(){
   g('#f-place',model.header.place); g('#f-date',model.header.date);
   g('#f-auftrag-nr',model.meta.auftrag.nr); g('#f-auftrag-bez',model.meta.auftrag.bez);
   g('#f-proj-name',model.meta.projekt.name); g('#f-proj-adr',model.meta.projekt.adresse);
-  g('#f-von',deDateS(model.meta.zeitraum.von)); g('#f-bis',deDateS(model.meta.zeitraum.bis));
   $('#f-einheit').value = model.settings.einheit; $('#f-stdtag').value = model.settings.stundenProTag;
   $('#f-tabtitle').value = model.settings.title || '';
   applyKumUI(); renderUe(); renderSingleScope();
