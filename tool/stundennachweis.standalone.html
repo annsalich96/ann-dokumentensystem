@@ -85,26 +85,28 @@ button:disabled{opacity:.4;cursor:not-allowed}
 #entries-wrap>summary::before{content:"▸ ";color:var(--ink)}#entries-wrap[open]>summary::before{content:"▾ "}
 #entries{margin-top:8px;border:1px solid var(--ui-border);border-radius:8px;overflow-x:auto;overflow-y:visible}
 #entries .e-head,#entries .e-row{display:grid;
-  grid-template-columns:var(--c1,120px) var(--c2,240px) var(--c3,175px) 82px 34px;
-  width:max-content;min-width:100%}
+  grid-template-columns:var(--c1,132px) minmax(var(--c2,240px),1fr) var(--c3,150px) 82px 34px;
+  width:100%;min-width:calc(var(--c1,132px) + var(--c2,240px) + var(--c3,150px) + 116px)}
 #entries .e-head{background:var(--ui-bg);font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ui-muted)}
 #entries .e-head>div{padding:9px 10px;position:relative}
 #entries .e-head .grip{position:absolute;top:0;bottom:0;right:-1px;width:10px;cursor:col-resize;z-index:2}
 #entries .e-head .grip:hover{background:var(--ink);opacity:.2}
 #entries .e-row>*{border-top:1px solid var(--ui-border);min-width:0}
-#entries input{border:0;border-radius:0;font-size:13.5px;padding:9px 10px;width:100%}
-#entries input:focus{outline:2px solid var(--ink);outline-offset:-2px}
+#entries input,#entries textarea{border:0;border-radius:0;font-size:13.5px;padding:9px 10px;width:100%}
+#entries input:focus,#entries textarea:focus{outline:2px solid var(--ink);outline-offset:-2px}
+#entries textarea.taet{display:block;resize:none;overflow:hidden;line-height:1.4;font-family:inherit;min-height:0}
+#entries .e-row{align-items:start}
 #entries .del{border:0;background:#fff;color:#B0291E;font-size:17px;padding:0;cursor:pointer}
 #entries .num{text-align:right}
 #entries .e-taet{display:flex;flex-direction:column;min-width:0}
-#entries .e-taet>input{flex:0 0 auto}
+#entries .e-taet>textarea{flex:0 0 auto}
 #entries .e-orig{display:flex;align-items:flex-start;gap:6px;padding:2px 10px 7px;
   font-size:11px;line-height:1.35;color:var(--ui-muted)}
 #entries .e-orig>span{flex:1;min-width:0}
 #entries .e-orig>.revert{flex:0 0 auto;border:1px solid var(--ui-border);background:#fff;
   border-radius:4px;cursor:pointer;font-size:11px;line-height:16px;padding:0 5px;color:var(--ui-muted)}
 #entries .e-orig>.revert:hover{color:var(--ink);border-color:var(--ink)}
-#entries .e-over{font-size:11px;color:#B0291E;padding:2px 10px 6px}
+#entries .e-over{overflow-wrap:anywhere;font-size:11px;color:#B0291E;padding:2px 10px 6px}
 .e-total{display:flex;justify-content:space-between;width:max-content;min-width:100%;
   font-size:13.5px;font-weight:700;padding:11px 10px;box-sizing:border-box}
 /* Kumulativer Nachweis: Tabellen (Phase/Leistung) mit Übertrag */
@@ -834,7 +836,7 @@ function renderEntries(){
     row.innerHTML =
       `<input type="date" data-i="${i}" data-k="datum" value="${r.datum||''}">`+
       `<div class="e-taet">`+
-        `<input type="text" data-i="${i}" data-k="taetigkeit" value="${escapeHtml(r.taetigkeit)}">`+
+        `<textarea class="taet" rows="1" data-i="${i}" data-k="taetigkeit">${escapeHtml(r.taetigkeit)}</textarea>`+
         (hasOrig ? `<div class="e-orig"><span>${escapeHtml(r.taetigkeitOriginal)}</span><button class="revert" data-i="${i}" title="Originaltext übernehmen">↺</button></div>` : ``)+
         (over ? `<div class="e-over">${TAET_OVER_MSG}</div>` : ``)+
       `</div>`+
@@ -859,7 +861,18 @@ function renderEntries(){
   const tot = document.createElement('div'); tot.className='e-total';
   tot.innerHTML = `<span>${isKum() ? 'Gesamt aktuell' : 'Gesamt'}</span><span id="e-total-val">${editorTotalLabel()}</span>`;
   entriesBox.appendChild(tot);
+  fitTaet();
 }
+/* Tätigkeit-Felder wachsen mit dem Text, damit der ganze Satz sichtbar ist */
+function fitTaet(el){
+  (el ? [el] : entriesBox.querySelectorAll('textarea.taet')).forEach(t=>{
+    if(!t.offsetParent) return;                       // zugeklappt: beim Aufklappen nachholen
+    t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px';
+  });
+}
+document.getElementById('entries-wrap').addEventListener('toggle', ()=>fitTaet());
+window.addEventListener('resize', ()=>fitTaet());
+entriesBox.addEventListener('keydown', e=>{ if(e.key === 'Enter' && e.target.matches('textarea.taet')) e.preventDefault(); });
 function updateTotal(){ const el = $('#e-total-val'); if(el) el.textContent = editorTotalLabel(); }
 
 /* Tippen: nur Modell + Vorschau + Summe aktualisieren — NICHT die Eingabefelder neu bauen
@@ -870,6 +883,7 @@ entriesBox.addEventListener('input', e=>{
   model.items[i]._edit = true;
   model.items[i][k] = k==='stunden' ? parseFloat(e.target.value)||0 : e.target.value;
   if(k==='taetigkeit'){
+    fitTaet(e.target);
     const cell = e.target.closest('.e-taet'); let ov = cell && cell.querySelector('.e-over');
     if(!taetFitsLines(e.target.value)){
       if(!ov){ ov = document.createElement('div'); ov.className = 'e-over'; cell.appendChild(ov); }
