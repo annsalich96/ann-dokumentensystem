@@ -101,10 +101,11 @@ button:disabled{opacity:.4;cursor:not-allowed}
 #entries .e-blk{display:flex;justify-content:space-between;align-items:center;gap:12px;width:max-content;min-width:100%;
   background:var(--ui-bg);border-top:1px solid var(--ui-border);padding:7px 10px;font-size:12.5px;font-weight:700}
 #entries .e-blk button,.blk .blk-h button{font-size:12px;padding:3px 10px}
+#entries .e-blk button{white-space:nowrap;flex:0 0 auto}#editor #entries .e-blk input{flex:1;font-weight:700;font-size:13px;padding:6px 10px}
 .blk{border:1px solid var(--ui-border);border-radius:8px;padding:14px 16px;margin-top:14px}
 .blk .blk-h{font-size:12.5px;font-weight:700;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center}
 .blk .ok{color:#4A7C59}.blk .err{color:#B0291E}
-.blk .hist{background:#F7F6F3;border-radius:6px;padding:10px 12px;font-size:12.5px;line-height:1.55}
+.hist{background:#F7F6F3;border-radius:6px;padding:10px 12px;font-size:12.5px;line-height:1.55}
 .scope details{border:1px solid var(--ui-border);border-radius:6px;background:#fff}
 .scope summary{cursor:pointer;padding:7px 10px;font-size:13px;list-style:none}
 .scope summary::after{content:"▾";float:right;color:var(--ui-muted)}
@@ -113,7 +114,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 #editor .scope label{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;gap:8px;margin:4px 0;font-weight:400;font-size:13px;color:var(--ink)}
 #editor .scope label.ph{font-weight:700;margin-top:8px}#editor .scope .svcs{padding-left:24px}
 #editor .scope input[type=checkbox]{width:auto;flex:0 0 auto;margin:0;padding:0}
-.blk .hist b{font-weight:700}.blk .hist ul{margin:4px 0 0;padding-left:16px}
+.hist b{font-weight:700}.hist ul{margin:4px 0 0;padding-left:16px}.hist.err{color:#B0291E}
 .chk{display:flex!important;flex-direction:row!important;align-items:center;gap:8px;font-size:13.5px!important;color:var(--ink)!important;margin:0 0 16px!important}
 .chk input{width:auto!important}
 
@@ -216,7 +217,8 @@ button:disabled{opacity:.4;cursor:not-allowed}
   <label class="chk"><input type="checkbox" id="f-kum"> Kumulativer Nachweis – Tabellen je Phase/Leistung mit Übertrag</label>
   <div class="fg">
     <div class="fld wide single-only" id="scope-single"></div>
-    <div class="fld wide single-only"><label>Tabellentitel (automatisch: Projekt — Phase — Leistung, änderbar)</label><input type="text" id="f-tabtitle"></div>
+    <div class="fld wide single-only" id="hist-single"></div>
+    <div class="fld wide single-only"><label>Tabellentitel (automatisch, änderbar – nach „Einträge laden“ bekommt jede Leistung ihre eigene Tabelle)</label><input type="text" id="f-tabtitle"></div>
     <div class="fld"><label id="l-von">von</label><input type="date" id="f-von"></div>
     <div class="fld"><label id="l-bis">bis</label><input type="date" id="f-bis"></div>
   </div>
@@ -401,6 +403,7 @@ function totalHours(){ return model.items.reduce((s,r)=>s+(Number(r.stunden)||0)
 function normalizeModel(){
   model.settings = Object.assign({ einheit:"stunden", stundenProTag:8, kumulativ:false }, model.settings || {});
   if(!Array.isArray(model.blocks)) model.blocks = [];
+  if(!Array.isArray(model.groups)) model.groups = [];
   model.blocks.forEach(bl => { bl.ue = Object.assign({ von:"", bis:"", rechnung:"", stunden:0 }, bl.ue || {}); });
   if(model.meta && model.meta.rechnung == null) model.meta.rechnung = "";
   if(model.header.projektzeile == null) model.header.projektzeile = defaultProjektzeile();
@@ -424,6 +427,14 @@ function blockTotals(bi){
   if(!isTage()) return { ue:hours(ue), akt:hours(akt), kum:hours(ue + akt) };
   const f = (+model.settings.stundenProTag) || 8, du = roundQuarter(ue/f), da = roundQuarter(akt/f);
   return { ue:fmtDays(du), akt:fmtDays(da), kum:fmtDays(du + da) };
+}
+/* Normaler Modus: eine Tabelle je Phase/Leistung (model.groups, Einträge mit it.g).
+   Ohne Gruppen (Demodaten, von Hand) bleibt es eine Tabelle mit settings.title. */
+function hasGroups(){ return !isKum() && model.groups && model.groups.length > 0; }
+function groupItems(gi){ return model.items.filter(it => (it.g || 0) === gi); }
+function sumLabel(list){
+  const h = list.reduce((s,r)=>s+(Number(r.stunden)||0),0);
+  return isTage() ? fmtDays(roundQuarter(h / ((+model.settings.stundenProTag) || 8))) : hours(h);
 }
 function ueRange(ue){ return ue && ue.von && ue.bis ? deDateS(ue.von) + ' - ' + deDateS(ue.bis) : (ue && (ue.von || ue.bis) ? deDateS(ue.von || ue.bis) : ''); }
 
@@ -478,17 +489,23 @@ function layoutBody(){
 
   newPage(true);
   if(!isKum()){
-    const tt = (model.settings.title || '').trim();
-    if(tt){
-      const titleK = Math.max(DS.table.topRuleK_first - 2, metaLastK() + DS.meta.gapK);
-      B('s-blocktitle', {leftMM:X1, k:titleK, span:2}, tt);
-      head(titleK + 2);
-    } else head(firstTableK());
-    rows(model.items, DS.total.span);
     const gs = DS.total.span;
-    B('s-total', {leftMM:XT, k, span:gs}, 'Gesamt');
-    B('s-total', {right:true, k, span:gs}, totalDocLabel());
-    L(k + gs, XT, XR);                                    // Linie nur unter dem Summenblock
+    const tables = hasGroups()
+      ? model.groups.map((gr, gi) => ({ title: gr.title, list: groupItems(gi) }))
+      : [{ title: model.settings.title, list: model.items }];
+    let titleK = Math.max(DS.table.topRuleK_first - 2, metaLastK() + DS.meta.gapK);
+    tables.forEach((tb, ti) => {
+      const tt = (tb.title || '').trim();
+      if(ti > 0 && titleK + 2 + 1 + (tb.list.length ? rowSpanOf(tb.list[0]) : gs) > LIMIT){ newPage(false); titleK = DS.table.topRuleK_cont; }
+      if(tt){ B('s-blocktitle', {leftMM:X1, k:titleK, span:2}, tt); head(titleK + 2); }
+      else head(ti === 0 ? firstTableK() : titleK);
+      rows(tb.list, gs);
+      B('s-total', {leftMM:XT, k, span:gs}, 'Gesamt');
+      B('s-total', {right:true, k, span:gs}, tables.length > 1 ? sumLabel(tb.list) : totalDocLabel());
+      L(k + gs, XT, XR);                                  // Linie nur unter dem Summenblock
+      k += gs;
+      titleK = k + 2;                                     // zwei Rasterzeilen Abstand zur nächsten Tabelle
+    });
   } else {
     let titleK = Math.max(DS.table.topRuleK_first - 2, metaLastK() + DS.meta.gapK);
     model.blocks.forEach((bl, bi) => {
@@ -791,7 +808,15 @@ function renderEntries(){
       entriesBox.appendChild(h);
       model.items.forEach((r,i)=>{ if((r.b || 0) === bi) addRow(r,i); });
     });
+  } else if(hasGroups()){
+    model.groups.forEach((gr,gi)=>{
+      const h = document.createElement('div'); h.className = 'e-blk';
+      h.innerHTML = `<input type="text" data-gt="${gi}" value="${escapeHtml(gr.title || '')}" title="Tabellentitel"><button class="ghost" data-addg="${gi}">+ Zeile</button>`;
+      entriesBox.appendChild(h);
+      model.items.forEach((r,i)=>{ if((r.g || 0) === gi) addRow(r,i); });
+    });
   } else model.items.forEach(addRow);
+  const tf = document.getElementById('f-tabtitle'); if(tf) tf.closest('.fld').hidden = isKum() || hasGroups();   // bei Gruppen: Titel je Tabelle oben in der Liste
   const tot = document.createElement('div'); tot.className='e-total';
   tot.innerHTML = `<span>${isKum() ? 'Gesamt aktuell' : 'Gesamt'}</span><span id="e-total-val">${editorTotalLabel()}</span>`;
   entriesBox.appendChild(tot);
@@ -801,6 +826,7 @@ function updateTotal(){ const el = $('#e-total-val'); if(el) el.textContent = ed
 /* Tippen: nur Modell + Vorschau + Summe aktualisieren — NICHT die Eingabefelder neu bauen
    (sonst verliert das Feld den Fokus mitten im Satz). */
 entriesBox.addEventListener('input', e=>{
+  if(e.target.dataset.gt != null){ model.groups[+e.target.dataset.gt].title = e.target.value; render(); return; }
   const i=+e.target.dataset.i, k=e.target.dataset.k; if(k==null) return;
   model.items[i][k] = k==='stunden' ? parseFloat(e.target.value)||0 : e.target.value;
   if(k==='taetigkeit'){
@@ -815,6 +841,10 @@ entriesBox.addEventListener('input', e=>{
 entriesBox.addEventListener('click', e=>{
   if(e.target.dataset.addb != null){
     model.items.push({datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0,b:+e.target.dataset.addb});
+    renderEntries(); render(); return;
+  }
+  if(e.target.dataset.addg != null){
+    model.items.push({datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0,g:+e.target.dataset.addg});
     renderEntries(); render(); return;
   }
   if(e.target.classList.contains('del')){
@@ -871,6 +901,7 @@ $('#btn-demo').onclick = ()=>{
     datum:`2026-08-${String(3+k).padStart(2,'0')}`, taetigkeit:acts[k%6],
     bearbeiter:"Ann-Kathrin Salich", stunden:[0.5,1,2,1.5,3,0.75][k%6]
   }));
+  model.groups = [];
   if(!model.settings.title){ model.settings.title = 'Beispielprojekt — Phase 05 — Ausführungsplanung'; $('#f-tabtitle').value = model.settings.title; }
   renderEntries(); render();
 };
@@ -962,7 +993,7 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
   }
   selP.onchange = async () => {
     const p = curProject();
-    model.settings.scope = null; renderSingleScope(); refreshAutoTitles();
+    model.settings.scope = null; renderSingleScope(); refreshAutoTitles(); loadSingleHistory();
     loadBtn.disabled = !p;
     renderBlocks();
     if(!p) return;
@@ -996,9 +1027,8 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
     try{
       const onlyOpen = $('#f-only-open').checked, from = $('#f-von').value || '', to = $('#f-bis').value || '';
       // Kumulativ: je Tabelle (Phase/Leistung) laden; sonst wie bisher eine Auswahl
-      const queries = isKum()
-        ? model.blocks.map((bl, b) => ({ b, sel: blockSel(bl) }))
-        : [{ b: null, sel: model.settings.scope }];
+      if(!isKum()){ await loadGroups(onlyOpen, from, to, mapIt); return; }
+      const queries = model.blocks.map((bl, b) => ({ b, sel: blockSel(bl) }));
       if(!queries.length){ say('Erst eine Tabelle anlegen (+ Tabelle).', 'err'); return; }
       const d = { unresolved: 0 }; let skipped = 0, items = [];
       for(const q of queries){
@@ -1019,6 +1049,30 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
       say('Laden fehlgeschlagen: ' + e.message, 'err');
     }finally{ loadBtn.disabled = false; }
   };
+
+  /* Normaler Modus: je Leistung eine Tabelle. Ganze Phasen werden in ihre Leistungen
+     aufgeteilt; Einträge der Phase ohne Leistung (bzw. des Projekts ohne Phase) bekommen
+     eine eigene Tabelle. Abfragen laufen parallel (max. 6 gleichzeitig). */
+  async function loadGroups(onlyOpen, from, to, mapIt){
+    const p = curProject(), plan = buildPlan(model.settings.scope, p, model.meta.projekt.name || p.name);
+    const { lists, unresolved } = await runPlan(plan, { from, to });
+    let skipped = 0;
+    model.groups = []; model.items = [];
+    plan.forEach((pl, i) => {
+      let rows = lists[i];
+      if(onlyOpen){ skipped += rows.filter(it => it.billed).length; rows = rows.filter(it => !it.billed); }
+      if(!rows.length) return;
+      const gi = model.groups.length;
+      model.groups.push({ title: pl.title });
+      rows.forEach(it => { const o = mapIt(it); o.g = gi; model.items.push(o); });
+    });
+    $('#btn-ki-reset').hidden = true;
+    $('#btn-unbill').hidden = !model.items.some(it => it.billed);
+    renderEntries(); render();
+    const warn = unresolved ? '  ·  ' + unresolved + ' ohne Tätigkeitsname' : '';
+    const sk = skipped ? '  ·  ' + skipped + ' bereits abgerechnet ausgeblendet' : '';
+    say(model.items.length + ' Einträge in ' + model.groups.length + ' Tabellen · ' + hours(totalHours()) + warn + sk, unresolved ? 'err' : 'ok');
+  }
 
   /* ---- KI: Tätigkeitsbeschreibungen aufbereiten ---- */
   const kistatus = (m,c)=>{ const el=$('#ki-status'); if(el){ el.textContent=m||''; el.className='sub '+(c||''); } };
@@ -1258,7 +1312,7 @@ function refreshAutoTitles(){
   (model.blocks || []).forEach(bl => { const a = autoTitle(bl); if(!bl.title || bl.title === bl._auto) bl.title = a; bl._auto = a; });
 }
 function onScopeChange(key, sel){
-  if(key === 'single'){ model.settings.scope = sel; renderSingleScope(); refreshAutoTitles(); render(); return; }
+  if(key === 'single'){ model.settings.scope = sel; renderSingleScope(); refreshAutoTitles(); render(); loadSingleHistory(); return; }
   const bi = +key, bl = model.blocks[bi]; if(!bl) return;
   bl.sel = sel;
   const t = autoTitle(bl);
@@ -1335,18 +1389,104 @@ async function loadHistory(bi){
   try{
     const d = await fetchScope({}, blockSel(bl));
     if(bl._hTok !== tok) return;
-    const items = (d.items || []).filter(it => it.datum);
-    const sum = l => Math.round(l.reduce((s, it) => s + (Number(it.stunden) || 0), 0) * 100) / 100;
-    const range = l => ({ von: l[0].datum, bis: l[l.length-1].datum, std: sum(l), n: l.length });
-    const byDoc = {};
-    items.filter(it => it.billed).forEach(it => (byDoc[it.billedDoc || ''] = byDoc[it.billedDoc || ''] || []).push(it));
-    const docs = Object.keys(byDoc).map(k => Object.assign({ doc:k }, range(byDoc[k]))).sort((a, b) => a.bis.localeCompare(b.bis));
-    let kum = 0; docs.forEach(g => { kum += g.std; g.kum = Math.round(kum * 100) / 100; });
-    const open = items.filter(it => !it.billed);
-    HIST.set(bl, items.length ? { all: range(items), docs, open: open.length ? range(open) : null } : { empty:true });
+    HIST.set(bl, histOf(d.items || []));
   }catch(e){ if(bl._hTok !== tok) return; HIST.set(bl, { error: e.message }); }
   renderBlocks();
 }
+/* Verlauf aus Zeiteinträgen: Beginn/Ende, Stunden je Abrechnungsdokument, noch offen */
+function histOf(list){
+  const items = list.filter(it => it.datum).sort((a, b) => a.datum.localeCompare(b.datum));
+  if(!items.length) return { empty:true };
+  const sum = l => Math.round(l.reduce((s, it) => s + (Number(it.stunden) || 0), 0) * 100) / 100;
+  const range = l => ({ von: l[0].datum, bis: l[l.length-1].datum, std: sum(l), n: l.length });
+  const byDoc = {};
+  items.filter(it => it.billed).forEach(it => (byDoc[it.billedDoc || ''] = byDoc[it.billedDoc || ''] || []).push(it));
+  const docs = Object.keys(byDoc).map(k => Object.assign({ doc:k }, range(byDoc[k]))).sort((a, b) => a.bis.localeCompare(b.bis));
+  let kum = 0; docs.forEach(g => { kum += g.std; g.kum = Math.round(kum * 100) / 100; });
+  const open = items.filter(it => !it.billed);
+  return { all: range(items), docs, open: open.length ? range(open) : null };
+}
+function histSummary(h){
+  const rg = g => deDateS(g.von) + ' – ' + deDateS(g.bis);
+  const lines = h.docs.map(g => `<li>${escapeHtml(g.doc || 'abgebucht ohne Rechnungsnr.')}: ${rg(g)} · ${hours(g.std)}</li>`);
+  if(h.open) lines.push(`<li>noch nicht abgebucht: ${rg(h.open)} · ${hours(h.open.std)}</li>`);
+  return `Beginn (erster Eintrag): <b>${deDateS(h.all.von)}</b> · letzter Eintrag: ${deDateS(h.all.bis)} · gesamt ${hours(h.all.std)}<ul>${lines.join('')}</ul>`;
+}
+function dayAfter(iso){ const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); }
+
+/* Plan „eine Tabelle je Leistung“: ganze Phasen werden in ihre Leistungen aufgeteilt;
+   Einträge der Phase ohne Leistung (rest 1) bzw. des Projekts ohne Phase (rest 2) extra. */
+function buildPlan(sel, p, name){
+  const T = (...a) => a.filter(Boolean).join(' — '), plan = [];
+  p.phases.forEach(ph => {
+    const v = sel ? sel[ph.id] : true; if(!v) return;
+    (v === true ? ph.services : ph.services.filter(x => v.includes(x.id)))
+      .forEach(sv => plan.push({ phase: ph.id, service: sv.id, title: T(name, ph.name, sv.name), short: T(ph.name, sv.name) }));
+    if(v === true) plan.push({ phase: ph.id, service: '', rest: 1, title: T(name, ph.name), short: T(ph.name, 'ohne Leistung') });
+  });
+  if(!sel) plan.push({ phase: '', service: '', rest: 2, title: name, short: 'ohne Phase' });
+  return plan;
+}
+/* führt den Plan aus (max. 6 Abfragen gleichzeitig); jeder Eintrag landet genau einmal */
+async function runPlan(plan, params){
+  const res = new Array(plan.length); let next = 0;
+  await Promise.all(Array.from({ length: Math.min(6, plan.length) }, async () => {
+    while(next < plan.length){
+      const i = next++;
+      res[i] = await TT.api('getTimeRecords', Object.assign({ project: TT.projectId(), phase: plan[i].phase, service: plan[i].service }, params));
+    }
+  }));
+  const seen = new Set(), lists = plan.map(() => []); let unresolved = 0;
+  [0, 1, 2].forEach(level => plan.forEach((pl, i) => {
+    if((pl.rest || 0) !== level) return;
+    if(!level) unresolved += res[i].unresolved || 0;
+    (res[i].items || []).forEach(it => { if(seen.has(it.recordId)) return; seen.add(it.recordId); lists[i].push(it); });
+  }));
+  return { lists, unresolved };
+}
+
+/* Verlauf im normalen Modus: für die aktuelle Auswahl, gesamt und je Tabelle */
+var SHIST = null, shTimer = null, shTok = null;
+function loadSingleHistory(){
+  clearTimeout(shTimer);
+  shTimer = setTimeout(async () => {
+    const p = TT.curProject(); if(!p || !TT.api){ SHIST = null; renderSingleHist(); return; }
+    const tok = {}; shTok = tok; SHIST = { loading:true }; renderSingleHist();
+    try{
+      const plan = buildPlan(model.settings.scope, p, '');
+      const r = await runPlan(plan, {});
+      if(shTok !== tok) return;
+      const all = [].concat(...r.lists);
+      SHIST = Object.assign(histOf(all), { parts: plan.map((pl, i) => ({ name: pl.short, h: histOf(r.lists[i]) })).filter(x => !x.h.empty) });
+    }catch(e){ if(shTok !== tok) return; SHIST = { error: e.message }; }
+    renderSingleHist();
+  }, 500);
+}
+function renderSingleHist(){
+  const box = document.getElementById('hist-single'); if(!box) return;
+  const h = SHIST;
+  if(!h){ box.innerHTML = TT.projectId() ? '' : '<div class="hist">Oben ein Projekt wählen – dann steht hier, seit wann gearbeitet und was schon abgerechnet wurde.</div>'; return; }
+  if(h.loading){ box.innerHTML = '<label>Bisher in AppSheet</label><div class="hist">Lade Verlauf aus AppSheet …</div>'; return; }
+  if(h.error){ box.innerHTML = `<label>Bisher in AppSheet</label><div class="hist err">Verlauf nicht geladen: ${escapeHtml(h.error)}</div>`; return; }
+  if(h.empty){ box.innerHTML = '<label>Bisher in AppSheet</label><div class="hist">Für diese Auswahl gibt es noch keine Zeiteinträge.</div>'; return; }
+  const parts = h.parts.length > 1 ? '<div style="margin-top:8px"><b>Je Tabelle</b><ul>' + h.parts.map(x =>
+    `<li>${escapeHtml(x.name)}: ${deDateS(x.h.all.von)} – ${deDateS(x.h.all.bis)} · ${hours(x.h.all.std)}${x.h.open ? ' · offen ' + hours(x.h.open.std) : ' · alles abgebucht'}</li>`).join('') + '</ul></div>' : '';
+  const opts = ['<option value="">— Zeitraum übernehmen … —</option>',
+    `<option value="all">alles seit Beginn (${deDateS(h.all.von)} – ${deDateS(h.all.bis)})</option>`]
+    .concat(h.docs.map((g, i) => `<option value="doc:${i}">nach ${escapeHtml(g.doc || 'Abbuchung ohne Nr.')} (ab ${deDateS(dayAfter(g.bis))})</option>`),
+      h.open ? [`<option value="open">Zeitraum der offenen Einträge (${deDateS(h.open.von)} – ${deDateS(h.open.bis)})</option>`] : []);
+  box.innerHTML = `<label>Bisher in AppSheet</label><div class="hist">${histSummary(h)}${parts}</div>` +
+    `<label style="margin-top:12px">Zeitraum aus dem Verlauf</label><select id="f-zr-preset">${opts.join('')}</select>`;
+  box.querySelector('#f-zr-preset').onchange = e => {
+    const v = e.target.value; let von = '', bis = h.all.bis;
+    if(v === 'all') von = h.all.von;
+    else if(v === 'open'){ von = h.open.von; bis = h.open.bis; }
+    else if(v.startsWith('doc:')) von = dayAfter(h.docs[+v.slice(4)].bis);
+    else return;
+    [['#f-von', von], ['#f-bis', bis]].forEach(([id, val]) => { const el = $(id); el.value = val; el.dispatchEvent(new Event('input', { bubbles:true })); el.dispatchEvent(new Event('change', { bubbles:true })); });
+  };
+}
+
 function loadAllHistories(){ model.blocks.forEach((_, bi) => loadHistory(bi)); }
 function histHtml(bl, bi){
   const h = HIST && HIST.get(bl);
@@ -1354,16 +1494,11 @@ function histHtml(bl, bi){
   if(h.loading) return `<div class="fld wide"><div class="hist">Lade Verlauf aus AppSheet …</div></div>`;
   if(h.error) return `<div class="fld wide"><div class="hist err">Verlauf nicht geladen: ${escapeHtml(h.error)}</div></div>`;
   if(h.empty) return `<div class="fld wide"><div class="hist">In AppSheet gibt es für diese Auswahl noch keine Zeiteinträge.</div></div>`;
-  const rg = g => deDateS(g.von) + ' – ' + deDateS(g.bis);
-  const lines = h.docs.map(g => `<li>${escapeHtml(g.doc || 'abgebucht ohne Rechnungsnr.')}: ${rg(g)} · ${hours(g.std)}</li>`);
-  if(h.open) lines.push(`<li>noch nicht abgebucht: ${rg(h.open)} · ${hours(h.open.std)}</li>`);
   const vonR = $('#f-von').value;
   const opts = ['<option value="">— Übertrag übernehmen … —</option>'].concat(
     h.docs.map((g, i) => `<option value="doc:${i}">bis einschl. ${escapeHtml(g.doc || 'Abbuchung ohne Nr.')} (${deDateS(h.all.von)} – ${deDateS(g.bis)} · ${hours(g.kum)})</option>`),
     vonR && vonR > h.all.von ? [`<option value="before">alles vor diesem Rechnungszeitraum (${deDateS(h.all.von)} – ${deDateS(dayBefore(vonR))})</option>`] : []);
-  return `<div class="fld wide"><label>Bisher in AppSheet</label><div class="hist">`+
-      `Beginn (erster Eintrag): <b>${deDateS(h.all.von)}</b> · letzter Eintrag: ${deDateS(h.all.bis)} · gesamt ${hours(h.all.std)}`+
-      `<ul>${lines.join('')}</ul></div></div>`+
+  return `<div class="fld wide"><label>Bisher in AppSheet</label><div class="hist">${histSummary(h)}</div></div>`+
     `<div class="fld wide"><label>Übertrag aus dem Verlauf</label><select data-f="ue.preset">${opts.join('')}</select></div>`;
 }
 function dayBefore(iso){ const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); }
@@ -1428,7 +1563,7 @@ $('#f-kum').addEventListener('change', e=>{
     model.items.forEach(it => { if(it.b == null || it.b >= model.blocks.length) it.b = 0; });
   }
   applyKumUI(); renderBlocks(); renderEntries(); render();
-  if(isKum()) loadAllHistories();
+  if(isKum()) loadAllHistories(); else loadSingleHistory();
 });
 $('#f-von').addEventListener('change', () => { if(isKum()) renderBlocks(); });
 $('#f-tabtitle').addEventListener('input', e => { model.settings.title = e.target.value; render(); });
