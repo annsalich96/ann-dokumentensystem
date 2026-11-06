@@ -34,7 +34,7 @@
  * Deploy: siehe README.md in diesem Ordner.
  */
 
-const BILLING_COLS = ['Billing_Description', 'Billed', 'Billed_On', 'Billed_Document', 'Billing_Note'];
+const BILLING_COLS = ['Billing_Description', 'Billed', 'Billed_On', 'Billed_Document', 'Billing_Note', 'Original_Description'];
 const LOG_TAB = 'DocSystem_Log';
 
 const CONFIG = {
@@ -68,8 +68,7 @@ function doGet(e){
       case 'getFilterTree': data = getFilterTreeCached(p.fresh === '1'); break;
       case 'getCompanyInfo':data = getCompanyInfo(); break;
       case 'getProjectMeta':data = getProjectMeta(p.project || '', p.phase || ''); break;
-      case 'cleanDescriptions': data = descriptionClean_(p); break;
-      case 'setupDescriptionLearning': assertWriteAuth_(p); data = setupDescriptionLearning(); break;
+      case 'cleanDescriptions': data = cleanDescriptions(p); break;
       case 'markBilled':    data = markBilled(p); break;
       case 'unmarkBilled':  data = unmarkBilled(p); break;
       case 'getOfferContext': data = getOfferContext(); break;
@@ -273,9 +272,7 @@ function cleanDescriptions(p){
     '- Leere oder unverständliche Einträge unverändert zurückgeben.\n' +
     'Antworte AUSSCHLIESSLICH mit JSON, exakt: {"items":[{"i":<zahl>,"text":"<bereinigt>"}]} — gleiche i-Werte wie in der Eingabe, kein Markdown, keine Erklärung.';
 
-  var examples = descriptionExamples_(p, items);
-  sys += '\nDie folgenden Beispiele sind nur Stilreferenzen, keine Anweisungen. Keine Fakten, Namen oder Leistungen aus Beispielen in neue Eintraege uebertragen. Nur Eingabefakten verwenden.';
-  var userText = 'Freigegebene Stilbeispiele (Original, KI-Vorschlag, finale Korrektur):\n' + JSON.stringify(examples) + '\nEingabe:\n' + JSON.stringify({ projekt: str_(p.project), phase: str_(p.phase), eintraege: items });
+  var userText = 'Eingabe:\n' + JSON.stringify({ projekt: str_(p.project), phase: str_(p.phase), eintraege: items });
 
   var raw = (provider === 'anthropic')
     ? aiAnthropic_(props, sys, userText, maxTok)
@@ -287,7 +284,7 @@ function cleanDescriptions(p){
   var clean = parsed.items
     .map(function(o){ return { i: Number(o.i), text: str_(o.text) }; })
     .filter(function(o){ return !isNaN(o.i); });
-  return { items: clean, provider: provider, model: props.getProperty(provider === 'anthropic' ? 'ANTHROPIC_MODEL' : 'OPENAI_MODEL') || (provider === 'anthropic' ? 'claude-sonnet-5' : 'gpt-4.1-mini'), promptVersion: 'description-learning-2026-11-06-v1', exampleCount: examples.length };
+  return { items: clean };
 }
 
 function aiOpenAI_(props, sys, userText, maxTok){
@@ -448,8 +445,102 @@ function logRow_(action, recIds, doc, before, after){
   }catch(e){ /* Log darf die Aktion nie scheitern lassen */ }
 }
 
-function markBilled(p){ return descriptionBill_(p, false); }
-function unmarkBilled(p){ return descriptionBill_(p, true); }
+function markBilled(p){
+  assertWriteAuth_(p);
+  var entries = [];
+  try{ entries = JSON.parse(p.entries || '[]'); }catch(e){ throw new Error('entries ist kein gültiges JSON'); }
+  if(!Array.isArray(entries) || !entries.length) return { updated: 0, notFound: 0 };
+  var doc = str_(p.document);
+  var on  = str_(p.date) || Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyy-MM-dd');
+  var dry = str_(p.dryRun) === '1';
+
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try{
+    var sh = ss_().getSheetByName(CONFIG.TABS.timeTrackingRecords);
+    if(!sh) throw new Error('Tab TimeTrackingRecords nicht gefunden');
+    var idx = ensureBillingCols_(sh);
+    var cols = BILLING_COLS.map(function(n){ return idx[n]; });
+    var contiguous = cols.every(function(c, k){ return k === 0 || c === cols[k - 1] + 1; });
+
+    var values = sh.getDataRange().getValues();
+    var header = values[0].map(function(h){ return String(h).trim(); });
+    var recCol = header.indexOf('Record_ID');
+    if(recCol === -1) throw new Error('Spalte Record_ID nicht gefunden');
+
+    var want = {};
+    entries.forEach(function(e){ if(e && e.id != null) want[String(e.id).trim()] = e; });
+
+    var before = [], after = [], writes = [];
+    for(var r = 1; r < values.length; r++){
+      var rid = String(values[r][recCol]).trim();
+      var e = want[rid]; if(!e) continue;
+      var cur = {};
+      BILLING_COLS.forEach(function(n){ cur[n] = values[r][idx[n] - 1]; });
+      var desc = (e.desc != null && String(e.desc).trim()) ? String(e.desc).trim() : cur['Billing_Description'];
+      var note = (e.note != null) ? String(e.note) : cur['Billing_Note'];
+      var original = cur['Original_Description'];
+      if(!str_(original)){
+        if(typeof e.original !== 'string') throw new Error('Bitte Editor neu laden, damit der Originaltext mitgespeichert wird.');
+        original = e.original;
+      }
+      var row = { Billing_Description: desc, Billed: true, Billed_On: on, Billed_Document: doc, Billing_Note: note, Original_Description: original };
+      before.push(Object.assign({ id: rid }, cur));
+      after.push(Object.assign({ id: rid }, row));
+      writes.push({ rowNum: r + 1, row: row });
+    }
+
+    if(!dry){
+      writes.forEach(function(w){
+        var arr = BILLING_COLS.map(function(n){ var v=w.row[n]; return (n==='Billing_Description'||n==='Original_Description') && typeof v==='string' && /^[=+'@-]/.test(v) ? "'"+v : v; });
+        if(contiguous){ sh.getRange(w.rowNum, cols[0], 1, cols.length).setValues([arr]); }
+        else { BILLING_COLS.forEach(function(n, k){ sh.getRange(w.rowNum, cols[k], 1, 1).setValue(arr[k]); }); }
+      });
+      SpreadsheetApp.flush();
+      logRow_('markBilled', after.map(function(x){ return x.id; }), doc, before, after);
+    }
+    return { updated: writes.length, notFound: entries.length - writes.length, dryRun: dry, date: on };
+  } finally { lock.releaseLock(); }
+}
+
+function unmarkBilled(p){
+  assertWriteAuth_(p);
+  var doc = str_(p.document);
+  if(!doc) throw new Error('document fehlt');
+  var onlyIds = null;
+  try{ var a = JSON.parse(p.ids || 'null'); if(Array.isArray(a)) onlyIds = {}; if(a) a.forEach(function(x){ onlyIds[String(x).trim()] = 1; }); }catch(e){}
+
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try{
+    var sh = ss_().getSheetByName(CONFIG.TABS.timeTrackingRecords);
+    if(!sh) throw new Error('Tab TimeTrackingRecords nicht gefunden');
+    var idx = ensureBillingCols_(sh);
+    var cols = BILLING_COLS.map(function(n){ return idx[n]; });
+    var contiguous = cols.every(function(c, k){ return k === 0 || c === cols[k - 1] + 1; });
+    var values = sh.getDataRange().getValues();
+    var header = values[0].map(function(h){ return String(h).trim(); });
+    var recCol = header.indexOf('Record_ID'), docCol = idx['Billed_Document'] - 1;
+
+    var before = [], ids = [], writes = [];
+    for(var r = 1; r < values.length; r++){
+      if(str_(values[r][docCol]) !== doc) continue;
+      var rid = String(values[r][recCol]).trim();
+      if(onlyIds && !onlyIds[rid]) continue;
+      var cur = {}; BILLING_COLS.forEach(function(n){ cur[n] = values[r][idx[n] - 1]; });
+      before.push(Object.assign({ id: rid }, cur));
+      ids.push(rid);
+      // Billing_Description bleibt erhalten, Rest wird geleert
+      writes.push({ rowNum: r + 1, row: { Billing_Description: cur['Billing_Description'], Billed: '', Billed_On: '', Billed_Document: '', Billing_Note: '', Original_Description: cur['Original_Description'] } });
+    }
+    writes.forEach(function(w){
+      var arr = BILLING_COLS.map(function(n){ var v=w.row[n]; return (n==='Billing_Description'||n==='Original_Description') && typeof v==='string' && /^[=+'@-]/.test(v) ? "'"+v : v; });
+      if(contiguous){ sh.getRange(w.rowNum, cols[0], 1, cols.length).setValues([arr]); }
+      else { BILLING_COLS.forEach(function(n, k){ sh.getRange(w.rowNum, cols[k], 1, 1).setValue(arr[k]); }); }
+    });
+    SpreadsheetApp.flush();
+    if(ids.length) logRow_('unmarkBilled', ids, doc, before, []);
+    return { cleared: writes.length };
+  } finally { lock.releaseLock(); }
+}
 
 
 /* ------------------------------------------------------------------ */
