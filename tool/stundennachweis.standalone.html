@@ -69,6 +69,7 @@ body.resizing{cursor:col-resize;user-select:none}
   width:100%;font-family:var(--ui);font-size:15px;padding:10px 12px;
   border:1px solid var(--ui-border);border-radius:7px;background:#fff;color:var(--ink)
 }
+#editor input.bad{border-color:#B0291E}
 #editor select:disabled{opacity:.5;background:var(--ui-bg)}
 #editor input:focus,#editor select:focus{outline:2px solid var(--ink);outline-offset:-1px;border-color:var(--ink)}
 #sheet-status.err{color:#B0291E}
@@ -112,6 +113,28 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .blk{border:1px solid var(--ui-border);border-radius:8px;padding:14px 16px;margin-top:14px}
 .blk .blk-h{font-size:12.5px;font-weight:700;margin:0 0 12px;display:flex;justify-content:space-between;align-items:center}
 .blk .ok{color:#4A7C59}.blk .err{color:#B0291E}
+.zr-row{flex-direction:row!important;align-items:center;gap:10px}.zr-row .sub{margin:0}.zr-row button{font-size:12px;padding:3px 10px}
+.ue-lbl{display:block;margin:14px 0 2px}
+.ue-card{border:1px solid var(--ui-border);border-radius:8px;padding:10px 12px;margin-top:8px}
+.ue-h{font-weight:700;font-size:13px;margin-bottom:6px}
+.ue-none{font-size:12.5px;color:var(--ui-muted);display:flex;align-items:center;gap:10px}.ue-none button{font-size:12px;padding:2px 10px}
+.ue-f{display:grid;grid-template-columns:1fr 1fr 1.3fr .8fr;gap:6px;margin-top:6px}
+#editor .ue-f input,#editor .ue-card select{font-size:13px;padding:6px 8px}
+.dp-pop{position:fixed;z-index:50;background:#fff;border:1px solid var(--ui-border);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.12);padding:10px;width:260px;font-family:var(--ui);font-size:13px;color:var(--ink)}
+.dp-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-weight:700}
+.dp-h button{border:0;background:none;font-size:18px;cursor:pointer;padding:0 8px;color:var(--ink)}
+.dp-g{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.dp-g i{font-style:normal;color:var(--ui-muted);font-size:11px;padding:2px 0}
+.dp-g button{border:0;background:none;border-radius:5px;padding:6px 0 7px;cursor:pointer;font:inherit;color:var(--ink);position:relative}
+.dp-g button:hover{background:#ECEAE5}
+.dp-g button.edge{background:#D6D3CC;font-weight:700}
+.dp-g button.bk::after{content:"";position:absolute;left:50%;bottom:1px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--ink)}
+.dp-g button.bl{color:#4A7C59}.dp-g button.bl::after{content:"";position:absolute;left:50%;bottom:1px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:#4A7C59}
+.dp-g button.cur{background:var(--ink);color:#fff}
+.dp-l{margin-top:8px;color:var(--ui-muted);font-size:11.5px;line-height:1.8}
+.dp-l i{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;margin:0 4px 0 0}
+.dp-l i.edge{background:#D6D3CC}.dp-l i.bk,.dp-l i.bl{width:5px;height:5px;border-radius:50%;vertical-align:1px;background:var(--ink)}.dp-l i.bl{background:#4A7C59}
+.dp-l b{font-weight:400;margin-right:10px;white-space:nowrap}
 .hist{background:#F7F6F3;border-radius:6px;padding:10px 12px;font-size:12.5px;line-height:1.55}
 .scope details{border:1px solid var(--ui-border);border-radius:6px;background:#fff}
 .scope summary{cursor:pointer;padding:7px 10px;font-size:13px;list-style:none}
@@ -221,16 +244,15 @@ button:disabled{opacity:.4;cursor:not-allowed}
   </div>
 
   <h2>Aus Time Tracking laden</h2>
-  <label class="chk"><input type="checkbox" id="f-kum"> Kumulativer Nachweis – Tabellen je Phase/Leistung mit Übertrag</label>
   <div class="fg">
-    <div class="fld wide single-only" id="scope-single"></div>
-    <div class="fld wide single-only" id="hist-single"></div>
-    <div class="fld wide single-only"><label>Tabellentitel (automatisch, änderbar – nach „Einträge laden“ bekommt jede Leistung ihre eigene Tabelle)</label><input type="text" id="f-tabtitle"></div>
-    <div class="fld"><label id="l-von">von</label><input type="date" id="f-von"></div>
-    <div class="fld"><label id="l-bis">bis</label><input type="date" id="f-bis"></div>
+    <div class="fld wide" id="scope-single"></div>
+    <div class="fld"><label id="l-von">von</label><input type="text" class="dp" id="f-von" placeholder="TT.MM.JJ" autocomplete="off"></div>
+    <div class="fld"><label id="l-bis">bis</label><input type="text" class="dp" id="f-bis" placeholder="TT.MM.JJ" autocomplete="off"></div>
+    <div class="fld wide zr-row"><p class="sub" id="zr-note"></p><button class="ghost" id="zr-reset" hidden>Automatisch</button></div>
   </div>
-  <div id="blocks" hidden></div>
-  <div class="btnbar" id="blocks-bar" hidden><button class="ghost" id="btn-add-block">+ Tabelle</button></div>
+  <label class="chk"><input type="checkbox" id="f-kum"> Kumulativ – mit Übertrag aus früheren Rechnungen</label>
+  <div id="ue-box" hidden></div>
+  <div class="fg" id="tabtitle-row"><div class="fld wide"><label>Tabellentitel</label><input type="text" id="f-tabtitle"></div></div>
   <div class="btnbar">
     <button class="ghost" id="btn-load" disabled>Einträge laden</button>
     <button class="ghost" id="btn-demo">Demodaten</button>
@@ -388,7 +410,7 @@ let model = {
   },
   settings:{ einheit:"stunden", stundenProTag:8, kumulativ:false, scope:null, title:"" },
   /* Kumulativer Nachweis: je Tabelle Phase/Leistung + Übertrag; Einträge tragen b = Tabellen-Index */
-  blocks:[],
+  blocks:[], groups:[], uebertrag:{},
   items:[
     { datum:"", taetigkeit:"Erstellung von Plänen", bearbeiter:"Ann-Kathrin Salich", stunden:0.5 },
     { datum:"", taetigkeit:"Abstimmung mit Fachplanung",   bearbeiter:"Ann-Kathrin Salich", stunden:1.0 }
@@ -411,7 +433,13 @@ function normalizeModel(){
   model.settings = Object.assign({ einheit:"stunden", stundenProTag:8, kumulativ:false }, model.settings || {});
   if(!Array.isArray(model.blocks)) model.blocks = [];
   if(!Array.isArray(model.groups)) model.groups = [];
-  model.blocks.forEach(bl => { bl.ue = Object.assign({ von:"", bis:"", rechnung:"", stunden:0 }, bl.ue || {}); });
+  if(!model.uebertrag || typeof model.uebertrag !== 'object') model.uebertrag = {};
+  if(model.blocks.length && !model.groups.length){      // ältere Dateien: Tabellen von Hand → Gruppen mit Übertrag
+    model.groups = model.blocks.map((bl, i) => ({ title: bl.title || '', key: 'blk' + i }));
+    model.blocks.forEach((bl, i) => { model.uebertrag['blk' + i] = Object.assign({ von:"", bis:"", rechnung:"", stunden:0 }, bl.ue || {}); });
+    model.items.forEach(it => { if(it.b != null){ it.g = it.b; delete it.b; } });
+  }
+  model.blocks = [];
   if(model.meta && model.meta.rechnung == null) model.meta.rechnung = "";
   if(model.header.projektzeile == null) model.header.projektzeile = defaultProjektzeile();
   const pj = model.meta && model.meta.projekt;
@@ -427,17 +455,17 @@ function editorTotalLabel(){ return isTage() ? `${fmtDays(totalDays())} (${hours
 /* Kumulativ: je Tabelle Übertrag + aktuell = kumuliert. Im Tage-Modus wird jeder Teil
    für sich auf 0,25 Tage gerundet und kumuliert = Summe der gerundeten Teile. */
 function isKum(){ return !!(model.settings && model.settings.kumulativ); }
-function blockItems(bi){ return model.items.filter(it => (it.b || 0) === bi); }
-function blockTotals(bi){
-  const bl = model.blocks[bi] || {}, ue = Number(bl.ue && bl.ue.stunden) || 0;
-  const akt = blockItems(bi).reduce((s,r)=>s+(Number(r.stunden)||0),0);
+function ueOf(key){ return (model.uebertrag && model.uebertrag[key]) || { von:'', bis:'', rechnung:'', stunden:0 }; }
+function tableTotals(list, u){
+  const ue = Number(u && u.stunden) || 0;
+  const akt = list.reduce((s,r)=>s+(Number(r.stunden)||0),0);
   if(!isTage()) return { ue:hours(ue), akt:hours(akt), kum:hours(ue + akt) };
   const f = (+model.settings.stundenProTag) || 8, du = roundQuarter(ue/f), da = roundQuarter(akt/f);
   return { ue:fmtDays(du), akt:fmtDays(da), kum:fmtDays(du + da) };
 }
 /* Normaler Modus: eine Tabelle je Phase/Leistung (model.groups, Einträge mit it.g).
    Ohne Gruppen (Demodaten, von Hand) bleibt es eine Tabelle mit settings.title. */
-function hasGroups(){ return !isKum() && model.groups && model.groups.length > 0; }
+function hasGroups(){ return !!(model.groups && model.groups.length); }
 function groupItems(gi){ return model.items.filter(it => (it.g || 0) === gi); }
 function sumLabel(list){
   const h = list.reduce((s,r)=>s+(Number(r.stunden)||0),0);
@@ -495,32 +523,20 @@ function layoutBody(){
   };
 
   newPage(true);
-  if(!isKum()){
-    const gs = DS.total.span;
-    const tables = hasGroups()
-      ? model.groups.map((gr, gi) => ({ title: gr.title, list: groupItems(gi) }))
-      : [{ title: model.settings.title, list: model.items }];
-    let titleK = Math.max(DS.table.topRuleK_first - 2, metaLastK() + DS.meta.gapK);
-    tables.forEach((tb, ti) => {
-      const tt = (tb.title || '').trim();
-      if(ti > 0 && titleK + 2 + 1 + (tb.list.length ? rowSpanOf(tb.list[0]) : gs) > LIMIT){ newPage(false); titleK = DS.table.topRuleK_cont; }
-      if(tt){ B('s-blocktitle', {leftMM:X1, k:titleK, span:2}, tt); head(titleK + 2); }
-      else head(ti === 0 ? firstTableK() : titleK);
-      rows(tb.list, gs);
-      B('s-total', {leftMM:XT, k, span:gs}, 'Gesamt');
-      B('s-total', {right:true, k, span:gs}, tables.length > 1 ? sumLabel(tb.list) : totalDocLabel());
-      L(k + gs, XT, XR);                                  // Linie nur unter dem Summenblock
-      k += gs;
-      titleK = k + 2;                                     // zwei Rasterzeilen Abstand zur nächsten Tabelle
-    });
-  } else {
-    let titleK = Math.max(DS.table.topRuleK_first - 2, metaLastK() + DS.meta.gapK);
-    model.blocks.forEach((bl, bi) => {
-      const list = blockItems(bi), t = blockTotals(bi), ue = bl.ue || {};
-      // Titel + Kopf + Übertrag + erste Zeile (bzw. Summenblock) zusammenhalten
-      if(titleK + 2 + 1 + span + (list.length ? rowSpanOf(list[0]) : 4) > LIMIT){ newPage(false); titleK = DS.table.topRuleK_cont; }
-      B('s-blocktitle', {leftMM:X1, k:titleK, span:2}, bl.title || '');
-      head(titleK + 2);
+  const gs = DS.total.span, kum = isKum();
+  const tables = hasGroups()
+    ? model.groups.map((gr, gi) => ({ title: gr.title, key: gr.key, list: groupItems(gi) }))
+    : [{ title: model.settings.title, key: '', list: model.items }];
+  let titleK = Math.max(DS.table.topRuleK_first - 2, metaLastK() + DS.meta.gapK);
+  tables.forEach((tb, ti) => {
+    const tt = (tb.title || '').trim(), list = tb.list;
+    // Titel + Kopf (+ Übertrag) + erste Zeile bzw. Summenblock zusammenhalten
+    const need = 2 + 1 + (kum ? span : 0) + (list.length ? rowSpanOf(list[0]) : (kum ? 4 : gs));
+    if(ti > 0 && titleK + need > LIMIT){ newPage(false); titleK = DS.table.topRuleK_cont; }
+    if(tt){ B('s-blocktitle', {leftMM:X1, k:titleK, span:2}, tt); head(titleK + 2); }
+    else head(ti === 0 ? firstTableK() : titleK);
+    if(kum){
+      const ue = ueOf(tb.key), t = tableTotals(list, ue);
       B('s-total', {leftMM:DS.colX(C.datum),      k, span}, ueRange(ue));
       B('s-total', {leftMM:DS.colX(C.taetigkeit), k, span}, ('Übertrag ' + (ue.rechnung || '')).trim());
       B('s-total', {right:true,                   k, span}, t.ue);
@@ -532,9 +548,15 @@ function layoutBody(){
       B('s-total', {leftMM:XT, k:k + 2, span:2}, 'Gesamt kumuliert');
       B('s-total', {right:true, k:k + 2, span:2}, t.kum);
       k += 4;
-      titleK = k + 2;
-    });
-  }
+    } else {
+      rows(list, gs);
+      B('s-total', {leftMM:XT, k, span:gs}, 'Gesamt');
+      B('s-total', {right:true, k, span:gs}, tables.length > 1 ? sumLabel(list) : totalDocLabel());
+      L(k + gs, XT, XR);                                  // Linie nur unter dem Summenblock
+      k += gs;
+    }
+    titleK = k + 2;                                       // zwei Rasterzeilen Abstand zur nächsten Tabelle
+  });
   pages[pages.length - 1].last = true;
   return pages;
 }
@@ -777,7 +799,6 @@ bind('#f-title','header.title'); bind('#f-head1','header.projektzeile'); bind('#
 bind('#f-place','header.place'); bind('#f-date','header.date');
 bind('#f-auftrag-nr','meta.auftrag.nr'); bind('#f-auftrag-bez','meta.auftrag.bez');
 bind('#f-proj-name','meta.projekt.name'); bind('#f-proj-adr','meta.projekt.adresse');
-bind('#f-von','meta.zeitraum.von'); bind('#f-bis','meta.zeitraum.bis');
 
 $('#f-einheit').addEventListener('change', e=>{ model.settings.einheit = e.target.value; renderEntries(); render(); });
 $('#f-stdtag').addEventListener('input', e=>{ model.settings.stundenProTag = parseFloat(e.target.value)||8; updateTotal(); render(); });
@@ -808,14 +829,7 @@ function renderEntries(){
       `<button class="del" data-i="${i}" title="Zeile löschen">×</button>`;
     entriesBox.appendChild(row);
   };
-  if(isKum()){
-    model.blocks.forEach((bl,bi)=>{
-      const h = document.createElement('div'); h.className = 'e-blk';
-      h.innerHTML = `<span>${escapeHtml(bl.title || ('Tabelle ' + (bi+1)))}</span><button class="ghost" data-addb="${bi}">+ Zeile</button>`;
-      entriesBox.appendChild(h);
-      model.items.forEach((r,i)=>{ if((r.b || 0) === bi) addRow(r,i); });
-    });
-  } else if(hasGroups()){
+  if(hasGroups()){
     model.groups.forEach((gr,gi)=>{
       const h = document.createElement('div'); h.className = 'e-blk';
       h.innerHTML = `<input type="text" data-gt="${gi}" value="${escapeHtml(gr.title || '')}" title="Tabellentitel"><button class="ghost" data-addg="${gi}">+ Zeile</button>`;
@@ -823,7 +837,7 @@ function renderEntries(){
       model.items.forEach((r,i)=>{ if((r.g || 0) === gi) addRow(r,i); });
     });
   } else model.items.forEach(addRow);
-  const tf = document.getElementById('f-tabtitle'); if(tf) tf.closest('.fld').hidden = isKum() || hasGroups();   // bei Gruppen: Titel je Tabelle oben in der Liste
+  const tf = document.getElementById('tabtitle-row'); if(tf) tf.hidden = hasGroups();   // bei Gruppen: Titel je Tabelle oben in der Liste
   const tot = document.createElement('div'); tot.className='e-total';
   tot.innerHTML = `<span>${isKum() ? 'Gesamt aktuell' : 'Gesamt'}</span><span id="e-total-val">${editorTotalLabel()}</span>`;
   entriesBox.appendChild(tot);
@@ -846,10 +860,6 @@ entriesBox.addEventListener('input', e=>{
   updateTotal(); render();
 });
 entriesBox.addEventListener('click', e=>{
-  if(e.target.dataset.addb != null){
-    model.items.push({datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0,b:+e.target.dataset.addb});
-    renderEntries(); render(); return;
-  }
   if(e.target.dataset.addg != null){
     model.items.push({datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0,g:+e.target.dataset.addg});
     renderEntries(); render(); return;
@@ -886,22 +896,21 @@ entriesBox.addEventListener('click', e=>{
 
 $('#btn-add').onclick = ()=>{
   const it = {datum:"",taetigkeit:"",bearbeiter:"Ann-Kathrin Salich",stunden:0};
-  if(isKum()) it.b = Math.max(0, model.blocks.length - 1);
+  if(hasGroups()) it.g = model.groups.length - 1;
   model.items.push(it); renderEntries(); render();
 };
 $('#btn-demo').onclick = ()=>{
   if(isKum()){
-    const nb = (title, ue) => ({ title, sel:null, ue });
-    model.blocks = [
-      nb('Beispielprojekt — Phase 02 — Entwurfsausarbeitung', {von:'2026-07-01', bis:'2026-09-30', rechnung:'INV_BSP_03', stunden:30}),
-      nb('Beispielprojekt — Phase 02 — Grafik',              {von:'2026-08-03', bis:'2026-09-27', rechnung:'INV_BSP_03', stunden:12.5})
-    ];
+    model.groups = [{ title:'Beispielprojekt — Phase 02 — Entwurfsausarbeitung', key:'demo1' },
+                    { title:'Beispielprojekt — Phase 02 — Grafik',              key:'demo2' }];
+    model.uebertrag.demo1 = {von:'2026-07-01', bis:'2026-09-30', rechnung:'INV_BSP_03', stunden:30};
+    model.uebertrag.demo2 = {von:'2026-08-03', bis:'2026-09-27', rechnung:'INV_BSP_03', stunden:12.5};
     const acts=["Bearbeitung der Visualisierungen hinsichtlich Auflösung","Bearbeitung der Visualisierungen hinsichtlich Atmosphäre","Abstimmung Entwurf mit Bauherrschaft","Überarbeitung Grundrisse","Präsentationslayout","Planlayout Ansichten"];
     model.items = Array.from({length:8},(_,k)=>({
       datum:`2026-10-${String(1+k*3).padStart(2,'0')}`, taetigkeit:acts[k%6],
-      bearbeiter:k%2 ? "Ann-Kathrin Salich" : "Mitarbeiterin A", stunden:[7.75,1.5,2,3.25][k%4], b:k<5 ? 0 : 1
+      bearbeiter:k%2 ? "Ann-Kathrin Salich" : "Mitarbeiterin A", stunden:[7.75,1.5,2,3.25][k%4], g:k<5 ? 0 : 1
     }));
-    renderBlocks(); renderEntries(); render(); return;
+    renderEntries(); render(); return;
   }
   const acts=["Erstellung von Plänen","Abstimmung mit Fachplanung","Baustellenbegehung","Abstimmung Fachplaner","Ausschreibungstext","Mengenermittlung"];
   model.items = Array.from({length:14},(_,k)=>({
@@ -968,7 +977,7 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
   function applyTree(t, note){
     tree = t;
     fillSelect(selP, tree.projects, '— Projekt wählen —');
-    renderBlocks();
+    renderUe();
     renderSingleScope();
     loadBtn.disabled = true;
     say('Verbunden · ' + tree.projects.length + ' Projekte' + (note || ''), 'ok');
@@ -994,17 +1003,16 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
   let reportCtx = null;
   function setProjektzeile(){ model.header.projektzeile = defaultProjektzeile(); $('#f-head1').value = model.header.projektzeile; $('#f-code').value = model.header.code || ''; render(); }
   function applyProjectMeta(m){
-    if(m.name != null){ model.meta.projekt.name = m.name; $('#f-proj-name').value = m.name; refreshAutoTitles(); if(isKum()) renderBlocks(); }
+    if(m.name != null){ model.meta.projekt.name = m.name; $('#f-proj-name').value = m.name; refreshAutoTitles(); }
     if(m.address != null){ model.meta.projekt.adresse = m.address; $('#f-proj-adr').value = m.address; }
     render();
   }
   selP.onchange = async () => {
     const p = curProject();
-    model.settings.scope = null; renderSingleScope(); refreshAutoTitles(); loadSingleHistory();
+    model.settings.scope = null; renderSingleScope(); refreshAutoTitles();
+    zrAuto = true; loadSel();
     loadBtn.disabled = !p;
-    renderBlocks();
     if(!p) return;
-    if(isKum()) loadAllHistories();
     applyProjectMeta({ name: p.name });                  // Name haben wir sofort
     model.header.code = ''; setProjektzeile();
     try{                                                 // Projekt-Kürzel (Projects.Project Code), nur lesend
@@ -1032,26 +1040,8 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
       return o;
     };
     try{
-      const onlyOpen = $('#f-only-open').checked, from = $('#f-von').value || '', to = $('#f-bis').value || '';
-      // Kumulativ: je Tabelle (Phase/Leistung) laden; sonst wie bisher eine Auswahl
-      if(!isKum()){ await loadGroups(onlyOpen, from, to, mapIt); return; }
-      const queries = model.blocks.map((bl, b) => ({ b, sel: blockSel(bl) }));
-      if(!queries.length){ say('Erst eine Tabelle anlegen (+ Tabelle).', 'err'); return; }
-      const d = { unresolved: 0 }; let skipped = 0, items = [];
-      for(const q of queries){
-        const r = await fetchScope({ from, to }, q.sel);
-        let rows = r.items || [];
-        d.unresolved += r.unresolved || 0;
-        if(onlyOpen){ skipped += rows.filter(it => it.billed).length; rows = rows.filter(it => !it.billed); }
-        items = items.concat(rows.map(it => mapIt(it, q.b)));
-      }
-      model.items = items;
-      $('#btn-ki-reset').hidden = true;
-      $('#btn-unbill').hidden = !model.items.some(it => it.billed);   // schon abgerechnete geladen -> Rücknahme anbieten
-      renderEntries(); render();
-      const warn = d.unresolved ? '  ·  ' + d.unresolved + ' ohne Tätigkeitsname' : '';
-      const sk = skipped ? '  ·  ' + skipped + ' bereits abgerechnet ausgeblendet' : '';
-      say(model.items.length + ' Einträge geladen · ' + hours(totalHours()) + warn + sk, d.unresolved ? 'err' : 'ok');
+      const onlyOpen = $('#f-only-open').checked, from = model.meta.zeitraum.von || '', to = model.meta.zeitraum.bis || '';
+      await loadGroups(onlyOpen, from, to, mapIt);
     }catch(e){
       say('Laden fehlgeschlagen: ' + e.message, 'err');
     }finally{ loadBtn.disabled = false; }
@@ -1068,9 +1058,11 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
     plan.forEach((pl, i) => {
       let rows = lists[i];
       if(onlyOpen){ skipped += rows.filter(it => it.billed).length; rows = rows.filter(it => !it.billed); }
-      if(!rows.length) return;
+      const key = planKey(pl), ub = isKum() ? ueOf(key).bis : '';
+      if(ub) rows = rows.filter(it => it.datum > ub);                     // schon im Übertrag enthalten
+      if(!rows.length && !(isKum() && Number(ueOf(key).stunden))) return;   // kumulativ: auch nur mit Übertrag
       const gi = model.groups.length;
-      model.groups.push({ title: pl.title });
+      model.groups.push({ title: pl.title, key });
       rows.forEach(it => { const o = mapIt(it); o.g = gi; model.items.push(o); });
     });
     $('#btn-ki-reset').hidden = true;
@@ -1261,17 +1253,6 @@ function scopeQueries(sel){
     else (v || []).forEach(sv => out.push({ phase: ph, service: sv })); });
   return out;
 }
-/* Holt die Zeiteinträge für eine Auswahl (je Phase/Leistung eine Abfrage) und führt sie zusammen. */
-async function fetchScope(params, sel){
-  const seen = new Set(); let items = [], unresolved = 0;
-  for(const q of scopeQueries(sel)){
-    const r = await TT.api('getTimeRecords', Object.assign({ project: TT.projectId(), phase: q.phase, service: q.service }, params));
-    unresolved += r.unresolved || 0;
-    (r.items || []).forEach(it => { if(it.recordId && seen.has(it.recordId)) return; seen.add(it.recordId); items.push(it); });
-  }
-  items.sort((a, b) => a.datum === b.datum ? String(a.bearbeiter).localeCompare(b.bearbeiter) : String(a.datum).localeCompare(b.datum));
-  return { items, unresolved };
-}
 function normScope(sel, p){
   if(!sel || !p) return sel;
   Object.keys(sel).forEach(k => { if(Array.isArray(sel[k]) && !sel[k].length) delete sel[k]; });
@@ -1316,16 +1297,10 @@ function refreshAutoTitles(){
   if(!st.title || st.title === st._titleAuto) st.title = t;
   st._titleAuto = t;
   const el = document.getElementById('f-tabtitle'); if(el) el.value = st.title || '';
-  (model.blocks || []).forEach(bl => { const a = autoTitle(bl); if(!bl.title || bl.title === bl._auto) bl.title = a; bl._auto = a; });
 }
 function onScopeChange(key, sel){
-  if(key === 'single'){ model.settings.scope = sel; renderSingleScope(); refreshAutoTitles(); render(); loadSingleHistory(); return; }
-  const bi = +key, bl = model.blocks[bi]; if(!bl) return;
-  bl.sel = sel;
-  const t = autoTitle(bl);
-  if(!bl.title || bl.title === bl._auto) bl.title = t;
-  bl._auto = t;
-  renderBlocks(); renderEntries(); render(); calcUebertrag(bi); loadHistory(bi);
+  model.settings.scope = sel; renderSingleScope(); refreshAutoTitles(); render();
+  zrAuto = true; loadSel();
 }
 document.addEventListener('toggle', e => {
   const sc = e.target.closest && e.target.closest('.scope'); if(!sc) return;
@@ -1334,7 +1309,7 @@ document.addEventListener('toggle', e => {
 document.addEventListener('change', e => {
   const sc = e.target.closest('.scope'); if(!sc || !e.target.dataset.ph) return;
   const key = sc.dataset.scope, p = TT.curProject(); if(!p) return;
-  const cur = key === 'single' ? model.settings.scope : blockSel(model.blocks[+key]);
+  const cur = model.settings.scope;
   onScopeChange(key, scopeToggle(cur, p, e.target));
 });
 document.addEventListener('click', e => {
@@ -1344,61 +1319,16 @@ document.addEventListener('click', e => {
 });
 
 /* ============================================================
-   5c) KUMULATIV — Tabellen je Phase/Leistung mit Übertrag
+   5c) ABLAUF: 1. Phasen & Leistungen wählen → 2. von/bis automatisch aus erstem/letztem
+   Eintrag (Kalender markiert Beginn/Ende) → 3. kumulativ ja/nein → 4. Übertrag je Leistung
+   mit Vorauswahl der bisher abgerechneten Stunden. Liest nur, schreibt nichts.
    ============================================================ */
-const blocksBox = $('#blocks');
-function newBlock(){ return { title:"", sel:null, ue:{ von:"", bis:"", rechnung:"", stunden:0 } }; }
-/* ältere Dateien: einzelne Phase/Leistung → Auswahl */
-function blockSel(bl){
-  if(bl.sel === undefined) bl.sel = bl.phase ? { [bl.phase]: bl.service ? [bl.service] : true } : null;
-  return bl.sel;
-}
-function autoTitle(bl){ return [model.meta.projekt.name, scopeTitle(blockSel(bl), TT.curProject())].filter(Boolean).join(' — '); }
+function planKey(pl){ return [pl.phase, pl.service, pl.rest || 0].join('|'); }
 function applyKumUI(){
   const on = isKum();
-  document.querySelectorAll('.single-only').forEach(el => el.hidden = on);
-  blocksBox.hidden = !on; $('#blocks-bar').hidden = !on;
-  $('#l-von').textContent = on ? 'Zeitraum dieser Rechnung von' : 'von';
-  $('#l-bis').textContent = on ? 'bis' : 'bis';
   $('#f-kum').checked = on;
-}
-function renderBlocks(){
-  const blocksBox = document.getElementById('blocks');   // kann schon vor 5c laufen (Verbindung aus dem Cache)
-  if(!isKum()){ blocksBox.innerHTML = ''; return; }
-  const p = TT.curProject();
-  blocksBox.innerHTML = '';
-  model.blocks.forEach((bl, bi)=>{
-    const d = document.createElement('div'); d.className = 'blk'; d.dataset.b = bi;
-    d.innerHTML =
-      `<div class="blk-h"><span>Tabelle ${bi+1}</span><button class="ghost" data-act="del">Entfernen</button></div>`+
-      `<div class="fg">`+
-        `<div class="fld wide"><label>Phasen &amp; Leistungen</label>${scopeHtml(bi, blockSel(bl), p)}</div>`+
-        `<div class="fld wide"><label>Tabellentitel</label><input type="text" data-f="title" value="${escapeHtml(bl.title)}"></div>`+
-        histHtml(bl, bi)+
-        `<div class="fld"><label>Übertrag von</label><input type="date" data-f="ue.von" value="${bl.ue.von || ''}"></div>`+
-        `<div class="fld"><label>Übertrag bis</label><input type="date" data-f="ue.bis" value="${bl.ue.bis || ''}"></div>`+
-        `<div class="fld"><label>Zugehörige Rechnung</label><input type="text" data-f="ue.rechnung" list="dl-rech-${bi}" value="${escapeHtml(bl.ue.rechnung)}" placeholder="z. B. INV_XXX_006">`+
-          `<datalist id="dl-rech-${bi}">${(bl.ue.vorschlaege || []).map(v => `<option value="${escapeHtml(v)}">`).join('')}</datalist></div>`+
-        `<div class="fld"><label>Übertrag Std. (aus dem Zeitraum, änderbar)</label><input type="number" step="0.25" data-f="ue.stunden" value="${bl.ue.stunden ?? ''}"></div>`+
-      `</div>`+
-      `<p class="sub" data-st style="margin:10px 0 0">${escapeHtml(bl.ue.info || '')}</p>`;
-    blocksBox.appendChild(d);
-  });
-  fixIndet(blocksBox);
-}
-/* Verlauf je Tabelle: alle Zeiteinträge dieser Phase/Leistung (ohne Zeitraum), nur lesend.
-   Zeigt Beginn, letzten Eintrag und die Stunden je Rechnung – und bietet sie als Übertrag an. */
-var HIST = new WeakMap();
-async function loadHistory(bi){
-  const bl = model.blocks[bi]; if(!bl || !TT.api || !TT.projectId()) return;
-  const tok = {}; bl._hTok = tok;                      // nur die letzte Anfrage zählt
-  HIST.set(bl, { loading:true }); renderBlocks();
-  try{
-    const d = await fetchScope({}, blockSel(bl));
-    if(bl._hTok !== tok) return;
-    HIST.set(bl, histOf(d.items || []));
-  }catch(e){ if(bl._hTok !== tok) return; HIST.set(bl, { error: e.message }); }
-  renderBlocks();
+  $('#ue-box').hidden = !on;
+  $('#l-von').textContent = on ? 'Zeitraum dieser Rechnung von' : 'von';
 }
 /* Verlauf aus Zeiteinträgen: Beginn/Ende, Stunden je Abrechnungsdokument, noch offen */
 function histOf(list){
@@ -1412,12 +1342,6 @@ function histOf(list){
   let kum = 0; docs.forEach(g => { kum += g.std; g.kum = Math.round(kum * 100) / 100; });
   const open = items.filter(it => !it.billed);
   return { all: range(items), docs, open: open.length ? range(open) : null };
-}
-function histSummary(h){
-  const rg = g => deDateS(g.von) + ' – ' + deDateS(g.bis);
-  const lines = h.docs.map(g => `<li>${escapeHtml(g.doc || 'abgebucht ohne Rechnungsnr.')}: ${rg(g)} · ${hours(g.std)}</li>`);
-  if(h.open) lines.push(`<li>noch nicht abgebucht: ${rg(h.open)} · ${hours(h.open.std)}</li>`);
-  return `Beginn (erster Eintrag): <b>${deDateS(h.all.von)}</b> · letzter Eintrag: ${deDateS(h.all.bis)} · gesamt ${hours(h.all.std)}<ul>${lines.join('')}</ul>`;
 }
 function dayAfter(iso){ const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); }
 
@@ -1452,129 +1376,191 @@ async function runPlan(plan, params){
   return { lists, unresolved };
 }
 
-/* Verlauf im normalen Modus: für die aktuelle Auswahl, gesamt und je Tabelle */
-var SHIST = null, shTimer = null, shTok = null;
-function loadSingleHistory(){
+/* Auswahl lesen: alle Einträge der gewählten Leistungen (ohne Zeitraum) → Beginn/Ende,
+   Buchungs- und Abrechnungstage für den Kalender, Vorauswahl Übertrag. */
+var SH = null, shTimer = null, shTok = null, zrAuto = true;
+function loadSel(){
   clearTimeout(shTimer);
   shTimer = setTimeout(async () => {
-    const p = TT.curProject(); if(!p || !TT.api){ SHIST = null; renderSingleHist(); return; }
-    const tok = {}; shTok = tok; SHIST = { loading:true }; renderSingleHist();
+    const p = TT.curProject(); if(!p || !TT.api){ SH = null; renderUe(); zrNote(''); return; }
+    const tok = {}; shTok = tok; SH = { loading:true }; renderUe(); zrNote('Lese Zeiträume aus AppSheet …');
     try{
       const plan = buildPlan(model.settings.scope, p, '');
       const r = await runPlan(plan, {});
       if(shTok !== tok) return;
-      const all = [].concat(...r.lists);
-      SHIST = Object.assign(histOf(all), { parts: plan.map((pl, i) => ({ name: pl.short, h: histOf(r.lists[i]) })).filter(x => !x.h.empty) });
-    }catch(e){ if(shTok !== tok) return; SHIST = { error: e.message }; }
-    renderSingleHist();
-  }, 500);
+      const parts = plan.map((pl, i) => Object.assign({ key: planKey(pl), h: histOf(r.lists[i]), items: r.lists[i] }, pl)).filter(x => !x.h.empty);
+      const all = [].concat(...r.lists), booked = new Set(), billed = new Set(), edges = {};
+      all.forEach(it => { if(!it.datum) return; booked.add(it.datum); if(it.billed) billed.add(it.datum); });
+      parts.forEach(pt => [['Beginn', pt.h.all.von], ['Ende', pt.h.all.bis]].forEach(([w, d]) => (edges[d] = edges[d] || []).push(w + ': ' + pt.short)));
+      SH = Object.assign(histOf(all), { parts, booked, billed, edges });
+      parts.forEach(pt => {                                // Vorauswahl – solange nicht von Hand geändert
+        const cur = model.uebertrag[pt.key]; if(cur && !cur.auto) return;
+        model.uebertrag[pt.key] = defaultUe(pt.h);
+      });
+    }catch(e){ if(shTok !== tok) return; SH = { error: e.message }; }
+    autoZeitraum(); renderUe(); render();
+  }, 400);
 }
-function renderSingleHist(){
-  const box = document.getElementById('hist-single'); if(!box) return;
-  const h = SHIST;
-  if(!h){ box.innerHTML = TT.projectId() ? '' : '<div class="hist">Oben ein Projekt wählen – dann steht hier, seit wann gearbeitet und was schon abgerechnet wurde.</div>'; return; }
-  if(h.loading){ box.innerHTML = '<label>Bisher in AppSheet</label><div class="hist">Lade Verlauf aus AppSheet …</div>'; return; }
-  if(h.error){ box.innerHTML = `<label>Bisher in AppSheet</label><div class="hist err">Verlauf nicht geladen: ${escapeHtml(h.error)}</div>`; return; }
-  if(h.empty){ box.innerHTML = '<label>Bisher in AppSheet</label><div class="hist">Für diese Auswahl gibt es noch keine Zeiteinträge.</div>'; return; }
-  const parts = h.parts.length > 1 ? '<div style="margin-top:8px"><b>Je Tabelle</b><ul>' + h.parts.map(x =>
-    `<li>${escapeHtml(x.name)}: ${deDateS(x.h.all.von)} – ${deDateS(x.h.all.bis)} · ${hours(x.h.all.std)}${x.h.open ? ' · offen ' + hours(x.h.open.std) : ' · alles abgebucht'}</li>`).join('') + '</ul></div>' : '';
-  const opts = ['<option value="">— Zeitraum übernehmen … —</option>',
-    `<option value="all">alles seit Beginn (${deDateS(h.all.von)} – ${deDateS(h.all.bis)})</option>`]
-    .concat(h.docs.map((g, i) => `<option value="doc:${i}">nach ${escapeHtml(g.doc || 'Abbuchung ohne Nr.')} (ab ${deDateS(dayAfter(g.bis))})</option>`),
-      h.open ? [`<option value="open">Zeitraum der offenen Einträge (${deDateS(h.open.von)} – ${deDateS(h.open.bis)})</option>`] : []);
-  box.innerHTML = `<label>Bisher in AppSheet</label><div class="hist">${histSummary(h)}${parts}</div>` +
-    `<label style="margin-top:12px">Zeitraum aus dem Verlauf</label><select id="f-zr-preset">${opts.join('')}</select>`;
-  box.querySelector('#f-zr-preset').onchange = e => {
-    const v = e.target.value; let von = '', bis = h.all.bis;
-    if(v === 'all') von = h.all.von;
-    else if(v === 'open'){ von = h.open.von; bis = h.open.bis; }
-    else if(v.startsWith('doc:')) von = dayAfter(h.docs[+v.slice(4)].bis);
-    else return;
-    [['#f-von', von], ['#f-bis', bis]].forEach(([id, val]) => { const el = $(id); el.value = val; el.dispatchEvent(new Event('input', { bubbles:true })); el.dispatchEvent(new Event('change', { bubbles:true })); });
-  };
+/* Vorauswahl: alles bis einschließlich der letzten Abrechnung */
+function defaultUe(h){
+  const n = h.docs.length, d = h.docs[n - 1];
+  return d ? { von: h.all.von, bis: d.bis, rechnung: d.doc, stunden: d.kum, choice: 'doc:' + (n - 1), auto: true }
+           : { von: '', bis: '', rechnung: '', stunden: 0, choice: 'none', auto: true };
 }
-
-function loadAllHistories(){ model.blocks.forEach((_, bi) => loadHistory(bi)); }
-function histHtml(bl, bi){
-  const h = HIST && HIST.get(bl);
-  if(!h) return TT.projectId() ? '' : `<div class="fld wide"><div class="hist">Oben ein Projekt wählen – dann steht hier, seit wann gearbeitet und was schon abgerechnet wurde.</div></div>`;
-  if(h.loading) return `<div class="fld wide"><div class="hist">Lade Verlauf aus AppSheet …</div></div>`;
-  if(h.error) return `<div class="fld wide"><div class="hist err">Verlauf nicht geladen: ${escapeHtml(h.error)}</div></div>`;
-  if(h.empty) return `<div class="fld wide"><div class="hist">In AppSheet gibt es für diese Auswahl noch keine Zeiteinträge.</div></div>`;
-  const vonR = $('#f-von').value;
-  const opts = ['<option value="">— Übertrag übernehmen … —</option>'].concat(
-    h.docs.map((g, i) => `<option value="doc:${i}">bis einschl. ${escapeHtml(g.doc || 'Abbuchung ohne Nr.')} (${deDateS(h.all.von)} – ${deDateS(g.bis)} · ${hours(g.kum)})</option>`),
-    vonR && vonR > h.all.von ? [`<option value="before">alles vor diesem Rechnungszeitraum (${deDateS(h.all.von)} – ${deDateS(dayBefore(vonR))})</option>`] : []);
-  return `<div class="fld wide"><label>Bisher in AppSheet</label><div class="hist">${histSummary(h)}</div></div>`+
-    `<div class="fld wide"><label>Übertrag aus dem Verlauf</label><select data-f="ue.preset">${opts.join('')}</select></div>`;
+function zrNote(m, c){ const el = document.getElementById('zr-note'); if(el){ el.textContent = m || ''; el.className = 'sub ' + (c || ''); } }
+function setZR(von, bis){
+  model.meta.zeitraum.von = von || ''; model.meta.zeitraum.bis = bis || '';
+  $('#f-von').value = deDateS(von); $('#f-bis').value = deDateS(bis);
 }
-function dayBefore(iso){ const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); }
-function applyPreset(bi, v){
-  const bl = model.blocks[bi], h = HIST.get(bl); if(!v || !h || !h.all) return;
-  if(v === 'before'){ bl.ue.von = h.all.von; bl.ue.bis = dayBefore($('#f-von').value); }
-  else { const g = h.docs[+v.slice(4)]; bl.ue.von = h.all.von; bl.ue.bis = g.bis; bl.ue.rechnung = g.doc; }
-  renderBlocks(); render(); calcUebertrag(bi);
+function autoZeitraum(){
+  const h = SH; $('#zr-reset').hidden = zrAuto || !h || !h.all;
+  if(!h || h.loading) return;
+  if(h.error){ zrNote('Zeiträume nicht geladen: ' + h.error, 'err'); return; }
+  if(h.empty){ zrNote('Für diese Auswahl gibt es noch keine Zeiteinträge.', 'err'); return; }
+  let von = h.all.von, note = 'Automatisch: erster bis letzter Eintrag';
+  if(isKum()){
+    // je Leistung beginnt „neu“ nach ihrem Übertrag; der Zeitraum startet beim frühesten neuen Eintrag
+    const starts = h.parts.map(pt => { const ub = ueOf(pt.key).bis || ''; const it = pt.items.filter(x => x.datum > ub).sort((a, b) => a.datum.localeCompare(b.datum))[0]; return it && it.datum; }).filter(Boolean).sort();
+    const ends = h.parts.map(pt => ueOf(pt.key).bis).filter(Boolean).sort();
+    if(starts.length) von = starts[0]; else if(ends.length) von = dayAfter(ends[ends.length - 1]);
+    if(ends.length) note = 'Automatisch: erster Eintrag nach dem Übertrag bis zum letzten Eintrag';
+  }
+  if(zrAuto) setZR(von, h.all.bis);
+  // Warnung: offene (nicht abgerechnete) Stunden vor dem Zeitraum, die auch nicht im Übertrag stecken
+  const zv = model.meta.zeitraum.von, miss = [];
+  if(zv) h.parts.forEach(pt => {
+    const u = isKum() ? ueOf(pt.key) : {}, lost = pt.items.filter(it => !it.billed && it.datum < zv && !(u.von && u.bis && it.datum >= u.von && it.datum <= u.bis));
+    if(lost.length) miss.push(lost.reduce((a, it) => a + (Number(it.stunden) || 0), 0));
+  });
+  const ms = miss.reduce((a, b) => a + b, 0);
+  zrNote((zrAuto ? note : 'Von Hand gesetzt') + (miss.length ? '  ·  Achtung: ' + hours(ms) + ' noch nicht abgerechnet liegen vor diesem Zeitraum (' + miss.length + (miss.length === 1 ? ' Leistung)' : ' Leistungen)') : ''), miss.length ? 'err' : '');
 }
 
-/* Übertrag = alle gebuchten Stunden dieser Phase/Leistung im gewählten Zeitraum.
-   Rechnungs-Vorschläge = Dokumente, mit denen diese Stunden abgebucht wurden. */
-async function calcUebertrag(bi){
-  const bl = model.blocks[bi]; if(!bl) return;
-  const st = blocksBox.querySelector(`.blk[data-b="${bi}"] [data-st]`);
-  const say = (m, c) => { bl.ue.info = m; if(st){ st.textContent = m; st.className = 'sub ' + (c || ''); } };
-  if(!bl.ue.von || !bl.ue.bis) return;
-  if(!TT.api || !TT.projectId()){ say('Für die automatische Berechnung oben ein Projekt wählen – oder Stunden von Hand eintragen.', 'err'); return; }
-  say('Berechne Übertrag …');
-  const tok = {}; bl._uTok = tok;
-  try{
-    const d = await fetchScope({ from: bl.ue.von, to: bl.ue.bis }, blockSel(bl));
-    if(bl._uTok !== tok) return;
-    const items = d.items || [];
-    bl.ue.stunden = Math.round(items.reduce((s, it) => s + (Number(it.stunden) || 0), 0) * 100) / 100;
-    bl.ue.vorschlaege = [...new Set(items.map(it => it.billedDoc).filter(Boolean))];
-    if(!bl.ue.rechnung && bl.ue.vorschlaege.length === 1) bl.ue.rechnung = bl.ue.vorschlaege[0];
-    const open = items.filter(it => !it.billed).length;
-    renderBlocks(); render();
-    say(items.length + ' Einträge · ' + hours(bl.ue.stunden) + (open ? '  ·  davon ' + open + ' noch nicht abgebucht' : ''), open ? 'err' : 'ok');
-  }catch(e){ say('Übertrag nicht berechnet: ' + e.message, 'err'); }
+/* Schritt 4: Übertrag je Leistung */
+function renderUe(){
+  const box = document.getElementById('ue-box'); if(!box) return;
+  if(!isKum()){ box.innerHTML = ''; return; }
+  const h = SH;
+  if(!h){ box.innerHTML = '<p class="sub">Oben ein Projekt wählen – dann wird vorausgewählt, was schon abgerechnet wurde.</p>'; return; }
+  if(h.loading){ box.innerHTML = '<p class="sub">Lese Abrechnungen aus AppSheet …</p>'; return; }
+  if(h.error || h.empty){ box.innerHTML = ''; return; }
+  box.innerHTML = '<label class="ue-lbl">Übertrag je Leistung</label>' + h.parts.map(pt => {
+    const u = ueOf(pt.key), docs = pt.h.docs;
+    const opts = docs.map((d, i) => `<option value="doc:${i}"${u.choice === 'doc:' + i ? ' selected' : ''}>bis einschl. ${escapeHtml(d.doc || 'Abbuchung ohne Nr.')} · ${deDateS(pt.h.all.von)} – ${deDateS(d.bis)} · ${hours(d.kum)}</option>`).join('') +
+      `<option value="none"${u.choice === 'none' ? ' selected' : ''}>kein Übertrag</option>` +
+      `<option value="hand"${u.choice === 'hand' ? ' selected' : ''}>von Hand eintragen</option>`;
+    const fields = u.choice === 'none' ? '' :
+      `<div class="ue-f">` +
+        `<input type="text" class="dp" data-u="von" value="${deDateS(u.von)}" placeholder="Übertrag von" autocomplete="off">` +
+        `<input type="text" class="dp" data-u="bis" value="${deDateS(u.bis)}" placeholder="bis" autocomplete="off">` +
+        `<input type="text" data-u="rechnung" value="${escapeHtml(u.rechnung || '')}" placeholder="Rechnung">` +
+        `<input type="number" step="0.25" data-u="stunden" value="${Number(u.stunden) || 0}" title="Stunden">` +
+      `</div>`;
+    const head = docs.length ? `<select data-u="choice">${opts}</select>`
+      : (u.choice === 'none' ? `<div class="ue-none">Für diese Leistung wurde noch nichts abgerechnet.<button class="ghost" data-hand>von Hand eintragen</button></div>`
+                             : `<div class="ue-none">Noch nichts abgerechnet – Übertrag von Hand:</div>`);
+    return `<div class="ue-card" data-key="${escapeHtml(pt.key)}"><div class="ue-h">${escapeHtml(pt.short)}</div>${head}${fields}</div>`;
+  }).join('');
 }
-blocksBox.addEventListener('input', e=>{
-  const f = e.target.dataset.f, card = e.target.closest('.blk'); if(!f || !card || e.target.tagName === 'SELECT') return;
-  const bl = model.blocks[+card.dataset.b];
-  if(f === 'title') bl.title = e.target.value;
-  else if(f === 'ue.rechnung') bl.ue.rechnung = e.target.value;
-  else if(f === 'ue.stunden') bl.ue.stunden = parseFloat(e.target.value) || 0;
-  else if(f === 'ue.von' || f === 'ue.bis') bl.ue[f.slice(3)] = e.target.value;
-  if(f === 'title') renderEntries();
+function ueCard(e){ const c = e.target.closest('.ue-card'); return c ? c.dataset.key : null; }
+function ueSet(key, patch){ model.uebertrag[key] = Object.assign({}, ueOf(key), patch, { auto:false }); }
+$('#ue-box').addEventListener('change', e => {
+  const key = ueCard(e), f = e.target.dataset.u; if(key == null || !f) return;
+  if(f === 'choice'){
+    const pt = SH && SH.parts && SH.parts.find(x => x.key === key), v = e.target.value;
+    if(v.startsWith('doc:') && pt){ const d = pt.h.docs[+v.slice(4)]; ueSet(key, { von: pt.h.all.von, bis: d.bis, rechnung: d.doc, stunden: d.kum, choice: v }); }
+    else if(v === 'none') ueSet(key, { von:'', bis:'', rechnung:'', stunden:0, choice:'none' });
+    else ueSet(key, { choice:'hand' });
+    renderUe();
+  } else if(f === 'von' || f === 'bis'){
+    const iso = parseDateDE(e.target.value);
+    if(iso === null){ e.target.classList.add('bad'); return; }
+    e.target.classList.remove('bad'); e.target.value = deDateS(iso);
+    ueSet(key, { [f]: iso });
+  } else return;
+  autoZeitraum(); render();
+});
+$('#ue-box').addEventListener('input', e => {
+  const key = ueCard(e), f = e.target.dataset.u; if(key == null || (f !== 'rechnung' && f !== 'stunden')) return;
+  ueSet(key, { [f]: f === 'stunden' ? (parseFloat(e.target.value) || 0) : e.target.value });
   render();
 });
-blocksBox.addEventListener('change', e=>{
-  const f = e.target.dataset.f, card = e.target.closest('.blk'); if(!f || !card) return;
-  const bi = +card.dataset.b, bl = model.blocks[bi];
-  if(f === 'ue.preset') applyPreset(bi, e.target.value);
-  else if(f === 'ue.von' || f === 'ue.bis') calcUebertrag(bi);
+$('#ue-box').addEventListener('click', e => {
+  if(!('hand' in e.target.dataset)) return;
+  ueSet(ueCard(e), { choice:'hand' }); renderUe();
 });
-blocksBox.addEventListener('click', e=>{
-  if(e.target.dataset.act !== 'del') return;
-  const bi = +e.target.closest('.blk').dataset.b;
-  if(blockItems(bi).length && !confirm('Tabelle ' + (bi+1) + ' mit ' + blockItems(bi).length + ' Einträgen entfernen?')) return;
-  model.blocks.splice(bi, 1);
-  model.items = model.items.filter(it => (it.b || 0) !== bi).map(it => ((it.b || 0) > bi ? Object.assign(it, { b: it.b - 1 }) : it));
-  renderBlocks(); renderEntries(); render();
+
+/* ---- Kalender für Datumsfelder (.dp): grau = Beginn/Ende einer gewählten Leistung,
+   Punkt = Buchungstag, grün = schon abgerechnet (nur kumulativ) ---- */
+function parseDateDE(s){
+  s = String(s || '').trim(); if(!s) return '';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})?$/); if(!m) return null;
+  const y = !m[3] ? String(new Date().getFullYear()) : (m[3].length === 2 ? '20' + m[3] : m[3]);
+  const iso = `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`, d = new Date(iso + 'T12:00:00');
+  return isNaN(d) || d.getDate() !== +m[1] ? null : iso;
+}
+var DP = { el:null, input:null, y:0, m:0 };
+function dpOpen(input){
+  if(!DP.el){
+    DP.el = document.createElement('div'); DP.el.className = 'dp-pop'; DP.el.hidden = true; document.body.appendChild(DP.el);
+    DP.el.addEventListener('mousedown', e => e.preventDefault());   // Fokus bleibt im Feld
+    DP.el.addEventListener('click', e => {
+      const b = e.target.closest('button'); if(!b) return;
+      if(b.dataset.nav){ DP.m += +b.dataset.nav; if(DP.m < 0){ DP.m = 11; DP.y--; } if(DP.m > 11){ DP.m = 0; DP.y++; } dpRender(); return; }
+      if(b.dataset.d){ DP.input.value = deDateS(b.dataset.d); DP.input.dispatchEvent(new Event('change', { bubbles:true })); dpClose(); }
+    });
+  }
+  DP.input = input;
+  const iso = parseDateDE(input.value) || (SH && SH.all && SH.all.bis) || new Date().toISOString().slice(0, 10);
+  DP.y = +iso.slice(0, 4); DP.m = +iso.slice(5, 7) - 1;
+  dpRender(); DP.el.hidden = false;
+  const r = input.getBoundingClientRect(), h = DP.el.offsetHeight;
+  DP.el.style.left = Math.min(r.left, window.innerWidth - DP.el.offsetWidth - 8) + 'px';
+  DP.el.style.top = (r.bottom + 4 + h > window.innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4) + 'px';
+}
+function dpClose(){ if(DP.el) DP.el.hidden = true; DP.input = null; }
+function dpRender(){
+  const first = new Date(DP.y, DP.m, 1), lead = (first.getDay() + 6) % 7, days = new Date(DP.y, DP.m + 1, 0).getDate();
+  const cur = parseDateDE(DP.input.value), kum = isKum();
+  let cells = '<span></span>'.repeat(lead);
+  for(let d = 1; d <= days; d++){
+    const iso = `${DP.y}-${String(DP.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`, cls = [];
+    const edge = SH && SH.edges && SH.edges[iso];
+    if(edge) cls.push('edge');
+    if(SH && SH.booked && SH.booked.has(iso)) cls.push(kum && SH.billed.has(iso) ? 'bl' : 'bk');
+    if(iso === cur) cls.push('cur');
+    cells += `<button type="button" data-d="${iso}" class="${cls.join(' ')}"${edge ? ` title="${escapeHtml(edge.join('\n'))}"` : ''}>${d}</button>`;
+  }
+  const mon = first.toLocaleDateString('de-DE', { month:'long', year:'numeric' });
+  DP.el.innerHTML = `<div class="dp-h"><button type="button" data-nav="-1">‹</button><span>${mon}</span><button type="button" data-nav="1">›</button></div>` +
+    `<div class="dp-g">${['Mo','Di','Mi','Do','Fr','Sa','So'].map(x => `<i>${x}</i>`).join('')}${cells}</div>` +
+    (SH && SH.all ? `<div class="dp-l"><b><i class="edge"></i>Beginn/Ende einer Leistung</b> <b><i class="bk"></i>Buchung</b>${kum ? ' <b><i class="bl"></i>abgerechnet</b>' : ''}</div>` : '');
+}
+document.addEventListener('focusin', e => { if(e.target.classList && e.target.classList.contains('dp')) dpOpen(e.target); });
+document.addEventListener('mousedown', e => { if(DP.el && !DP.el.hidden && e.target !== DP.input && !DP.el.contains(e.target)) dpClose(); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape') dpClose(); });
+document.addEventListener('input', e => {                 // beim Tippen mitblättern
+  if(e.target !== DP.input) return; const iso = parseDateDE(e.target.value);
+  if(iso){ DP.y = +iso.slice(0, 4); DP.m = +iso.slice(5, 7) - 1; dpRender(); }
 });
-$('#btn-add-block').onclick = ()=>{ model.blocks.push(newBlock()); renderBlocks(); renderEntries(); render(); loadHistory(model.blocks.length - 1); };
+document.addEventListener('scroll', e => { if(DP.el && !DP.el.hidden && !DP.el.contains(e.target)) dpClose(); }, true);
+
+/* Hauptzeitraum von/bis */
+['von', 'bis'].forEach(f => $('#f-' + f).addEventListener('change', e => {
+  const iso = parseDateDE(e.target.value);
+  if(iso === null){ e.target.classList.add('bad'); return; }
+  e.target.classList.remove('bad'); e.target.value = deDateS(iso);
+  model.meta.zeitraum[f] = iso; zrAuto = false; autoZeitraum(); render();
+}));
+$('#zr-reset').onclick = () => { zrAuto = true; autoZeitraum(); render(); };
+
 $('#f-kum').addEventListener('change', e=>{
   model.settings.kumulativ = e.target.checked;
-  if(isKum()){
-    if(!model.blocks.length) model.blocks.push(newBlock());
-    model.items.forEach(it => { if(it.b == null || it.b >= model.blocks.length) it.b = 0; });
-  }
-  applyKumUI(); renderBlocks(); renderEntries(); render();
-  if(isKum()) loadAllHistories(); else loadSingleHistory();
+  applyKumUI(); renderUe(); renderEntries(); autoZeitraum(); render();
 });
-$('#f-von').addEventListener('change', () => { if(isKum()) renderBlocks(); });
 $('#f-tabtitle').addEventListener('input', e => { model.settings.title = e.target.value; render(); });
-$('#f-proj-name').addEventListener('input', () => { refreshAutoTitles(); if(isKum()) renderBlocks(); render(); });   // Option „alles vor diesem Zeitraum“
+$('#f-proj-name').addEventListener('input', () => { refreshAutoTitles(); render(); });
 
 $('#btn-save').onclick = ()=>{
   const blob = new Blob([JSON.stringify(model,null,2)],{type:'application/json'});
@@ -1585,7 +1571,7 @@ $('#btn-open').onclick = ()=> $('#file-open').click();
 $('#file-open').onchange = e=>{
   const f=e.target.files[0]; if(!f) return;
   const rd=new FileReader();
-  rd.onload=()=>{ try{ model=JSON.parse(rd.result); syncForm(); renderEntries(); render(); }catch(err){ alert('Datei nicht lesbar: '+err); } };
+  rd.onload=()=>{ try{ model=JSON.parse(rd.result); zrAuto = false; syncForm(); renderEntries(); render(); }catch(err){ alert('Datei nicht lesbar: '+err); } };
   rd.readAsText(f);
 };
 $('#btn-pdf').onclick   = ()=>{ try{ exportPDF(); }catch(err){ alert('PDF-Export fehlgeschlagen: '+err); console.error(err); } };
@@ -1598,10 +1584,10 @@ function syncForm(){
   g('#f-place',model.header.place); g('#f-date',model.header.date);
   g('#f-auftrag-nr',model.meta.auftrag.nr); g('#f-auftrag-bez',model.meta.auftrag.bez);
   g('#f-proj-name',model.meta.projekt.name); g('#f-proj-adr',model.meta.projekt.adresse);
-  g('#f-von',model.meta.zeitraum.von); g('#f-bis',model.meta.zeitraum.bis);
+  g('#f-von',deDateS(model.meta.zeitraum.von)); g('#f-bis',deDateS(model.meta.zeitraum.bis));
   $('#f-einheit').value = model.settings.einheit; $('#f-stdtag').value = model.settings.stundenProTag;
   $('#f-tabtitle').value = model.settings.title || '';
-  applyKumUI(); renderBlocks(); renderSingleScope();
+  applyKumUI(); renderUe(); renderSingleScope();
 }
 
 /* ---- Zoom ---- */
