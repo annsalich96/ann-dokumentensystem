@@ -248,7 +248,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
     <div class="fld wide" id="scope-single"></div>
     <div class="fld"><label id="l-von">von</label><input type="text" class="dp" id="f-von" placeholder="TT.MM.JJ" autocomplete="off"></div>
     <div class="fld"><label id="l-bis">bis</label><input type="text" class="dp" id="f-bis" placeholder="TT.MM.JJ" autocomplete="off"></div>
-    <div class="fld wide zr-row"><p class="sub" id="zr-note"></p><button class="ghost" id="zr-reset" hidden>Automatisch</button></div>
+    <div class="fld wide zr-row"><p class="sub" id="zr-note"></p><button class="ghost" id="zr-reset" hidden>Automatisch</button><button class="ghost" id="zr-retry" hidden>Erneut laden</button></div>
   </div>
   <label class="chk"><input type="checkbox" id="f-kum"> Kumulativ – mit Übertrag aus früheren Rechnungen</label>
   <div id="ue-box" hidden></div>
@@ -1052,7 +1052,10 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
      eine eigene Tabelle. Abfragen laufen parallel (max. 6 gleichzeitig). */
   async function loadGroups(onlyOpen, from, to, mapIt){
     const p = curProject(), plan = buildPlan(model.settings.scope, p, model.meta.projekt.name || p.name);
-    const { lists, unresolved } = await runPlan(plan, { from, to });
+    const r = await fetchPlan(plan, { maxAge: 600000, progress: (d, n) => { if(n) say('Lade Zeiteinträge … ' + d + ' von ' + n + ' Leistungen'); } });
+    const inRange = it => (!from || it.datum >= from) && (!to || it.datum <= to);
+    const lists = r.lists.map(l => l.filter(inRange).sort((a, b) => a.datum === b.datum ? String(a.bearbeiter).localeCompare(b.bearbeiter) : a.datum.localeCompare(b.datum)));
+    const unresolved = r.unresolved;
     let skipped = 0;
     model.groups = []; model.items = [];
     plan.forEach((pl, i) => {
@@ -1161,6 +1164,7 @@ const TT = { curProject: () => null, api: null, projectId: () => '' };   // wird
       .map(it => ({ id: it.recordId, desc: (it.taetigkeit || '').trim(), note }));
   }
   async function billApi(action, extra){
+    REC.map = {};                                       // Abrechnungsstand ändert sich → Verlauf neu lesen
     const CH = 12, ents = billEntries(); let updated = 0, notFound = 0;
     if(action === 'unmarkBilled'){
       const r = await api('unmarkBilled', Object.assign({ document: billDocId(), secret: WRITE_SECRET }, extra||{}), 45000);
@@ -1358,20 +1362,33 @@ function buildPlan(sel, p, name){
   if(!sel) plan.push({ phase: '', service: '', rest: 2, title: name, short: 'ohne Phase' });
   return plan;
 }
-/* führt den Plan aus (max. 6 Abfragen gleichzeitig); jeder Eintrag landet genau einmal */
-async function runPlan(plan, params){
-  const res = new Array(plan.length); let next = 0;
-  await Promise.all(Array.from({ length: Math.min(6, plan.length) }, async () => {
-    while(next < plan.length){
-      const i = next++;
-      res[i] = await TT.api('getTimeRecords', Object.assign({ project: TT.projectId(), phase: plan[i].phase, service: plan[i].service }, params));
+/* Zeiteinträge je Leistung ohne Zeitraum, für die Sitzung gemerkt (eine Abfrage dauert ~8 s,
+   AppSheet liefert nur eine Leistung pro Abfrage). Neue Häkchen laden nur Fehlendes nach. */
+var REC = { pid:'', map:{}, at:{} };
+async function fetchPlan(plan, opt){
+  opt = opt || {};
+  const pid = TT.projectId(); if(REC.pid !== pid){ REC.pid = pid; REC.map = {}; REC.at = {}; }
+  const fresh = k => REC.map[k] && (!opt.maxAge || Date.now() - REC.at[k] < opt.maxAge);
+  const todo = [...new Set(plan.map(planKey))].filter(k => !fresh(k)).map(k => plan.find(pl => planKey(pl) === k));
+  let next = 0, done = 0;
+  if(opt.progress) opt.progress(0, todo.length);
+  await Promise.all(Array.from({ length: Math.min(6, todo.length) }, async () => {
+    while(next < todo.length){
+      if(opt.stale && opt.stale()) return;               // veraltete Auswahl: keine neuen Abfragen mehr
+      const pl = todo[next++];
+      const r = await TT.api('getTimeRecords', { project: pid, phase: pl.phase, service: pl.service }, 60000);
+      REC.map[planKey(pl)] = r; REC.at[planKey(pl)] = Date.now();
+      if(opt.progress) opt.progress(++done, todo.length);
     }
   }));
+  if(opt.stale && opt.stale()) return null;
+  // jeder Eintrag genau einmal: erst Leistungen, dann Rest je Phase, dann Rest Projekt
   const seen = new Set(), lists = plan.map(() => []); let unresolved = 0;
   [0, 1, 2].forEach(level => plan.forEach((pl, i) => {
     if((pl.rest || 0) !== level) return;
-    if(!level) unresolved += res[i].unresolved || 0;
-    (res[i].items || []).forEach(it => { if(seen.has(it.recordId)) return; seen.add(it.recordId); lists[i].push(it); });
+    const r = REC.map[planKey(pl)] || {};
+    if(!level) unresolved += r.unresolved || 0;
+    (r.items || []).forEach(it => { if(seen.has(it.recordId)) return; seen.add(it.recordId); lists[i].push(it); });
   }));
   return { lists, unresolved };
 }
@@ -1383,11 +1400,12 @@ function loadSel(){
   clearTimeout(shTimer);
   shTimer = setTimeout(async () => {
     const p = TT.curProject(); if(!p || !TT.api){ SH = null; renderUe(); zrNote(''); return; }
-    const tok = {}; shTok = tok; SH = { loading:true }; renderUe(); zrNote('Lese Zeiträume aus AppSheet …');
+    const tok = {}; shTok = tok; SH = { loading:true }; renderUe();
     try{
       const plan = buildPlan(model.settings.scope, p, '');
-      const r = await runPlan(plan, {});
-      if(shTok !== tok) return;
+      const r = await fetchPlan(plan, { stale: () => shTok !== tok,
+        progress: (d, n) => { if(n) zrNote('Lese Zeiträume aus AppSheet … ' + d + ' von ' + n + ' Leistungen'); } });
+      if(!r || shTok !== tok) return;
       const parts = plan.map((pl, i) => Object.assign({ key: planKey(pl), h: histOf(r.lists[i]), items: r.lists[i] }, pl)).filter(x => !x.h.empty);
       const all = [].concat(...r.lists), booked = new Set(), billed = new Set(), edges = {};
       all.forEach(it => { if(!it.datum) return; booked.add(it.datum); if(it.billed) billed.add(it.datum); });
@@ -1415,15 +1433,17 @@ function setZR(von, bis){
 function autoZeitraum(){
   const h = SH; $('#zr-reset').hidden = zrAuto || !h || !h.all;
   if(!h || h.loading) return;
-  if(h.error){ zrNote('Zeiträume nicht geladen: ' + h.error, 'err'); return; }
+  if(h.error){ zrNote('Zeiträume nicht geladen – AppSheet hat zu langsam geantwortet. Bitte „Erneut laden“.', 'err'); $('#zr-retry').hidden = false; return; }
+  $('#zr-retry').hidden = true;
   if(h.empty){ zrNote('Für diese Auswahl gibt es noch keine Zeiteinträge.', 'err'); return; }
-  let von = h.all.von, note = 'Automatisch: erster bis letzter Eintrag';
+  let von = h.all.von, note = 'Aus AppSheet: erster Eintrag ' + deDateS(h.all.von) + ' · letzter Eintrag ' + deDateS(h.all.bis);
   if(isKum()){
     // je Leistung beginnt „neu“ nach ihrem Übertrag; der Zeitraum startet beim frühesten neuen Eintrag
     const starts = h.parts.map(pt => { const ub = ueOf(pt.key).bis || ''; const it = pt.items.filter(x => x.datum > ub).sort((a, b) => a.datum.localeCompare(b.datum))[0]; return it && it.datum; }).filter(Boolean).sort();
     const ends = h.parts.map(pt => ueOf(pt.key).bis).filter(Boolean).sort();
     if(starts.length) von = starts[0]; else if(ends.length) von = dayAfter(ends[ends.length - 1]);
-    if(ends.length) note = 'Automatisch: erster Eintrag nach dem Übertrag bis zum letzten Eintrag';
+    if(ends.length) note += ' · neu seit dem Übertrag ab ' + deDateS(von);
+    else note += ' · noch nichts abgerechnet';
   }
   if(zrAuto) setZR(von, h.all.bis);
   // Warnung: offene (nicht abgerechnete) Stunden vor dem Zeitraum, die auch nicht im Übertrag stecken
@@ -1433,7 +1453,7 @@ function autoZeitraum(){
     if(lost.length) miss.push(lost.reduce((a, it) => a + (Number(it.stunden) || 0), 0));
   });
   const ms = miss.reduce((a, b) => a + b, 0);
-  zrNote((zrAuto ? note : 'Von Hand gesetzt') + (miss.length ? '  ·  Achtung: ' + hours(ms) + ' noch nicht abgerechnet liegen vor diesem Zeitraum (' + miss.length + (miss.length === 1 ? ' Leistung)' : ' Leistungen)') : ''), miss.length ? 'err' : '');
+  zrNote((zrAuto ? note : note + ' · Zeitraum von Hand gesetzt') + (miss.length ? '  ·  Achtung: ' + hours(ms) + ' noch nicht abgerechnet liegen vor diesem Zeitraum (' + miss.length + (miss.length === 1 ? ' Leistung)' : ' Leistungen)') : ''), miss.length ? 'err' : '');
 }
 
 /* Schritt 4: Übertrag je Leistung */
@@ -1554,6 +1574,7 @@ document.addEventListener('scroll', e => { if(DP.el && !DP.el.hidden && !DP.el.c
   model.meta.zeitraum[f] = iso; zrAuto = false; autoZeitraum(); render();
 }));
 $('#zr-reset').onclick = () => { zrAuto = true; autoZeitraum(); render(); };
+$('#zr-retry').onclick = () => { $('#zr-retry').hidden = true; loadSel(); };
 
 $('#f-kum').addEventListener('change', e=>{
   model.settings.kumulativ = e.target.checked;
